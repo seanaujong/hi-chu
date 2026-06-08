@@ -4,17 +4,20 @@ A browser extension that augments Pokémon Showdown's in-battle tooltips for Ran
 Battles. On top of the usual "what set could this Pokémon have", it adds a damage
 section that does two things the existing tooltips get wrong:
 
-- **Granular multi-hit damage.** For moves like Bullet Seed or Rock Blast it shows
-  the per-hit damage range, the expected number of hits, and a *true* KO chance that
-  integrates over both the per-hit damage rolls and the random 2–5 hit count.
-- **Reality-aware calcs.** It reads the live battle, so an *active* Terastallization,
-  the current status, stat boosts, revealed ability/item, current HP, **weather,
-  terrain, and the defender's screens** all feed the calc. Because the math is delegated
-  to `@smogon/calc`, interactions resolve correctly — e.g. a burned **Guts** attacker is
-  not damage-halved.
+- **Granular multi-hit damage.** Some moves (Bullet Seed, Rock Blast) hit a *random* 2–5
+  times, each hit rolling its own damage. The tooltip shows the per-hit damage range, the
+  expected number of hits, and a *true* KO chance (probability of knocking the target out)
+  that integrates over both the per-hit rolls and the random hit count.
+- **Reality-aware calcs.** It reads the live battle, so an *active* Terastallization, the
+  current status, stat boosts, revealed ability/item, current HP, **weather, terrain, and
+  the defender's screens** all feed the calc. Because the math is delegated to `@smogon/calc`,
+  interactions resolve correctly — e.g. a *burn* normally halves a physical attacker's damage,
+  but the ability **Guts** ignores that, and the calc gets it right.
 
-It is inspired by the closed-source [Randbats Tooltip][orig] and uses the same open
-data feed ([`pkmn.github.io/randbats`][feed]) and damage engine ([`@smogon/calc`][calc]).
+It is inspired by the closed-source [Randbats Tooltip][orig] and uses the same open data
+feed ([`pkmn.github.io/randbats`][feed]) and the de-facto standard Pokémon damage library,
+[`@smogon/calc`][calc] (maintained by the Smogon competitive community). New to competitive
+Pokémon / Showdown? See the [Glossary](#glossary) at the bottom.
 
 ## How it's built
 
@@ -60,8 +63,8 @@ client Pokemon │ LiveFacts  │ ──▶ │ ResolvedMon│ ──▶ │ Dam
 ### The pure core (`src/core`)
 
 - **`multihit.ts`** — the probability law. It represents damage and hit counts as
-  PMFs (probability mass functions) and convolves a single per-hit roll over the
-  hit-count distribution. This is the fix for `@smogon/calc`, which models *k* hits as
+  PMFs (probability mass functions) and *convolves* them (computes the distribution of a
+  sum of independent random variables) — one per-hit roll summed over the hit-count distribution. This is the fix for `@smogon/calc`, which models *k* hits as
   `k × one shared roll` (perfectly correlated) — both the variance and the hit-count
   randomness are wrong there. The exact hit-count distributions (35/35/15/15, Skill
   Link, Loaded Dice) are taken from Showdown's `sim/battle-actions.ts`.
@@ -84,8 +87,10 @@ client Pokemon │ LiveFacts  │ ──▶ │ ResolvedMon│ ──▶ │ Dam
   typed `LiveFacts` and `FieldFacts` (weather, terrain, the defender's screens). The
   structural `ClientPokemon`/`ClientBattle`/`ClientSide` interfaces document exactly
   which client fields we depend on.
-- **`src/content.ts`** — runs in the page (manifest `world: "MAIN"`), monkey-patches
-  `BattleTooltips.prototype.showPokemonTooltip`, and appends our section. Everything is
+- **`src/content.ts`** — a *content script* (JS the extension injects into the page);
+  `world: "MAIN"` runs it in the page's own JS context (Chrome Manifest V3, "MV3") so it
+  can reach Showdown's objects. It *monkey-patches* (wraps at runtime)
+  `BattleTooltips.prototype.showPokemonTooltip` and appends our section. Everything is
   wrapped so our code can never break Showdown's own tooltip.
 
 ### The multi-hit fix (the value-add)
@@ -153,6 +158,23 @@ npm run watch     # rebuild on save
 - **Hazards are intentionally not modelled** — Stealth Rock/Spikes change switch-in HP,
   not a move's damage, and we already read the defender's live HP. Only weather, terrain,
   and screens feed the calc.
+
+## Glossary
+
+For readers new to competitive Pokémon / Showdown:
+
+- **Pokémon Showdown** — a browser-based battle simulator. A **Random Battle** ("randbats")
+  gives each player an auto-generated team, but each species draws from a *fixed, published
+  pool* of possible sets (moves / item / ability / Tera / level). So you don't know the
+  opponent's exact build up front — but the possibilities are finite and known, which is what
+  makes this extension possible: it shows them and narrows them as moves and items are revealed.
+- **set** — a Pokémon's build: its moves, item, ability, and stat spread (EVs / IVs / nature).
+- **rolls** — every damage calculation randomly picks one of **16** values, so a move's
+  damage is a range, not a single number.
+- **KO / KO%** — knock out (faint; bring to 0 HP) / the probability a move does so.
+- **Terastallize / Tera type** — a Gen 9 mechanic that changes a Pokémon's type mid-battle.
+- **screens** — Reflect / Light Screen / Aurora Veil, which halve incoming damage.
+- **multi-hit move** — a move that strikes several times in one use (a random 2–5, or a fixed count).
 
 [orig]: https://chromewebstore.google.com/detail/pok%C3%A9mon-showdown-randbats/ipfdjoljmkcfabfppnclebjgbehjemch
 [feed]: https://github.com/pkmn/randbats

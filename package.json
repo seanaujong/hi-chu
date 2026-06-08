@@ -1,0 +1,22 @@
+{
+  "name": "randbats-tooltip-but-better",
+  "version": "0.1.0",
+  "description": "An enhanced Pokémon Showdown random-battle tooltip: per-hit multi-hit damage distributions, true KO%, and active-Tera-aware calcs.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@smogon/calc": "^0.10.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

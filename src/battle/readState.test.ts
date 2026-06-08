@@ -1,0 +1,85 @@
+import {describe, it, expect} from 'vitest';
+import {toLiveFacts, detectFormat, findOpposingActive, type ClientPokemon, type ClientBattle} from './readState.js';
+
+function clientMon(over: Partial<ClientPokemon> = {}): ClientPokemon {
+  return {
+    speciesForme: 'Dragonite',
+    level: 74,
+    hp: 100,
+    maxhp: 100,
+    status: '',
+    boosts: {},
+    terastallized: '',
+    ...over,
+  };
+}
+
+describe('toLiveFacts', () => {
+  it('computes HP as a fraction and reads simple fields', () => {
+    const f = toLiveFacts(clientMon({hp: 73, maxhp: 100, level: 74}));
+    expect(f.hpPercent).toBeCloseTo(0.73, 10);
+    expect(f.level).toBe(74);
+    expect(f.terastallized).toBe(false);
+    expect(f.teraType).toBeUndefined();
+  });
+
+  it('treats a non-empty terastallized field as the active Tera type', () => {
+    const f = toLiveFacts(clientMon({terastallized: 'Flying'}));
+    expect(f.terastallized).toBe(true);
+    expect(f.teraType).toBe('Flying');
+  });
+
+  it('keeps only real status conditions (ignores "" and "???")', () => {
+    expect(toLiveFacts(clientMon({status: 'brn'})).status).toBe('brn');
+    expect(toLiveFacts(clientMon({status: '???'})).status).toBeUndefined();
+    expect(toLiveFacts(clientMon({status: ''})).status).toBeUndefined();
+  });
+
+  it('strips the "*" transform marker and drops empty move names', () => {
+    const f = toLiveFacts(clientMon({moveTrack: [['*Outrage', 5], ['Roost', 10]]}));
+    expect(f.revealedMoves).toEqual(['Outrage', 'Roost']);
+  });
+
+  it('keeps only non-zero stat boosts', () => {
+    const f = toLiveFacts(clientMon({boosts: {atk: 2, spe: -1, accuracy: 1, evasion: 0}}));
+    expect(f.boosts).toEqual({atk: 2, spe: -1});
+  });
+
+  it('prefers the current ability, falling back to the base ability', () => {
+    expect(toLiveFacts(clientMon({ability: 'Multiscale'})).ability).toBe('Multiscale');
+    expect(toLiveFacts(clientMon({ability: '', baseAbility: 'Inner Focus'})).ability).toBe('Inner Focus');
+    expect(toLiveFacts(clientMon({})).ability).toBeUndefined();
+  });
+});
+
+describe('detectFormat', () => {
+  const battle = (tier: string, gen = 9): ClientBattle => ({gen, tier, sides: []});
+
+  it('builds the feed id for standard random battles', () => {
+    expect(detectFormat(battle('[Gen 9] Random Battle'))).toEqual({gen: 9, formatId: 'gen9randombattle'});
+    expect(detectFormat(battle('[Gen 8] Random Doubles Battle', 8))).toEqual({
+      gen: 8,
+      formatId: 'gen8randomdoublesbattle',
+    });
+  });
+
+  it('strips qualifiers like "(Blitz)"', () => {
+    expect(detectFormat(battle('[Gen 9] Random Battle (Blitz)'))?.formatId).toBe('gen9randombattle');
+  });
+
+  it('returns null for non-random formats', () => {
+    expect(detectFormat(battle('[Gen 9] OU'))).toBeNull();
+  });
+});
+
+describe('findOpposingActive', () => {
+  it('returns the first active Pokémon on the other side', () => {
+    const mine = clientMon({speciesForme: 'Mine'});
+    const theirs = clientMon({speciesForme: 'Theirs'});
+    const mySide = {active: [mine]};
+    const foeSide = {active: [theirs]};
+    const battle: ClientBattle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [mySide, foeSide]};
+    const hovered = {...mine, side: mySide};
+    expect(findOpposingActive(battle, hovered)?.speciesForme).toBe('Theirs');
+  });
+});

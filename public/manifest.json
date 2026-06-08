@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Randbats Tooltip but Better",
+  "version": "0.1.0",
+  "description": "Enhanced Pokémon Showdown random-battle tooltips: per-hit multi-hit damage distributions, true KO%, and active-Tera-aware calcs.",
+  "host_permissions": [
+    "https://pkmn.github.io/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://play.pokemonshowdown.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "world": "MAIN"
+    }
+  ]
+}

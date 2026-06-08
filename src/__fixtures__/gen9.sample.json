@@ -1,0 +1,247 @@
+{
+  "Cloyster": {
+    "level": 80,
+    "abilities": [
+      "Skill Link"
+    ],
+    "items": [
+      "White Herb"
+    ],
+    "roles": {
+      "Setup Sweeper": {
+        "abilities": [
+          "Skill Link"
+        ],
+        "items": [
+          "White Herb"
+        ],
+        "teraTypes": [
+          "Ice",
+          "Rock"
+        ],
+        "moves": [
+          "Hydro Pump",
+          "Icicle Spear",
+          "Rock Blast",
+          "Shell Smash"
+        ]
+      },
+      "Fast Attacker": {
+        "abilities": [
+          "Skill Link"
+        ],
+        "items": [
+          "White Herb"
+        ],
+        "teraTypes": [
+          "Ground"
+        ],
+        "moves": [
+          "Drill Run",
+          "Icicle Spear",
+          "Rock Blast",
+          "Shell Smash"
+        ]
+      }
+    }
+  },
+  "Tyranitar": {
+    "level": 78,
+    "abilities": [
+      "Sand Stream"
+    ],
+    "items": [
+      "Assault Vest",
+      "Leftovers",
+      "Weakness Policy"
+    ],
+    "roles": {
+      "Bulky Support": {
+        "abilities": [
+          "Sand Stream"
+        ],
+        "items": [
+          "Assault Vest",
+          "Leftovers"
+        ],
+        "teraTypes": [
+          "Ghost",
+          "Rock"
+        ],
+        "moves": [
+          "Dragon Tail",
+          "Earthquake",
+          "Ice Beam",
+          "Knock Off",
+          "Stealth Rock",
+          "Stone Edge",
+          "Thunder Wave"
+        ]
+      },
+      "Bulky Setup": {
+        "abilities": [
+          "Sand Stream"
+        ],
+        "items": [
+          "Weakness Policy"
+        ],
+        "teraTypes": [
+          "Ghost",
+          "Rock"
+        ],
+        "moves": [
+          "Dragon Dance",
+          "Earthquake",
+          "Ice Punch",
+          "Knock Off",
+          "Stone Edge"
+        ]
+      }
+    }
+  },
+  "Garchomp": {
+    "level": 74,
+    "abilities": [
+      "Rough Skin"
+    ],
+    "items": [
+      "Loaded Dice",
+      "Rocky Helmet"
+    ],
+    "roles": {
+      "Fast Support": {
+        "abilities": [
+          "Rough Skin"
+        ],
+        "items": [
+          "Rocky Helmet"
+        ],
+        "teraTypes": [
+          "Ground",
+          "Steel"
+        ],
+        "moves": [
+          "Dragon Tail",
+          "Earthquake",
+          "Outrage",
+          "Spikes",
+          "Stealth Rock"
+        ]
+      },
+      "Setup Sweeper": {
+        "abilities": [
+          "Rough Skin"
+        ],
+        "items": [
+          "Loaded Dice"
+        ],
+        "teraTypes": [
+          "Fire",
+          "Ground",
+          "Steel"
+        ],
+        "moves": [
+          "Earthquake",
+          "Fire Fang",
+          "Iron Head",
+          "Scale Shot",
+          "Stone Edge",
+          "Swords Dance"
+        ]
+      }
+    }
+  },
+  "Dragonite": {
+    "level": 74,
+    "abilities": [
+      "Multiscale"
+    ],
+    "items": [
+      "Heavy-Duty Boots"
+    ],
+    "roles": {
+      "Bulky Setup": {
+        "abilities": [
+          "Multiscale"
+        ],
+        "items": [
+          "Heavy-Duty Boots"
+        ],
+        "teraTypes": [
+          "Ground",
+          "Steel"
+        ],
+        "moves": [
+          "Dragon Dance",
+          "Earthquake",
+          "Outrage",
+          "Roost"
+        ]
+      },
+      "Setup Sweeper": {
+        "abilities": [
+          "Multiscale"
+        ],
+        "items": [
+          "Heavy-Duty Boots"
+        ],
+        "teraTypes": [
+          "Steel"
+        ],
+        "moves": [
+          "Dragon Dance",
+          "Earthquake",
+          "Iron Head",
+          "Outrage"
+        ]
+      },
+      "Tera Blast user": {
+        "abilities": [
+          "Multiscale"
+        ],
+        "items": [
+          "Heavy-Duty Boots"
+        ],
+        "teraTypes": [
+          "Flying"
+        ],
+        "moves": [
+          "Dragon Dance",
+          "Earthquake",
+          "Outrage",
+          "Tera Blast"
+        ]
+      }
+    }
+  },
+  "Breloom": {
+    "level": 83,
+    "abilities": [
+      "Technician"
+    ],
+    "items": [
+      "Life Orb"
+    ],
+    "roles": {
+      "Fast Attacker": {
+        "abilities": [
+          "Technician"
+        ],
+        "items": [
+          "Life Orb"
+        ],
+        "teraTypes": [
+          "Fighting",
+          "Rock"
+        ],
+        "moves": [
+          "Bullet Seed",
+          "Mach Punch",
+          "Rock Tomb",
+          "Spore",
+          "Swords Dance"
+        ]
+      }
+    }
+  }
+}

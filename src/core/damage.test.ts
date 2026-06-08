@@ -1,6 +1,8 @@
 import {describe, it, expect} from 'vitest';
 import {calcDamage} from './damage.js';
-import type {ResolvedMon} from './types.js';
+import type {FieldFacts, ResolvedMon} from './types.js';
+
+const noField: FieldFacts = {defenderScreens: {reflect: false, lightScreen: false, auroraVeil: false}};
 
 /** A fully-specified ResolvedMon with sensible defaults, so tests state only what matters. */
 function mon(over: Partial<ResolvedMon> & {speciesForme: string}): ResolvedMon {
@@ -116,6 +118,37 @@ describe('active Tera is folded into the calc', () => {
     const plain = calcDamage(base, target, 'Extreme Speed');
     const teraed = calcDamage(tera, target, 'Extreme Speed');
     expect(teraed.total.mean).toBeGreaterThan(plain.total.mean);
+  });
+});
+
+describe('field effects', () => {
+  const greninja = mon({speciesForme: 'Greninja', nature: 'Timid'});
+  const garchomp = mon({speciesForme: 'Garchomp'});
+  const base = calcDamage(greninja, garchomp, 'Surf', {field: noField});
+
+  it('weather scales same-type damage (Rain up, Sun down)', () => {
+    const rain = calcDamage(greninja, garchomp, 'Surf', {field: {...noField, weather: 'Rain'}});
+    const sun = calcDamage(greninja, garchomp, 'Surf', {field: {...noField, weather: 'Sun'}});
+    expect(rain.total.mean).toBeGreaterThan(base.total.mean);
+    expect(sun.total.mean).toBeLessThan(base.total.mean);
+    expect(rain.total.mean / base.total.mean).toBeCloseTo(1.5, 1);
+  });
+
+  it('Light Screen halves special damage', () => {
+    const screened = calcDamage(greninja, garchomp, 'Surf', {
+      field: {defenderScreens: {reflect: false, lightScreen: true, auroraVeil: false}},
+    });
+    expect(screened.total.mean / base.total.mean).toBeCloseTo(0.5, 1);
+  });
+
+  it('Reflect halves physical damage', () => {
+    const cinder = mon({speciesForme: 'Garchomp', nature: 'Jolly'});
+    const tt = mon({speciesForme: 'Tyranitar'});
+    const open = calcDamage(cinder, tt, 'Earthquake', {field: noField});
+    const reflected = calcDamage(cinder, tt, 'Earthquake', {
+      field: {defenderScreens: {reflect: true, lightScreen: false, auroraVeil: false}},
+    });
+    expect(reflected.total.mean / open.total.mean).toBeCloseTo(0.5, 1);
   });
 });
 

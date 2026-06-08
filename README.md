@@ -8,9 +8,10 @@ section that does two things the existing tooltips get wrong:
   the per-hit damage range, the expected number of hits, and a *true* KO chance that
   integrates over both the per-hit damage rolls and the random 2–5 hit count.
 - **Reality-aware calcs.** It reads the live battle, so an *active* Terastallization,
-  the current status, stat boosts, revealed ability/item, and current HP all feed the
-  calc. Because the math is delegated to `@smogon/calc`, interactions resolve
-  correctly — e.g. a burned **Guts** attacker is not damage-halved.
+  the current status, stat boosts, revealed ability/item, current HP, **weather,
+  terrain, and the defender's screens** all feed the calc. Because the math is delegated
+  to `@smogon/calc`, interactions resolve correctly — e.g. a burned **Guts** attacker is
+  not damage-halved.
 
 It is inspired by the closed-source [Randbats Tooltip][orig] and uses the same open
 data feed ([`pkmn.github.io/randbats`][feed]) and damage engine ([`@smogon/calc`][calc]).
@@ -80,8 +81,9 @@ client Pokemon │ LiveFacts  │ ──▶ │ ResolvedMon│ ──▶ │ Dam
 - **`src/data/randbats.ts`** — fetches and caches the set feed (memory + `localStorage`
   with a TTL).
 - **`src/battle/readState.ts`** — reads Showdown's untyped client objects into our
-  typed `LiveFacts` (the structural `ClientPokemon`/`ClientBattle` interfaces document
-  exactly which fields we depend on).
+  typed `LiveFacts` and `FieldFacts` (weather, terrain, the defender's screens). The
+  structural `ClientPokemon`/`ClientBattle`/`ClientSide` interfaces document exactly
+  which client fields we depend on.
 - **`src/content.ts`** — runs in the page (manifest `world: "MAIN"`), monkey-patches
   `BattleTooltips.prototype.showPokemonTooltip`, and appends our section. Everything is
   wrapped so our code can never break Showdown's own tooltip.
@@ -126,7 +128,7 @@ module — the tests are the worked examples (and pin the numbers against Showdo
 
 ```sh
 npm install
-npm test          # 61 tests: the math, the merge, the render, and an end-to-end run on real data
+npm test          # the math, the merge, the render, field effects, and an end-to-end run on real data
 npm run typecheck
 npm run build     # bundles to dist/ (content.js + manifest.json)
 npm run watch     # rebuild on save
@@ -144,13 +146,13 @@ npm run watch     # rebuild on save
 
 ## Known limitations (v1)
 
-- **Field effects** — weather, screens, terrain, and hazards are not yet folded into the
-  calc; the tooltip says so. `calcDamage` already accepts a `field`, so this is the next
-  step (read `battle.weather` and side conditions in `readState.ts`).
 - **Variable-power multi-hit** — Triple Axel and Triple Kick use `@smogon/calc`'s total
   (marked "approx."), since their base power changes per hit.
 - **Population Bomb without Loaded Dice** assumes all 10 hits land (it skips the per-hit
   accuracy check); with Loaded Dice the 4–10 distribution is exact.
+- **Hazards are intentionally not modelled** — Stealth Rock/Spikes change switch-in HP,
+  not a move's damage, and we already read the defender's live HP. Only weather, terrain,
+  and screens feed the calc.
 
 [orig]: https://chromewebstore.google.com/detail/pok%C3%A9mon-showdown-randbats/ipfdjoljmkcfabfppnclebjgbehjemch
 [feed]: https://github.com/pkmn/randbats

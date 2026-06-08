@@ -12,7 +12,7 @@ import {resolveMon} from './core/resolve.js';
 import {calcDamage, type DamageReport} from './core/damage.js';
 import {renderDamageSection, type RenderModel} from './core/render.js';
 import {pickEntry} from './data/randbats.js';
-import type {RandbatsData} from './core/types.js';
+import type {FieldFacts, RandbatsData} from './core/types.js';
 
 const data = sample as unknown as RandbatsData;
 
@@ -21,17 +21,23 @@ function clientMon(over: Partial<ClientPokemon> & {speciesForme: string}): Clien
 }
 
 /** Run the full pipeline for attacker vs defender and return the rendered HTML. */
-function pipeline(attackerC: ClientPokemon, defenderC: ClientPokemon, gen = 9): {html: string; reports: DamageReport[]} {
+function pipeline(
+  attackerC: ClientPokemon,
+  defenderC: ClientPokemon,
+  opts: {gen?: number; field?: FieldFacts} = {},
+): {html: string; reports: DamageReport[]} {
   const aFacts = toLiveFacts(attackerC);
   const dFacts = toLiveFacts(defenderC);
   const attacker = resolveMon(aFacts, pickEntry(data, aFacts.speciesForme)!);
   const defender = resolveMon(dFacts, pickEntry(data, dFacts.speciesForme)!);
-  const reports = attacker.possibleMoves.map((m) => calcDamage(attacker, defender, m, {gen}));
+  const reports = attacker.possibleMoves.map((m) =>
+    calcDamage(attacker, defender, m, {gen: opts.gen ?? 9, ...(opts.field ? {field: opts.field} : {})}),
+  );
   const model: RenderModel = {
     defenderName: defender.speciesForme,
     defenderHpPercent: dFacts.hpPercent,
     reports,
-    extraNotes: ['weather, screens and hazards not yet included'],
+    extraNotes: [],
     ...(attacker.teraType ? {attackerTera: attacker.teraType} : {}),
   };
   return {html: renderDamageSection(model), reports};
@@ -64,8 +70,18 @@ describe('Breloom vs Tyranitar (multi-hit + status moves)', () => {
     expect(bs.koChance).toBeLessThanOrEqual(1);
   });
 
-  it('surfaces the field-effects caveat', () => {
-    expect(html).toContain('weather, screens and hazards not yet included');
+});
+
+describe('field effects flow through the pipeline', () => {
+  it('Rain boosts Cloyster’s Hydro Pump in the rendered section', () => {
+    const noField: FieldFacts = {defenderScreens: {reflect: false, lightScreen: false, auroraVeil: false}};
+    const dry = pipeline(clientMon({speciesForme: 'Cloyster'}), clientMon({speciesForme: 'Tyranitar'}), {field: noField});
+    const rain = pipeline(clientMon({speciesForme: 'Cloyster'}), clientMon({speciesForme: 'Tyranitar'}), {
+      field: {...noField, weather: 'Rain'},
+    });
+    const dryHP = dry.reports.find((r) => r.move === 'Hydro Pump')!;
+    const rainHP = rain.reports.find((r) => r.move === 'Hydro Pump')!;
+    expect(rainHP.total.mean).toBeGreaterThan(dryHP.total.mean);
   });
 });
 

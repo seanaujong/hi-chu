@@ -6,7 +6,7 @@
 // `toLiveFacts` is pure and unit-tested with a stub; the navigation helpers are
 // thin and defensive (the client's shape can shift between releases).
 
-import type {LiveFacts, StatID, StatusName} from '../core/types.js';
+import type {FieldFacts, LiveFacts, StatID, StatusName, TerrainName, WeatherName} from '../core/types.js';
 
 export interface ClientPokemon {
   readonly speciesForme: string;
@@ -26,12 +26,18 @@ export interface ClientPokemon {
 
 export interface ClientSide {
   readonly active: ReadonlyArray<ClientPokemon | null>;
+  /** Active side conditions keyed by id ("reflect", "lightscreen", "auroraveil", …). */
+  readonly sideConditions?: Readonly<Record<string, unknown>>;
 }
 
 export interface ClientBattle {
   readonly gen: number;
   readonly tier: string;
   readonly sides: ReadonlyArray<ClientSide>;
+  /** Weather id ("sunnyday", "raindance", …), or "" / undefined when clear. */
+  readonly weather?: string;
+  /** Field conditions including terrains; each entry is [displayName, …]. */
+  readonly pseudoWeather?: ReadonlyArray<readonly [string, ...unknown[]]>;
 }
 
 const BATTLE_STATUSES = new Set<StatusName>(['brn', 'par', 'psn', 'tox', 'slp', 'frz']);
@@ -100,4 +106,58 @@ export function detectFormat(battle: ClientBattle): {gen: number; formatId: stri
     .toLowerCase();
   if (!name) return null;
   return {gen, formatId: `gen${gen}${name}`};
+}
+
+function toId(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+// Client weather/terrain ids → @smogon/calc names.
+const WEATHER_BY_ID: Readonly<Record<string, WeatherName>> = {
+  sunnyday: 'Sun',
+  raindance: 'Rain',
+  sandstorm: 'Sand',
+  hail: 'Hail',
+  snow: 'Snow',
+  snowscape: 'Snow',
+  desolateland: 'Harsh Sunshine',
+  primordialsea: 'Heavy Rain',
+  deltastream: 'Strong Winds',
+};
+const TERRAIN_BY_ID: Readonly<Record<string, TerrainName>> = {
+  electricterrain: 'Electric',
+  grassyterrain: 'Grassy',
+  psychicterrain: 'Psychic',
+  mistyterrain: 'Misty',
+};
+
+/**
+ * Read the field conditions that change damage: weather, terrain, and the screens
+ * on the DEFENDER's side. (Hazards are intentionally excluded — they affect
+ * switch-in HP, not a move's damage, and we already read live HP.)
+ */
+export function readFieldFacts(battle: ClientBattle, defenderSide: ClientSide | undefined): FieldFacts {
+  const weather = WEATHER_BY_ID[toId(battle.weather ?? '')];
+
+  let terrain: TerrainName | undefined;
+  for (const entry of battle.pseudoWeather ?? []) {
+    const match = TERRAIN_BY_ID[toId(entry[0])];
+    if (match) {
+      terrain = match;
+      break;
+    }
+  }
+
+  const conditions = defenderSide?.sideConditions ?? {};
+  const has = (id: string): boolean => Boolean(conditions[id]);
+
+  return {
+    ...(weather ? {weather} : {}),
+    ...(terrain ? {terrain} : {}),
+    defenderScreens: {
+      reflect: has('reflect'),
+      lightScreen: has('lightscreen'),
+      auroraVeil: has('auroraveil'),
+    },
+  };
 }

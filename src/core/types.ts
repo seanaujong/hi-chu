@@ -12,6 +12,23 @@ export type FullStats = Record<StatID, number>;
 
 export type StatusName = 'brn' | 'par' | 'psn' | 'tox' | 'slp' | 'frz';
 
+// Field state. These two unions mirror @smogon/calc's `Weather`/`Terrain` exactly
+// (so they assign straight through) but live here to keep the core calc-free.
+export type WeatherName = 'Sand' | 'Sun' | 'Rain' | 'Hail' | 'Snow' | 'Harsh Sunshine' | 'Heavy Rain' | 'Strong Winds';
+export type TerrainName = 'Electric' | 'Grassy' | 'Psychic' | 'Misty';
+
+/** Battle-wide and defender-side conditions that change a move's damage. */
+export interface FieldFacts {
+  readonly weather?: WeatherName;
+  readonly terrain?: TerrainName;
+  /** Screens protecting the DEFENDER (the side taking the hit). */
+  readonly defenderScreens: {
+    readonly reflect: boolean;
+    readonly lightScreen: boolean;
+    readonly auroraVeil: boolean;
+  };
+}
+
 // --- Static randbats data (https://pkmn.github.io/randbats) -----------------
 
 /** One named role a species can run (e.g. "Setup Sweeper"). */

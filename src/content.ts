@@ -14,6 +14,7 @@ import {
   toLiveFacts,
   findOpposingActive,
   detectFormat,
+  readFieldFacts,
   type ClientBattle,
   type ClientPokemon,
 } from './battle/readState.js';
@@ -24,8 +25,6 @@ declare global {
     BattleTooltips?: {prototype: Record<string, unknown>};
   }
 }
-
-const FIELD_CAVEAT = 'weather, screens and hazards not yet included';
 
 /** A defender entry when the feed doesn't cover it: facts only, default spread. */
 function entryOrMinimal(entry: RandbatsEntry | undefined, facts: LiveFacts): RandbatsEntry {
@@ -54,17 +53,20 @@ export function buildSection(battle: ClientBattle, pokemon: ClientPokemon): stri
   const attacker = resolveMon(attackerFacts, attackerEntry);
   const defender = resolveMon(defenderFacts, entryOrMinimal(pickEntry(data, defenderFacts.speciesForme), defenderFacts));
 
+  // Weather, terrain, and the defender's screens all change the numbers.
+  const field = readFieldFacts(battle, defenderMon.side);
+
   const reports: DamageReport[] = [];
   for (const move of attacker.possibleMoves) {
     try {
-      reports.push(calcDamage(attacker, defender, move, {gen: format.gen}));
+      reports.push(calcDamage(attacker, defender, move, {gen: format.gen, field}));
     } catch {
       // A single move that the calc can't handle shouldn't drop the whole section.
     }
   }
   if (!reports.length) return '';
 
-  const notes = [FIELD_CAVEAT];
+  const notes: string[] = [];
   if (attacker.assumptionsUncertainReason) notes.unshift(attacker.assumptionsUncertainReason);
 
   const model: RenderModel = {

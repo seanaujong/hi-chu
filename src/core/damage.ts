@@ -7,8 +7,8 @@
 // hit-count distribution (core/multihit.ts) to get the true total — and from the
 // true total, an exact single-use KO chance.
 
-import {calculate, Generations, Pokemon, Move, type Field, type GenerationNum, type State} from '@smogon/calc';
-import type {ResolvedMon} from './types.js';
+import {calculate, Generations, Pokemon, Move, Field, type GenerationNum, type State} from '@smogon/calc';
+import type {FieldFacts, ResolvedMon} from './types.js';
 import {multiHitProfile} from './moves.js';
 import {
   type Pmf,
@@ -110,8 +110,21 @@ function summarizeReport(
 export interface CalcDamageOptions {
   /** Generation number; defaults to 9. */
   readonly gen?: number;
-  /** Optional field state (weather, terrain, screens, hazards). */
-  readonly field?: Field;
+  /** Optional field state (weather, terrain, defender's screens). */
+  readonly field?: FieldFacts;
+}
+
+/** Map our plain FieldFacts onto a @smogon/calc Field. */
+function buildField(facts: FieldFacts): Field {
+  return new Field({
+    ...(facts.weather ? {weather: facts.weather} : {}),
+    ...(facts.terrain ? {terrain: facts.terrain} : {}),
+    defenderSide: {
+      isReflect: facts.defenderScreens.reflect,
+      isLightScreen: facts.defenderScreens.lightScreen,
+      isAuroraVeil: facts.defenderScreens.auroraVeil,
+    },
+  });
 }
 
 export function calcDamage(
@@ -133,9 +146,10 @@ export function calcDamage(
   const profile = multiHitProfile(moveName);
   const notes: string[] = [];
   const category = new Move(gen, moveName).category;
+  const field = options.field ? buildField(options.field) : undefined;
 
   const run = (hits?: number) =>
-    calculate(gen, atk, def, new Move(gen, moveName, hits !== undefined ? {hits} : {}), options.field);
+    calculate(gen, atk, def, new Move(gen, moveName, hits !== undefined ? {hits} : {}), field);
 
   // --- Ordinary single-hit move, or variable-power fallback -----------------
   if (!profile || !profile.uniformPower) {

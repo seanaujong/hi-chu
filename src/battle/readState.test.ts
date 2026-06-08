@@ -1,5 +1,13 @@
 import {describe, it, expect} from 'vitest';
-import {toLiveFacts, detectFormat, findOpposingActive, type ClientPokemon, type ClientBattle} from './readState.js';
+import {
+  toLiveFacts,
+  detectFormat,
+  findOpposingActive,
+  readFieldFacts,
+  type ClientPokemon,
+  type ClientBattle,
+  type ClientSide,
+} from './readState.js';
 
 function clientMon(over: Partial<ClientPokemon> = {}): ClientPokemon {
   return {
@@ -69,6 +77,45 @@ describe('detectFormat', () => {
 
   it('returns null for non-random formats', () => {
     expect(detectFormat(battle('[Gen 9] OU'))).toBeNull();
+  });
+});
+
+describe('readFieldFacts', () => {
+  const battle = (over: Partial<ClientBattle> = {}): ClientBattle => ({
+    gen: 9,
+    tier: '[Gen 9] Random Battle',
+    sides: [],
+    ...over,
+  });
+
+  it('maps the weather id to the calc weather name', () => {
+    expect(readFieldFacts(battle({weather: 'raindance'}), undefined).weather).toBe('Rain');
+    expect(readFieldFacts(battle({weather: 'sunnyday'}), undefined).weather).toBe('Sun');
+    expect(readFieldFacts(battle({weather: 'snow'}), undefined).weather).toBe('Snow');
+  });
+
+  it('has no weather when clear', () => {
+    expect(readFieldFacts(battle({weather: ''}), undefined).weather).toBeUndefined();
+    expect(readFieldFacts(battle({}), undefined).weather).toBeUndefined();
+  });
+
+  it('finds a terrain among the pseudo-weathers', () => {
+    const b = battle({pseudoWeather: [['Trick Room', 5, 0], ['Grassy Terrain', 5, 8]]});
+    expect(readFieldFacts(b, undefined).terrain).toBe('Grassy');
+  });
+
+  it("reads the defender's screens from its side conditions", () => {
+    const side: ClientSide = {active: [], sideConditions: {reflect: ['Reflect', 1, 5, 8]}};
+    const facts = readFieldFacts(battle(), side);
+    expect(facts.defenderScreens).toEqual({reflect: true, lightScreen: false, auroraVeil: false});
+  });
+
+  it('defaults to no screens when the side has none', () => {
+    expect(readFieldFacts(battle(), {active: []}).defenderScreens).toEqual({
+      reflect: false,
+      lightScreen: false,
+      auroraVeil: false,
+    });
   });
 });
 

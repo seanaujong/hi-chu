@@ -1,0 +1,22 @@
+# Runs the deterministic checks on every push/PR so the invariants in CLAUDE.md
+# that ARE machine-checked (strict typecheck + the test suite) can't silently rot.
+# (Activates once this repo has a GitHub remote.)
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run check   # typecheck (strict TS) + vitest
+      - run: npm run build   # the bundle must build

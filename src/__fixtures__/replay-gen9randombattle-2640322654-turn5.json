@@ -1,0 +1,87 @@
+{
+  "source": "play.pokemonshowdown.com client objects captured live from replay.pokemonshowdown.com/gen9randombattle-2640322654 at turn 5 (Noivern had terastallized to Fire). `battle` mirrors the ClientBattle/ClientPokemon structural view readState.ts reads; `randbats` holds the real feed entries for the two active species so the test runs offline.",
+  "battle": {
+    "gen": 9,
+    "tier": "[Gen 9] Random Battle",
+    "weather": "",
+    "pseudoWeather": [],
+    "sides": [
+      {
+        "name": "Abefisker",
+        "sideConditions": {},
+        "active": [
+          {
+            "speciesForme": "Noivern",
+            "level": 82,
+            "hp": 274,
+            "maxhp": 274,
+            "status": "",
+            "boosts": {},
+            "terastallized": "Fire",
+            "ability": "",
+            "baseAbility": "",
+            "item": "",
+            "gender": "F",
+            "moveTrack": [["Flamethrower", 1]]
+          }
+        ]
+      },
+      {
+        "name": "mastasefkillah",
+        "sideConditions": {},
+        "active": [
+          {
+            "speciesForme": "Tentacruel",
+            "level": 84,
+            "hp": 256,
+            "maxhp": 272,
+            "status": "",
+            "boosts": {},
+            "terastallized": "",
+            "ability": "",
+            "baseAbility": "",
+            "item": "Leftovers",
+            "gender": "F",
+            "moveTrack": []
+          }
+        ]
+      }
+    ]
+  },
+  "randbats": {
+    "Noivern": {
+      "level": 82,
+      "abilities": ["Infiltrator"],
+      "items": ["Choice Specs", "Heavy-Duty Boots"],
+      "roles": {
+        "Fast Attacker": {
+          "abilities": ["Infiltrator"],
+          "items": ["Choice Specs"],
+          "teraTypes": ["Normal"],
+          "moves": ["Boomburst", "Draco Meteor", "Flamethrower", "Hurricane", "U-turn"]
+        },
+        "Fast Support": {
+          "abilities": ["Infiltrator"],
+          "items": ["Heavy-Duty Boots"],
+          "teraTypes": ["Fire"],
+          "moves": ["Defog", "Draco Meteor", "Flamethrower", "Hurricane", "Roost"],
+          "evs": {"atk": 0},
+          "ivs": {"atk": 0}
+        }
+      }
+    },
+    "Tentacruel": {
+      "level": 84,
+      "abilities": ["Liquid Ooze"],
+      "items": ["Assault Vest", "Leftovers"],
+      "roles": {
+        "Bulky Support": {
+          "abilities": ["Liquid Ooze"],
+          "items": ["Assault Vest", "Leftovers"],
+          "teraTypes": ["Flying", "Grass"],
+          "moves": ["Flip Turn", "Haze", "Knock Off", "Rapid Spin", "Sludge Bomb", "Surf", "Toxic", "Toxic Spikes"]
+        }
+      }
+    }
+  }
+}

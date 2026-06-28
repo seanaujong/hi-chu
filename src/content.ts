@@ -5,19 +5,10 @@
 // render. All the real logic lives in the pure modules it folds together. Anything
 // that can throw is wrapped so a bad calc never breaks Showdown's own tooltip.
 
-import {calcDamage, type DamageReport} from './core/damage.js';
-import {resolveMon} from './core/resolve.js';
-import {renderDamageSection, TOOLTIP_STYLE, type RenderModel} from './core/render.js';
-import type {LiveFacts, RandbatsEntry} from './core/types.js';
-import {cachedRandbats, fetchRandbats, pickEntry} from './data/randbats.js';
-import {
-  toLiveFacts,
-  findOpposingActive,
-  detectFormat,
-  readFieldFacts,
-  type ClientBattle,
-  type ClientPokemon,
-} from './battle/readState.js';
+import {TOOLTIP_STYLE} from './core/render.js';
+import {cachedRandbats, fetchRandbats} from './data/randbats.js';
+import {detectFormat, type ClientBattle, type ClientPokemon} from './battle/readState.js';
+import {buildDamageSection} from './section.js';
 
 declare global {
   interface Window {
@@ -26,12 +17,11 @@ declare global {
   }
 }
 
-/** A defender entry when the feed doesn't cover it: facts only, default spread. */
-function entryOrMinimal(entry: RandbatsEntry | undefined, facts: LiveFacts): RandbatsEntry {
-  return entry ?? {level: facts.level, abilities: [], items: []};
-}
-
-/** Build our tooltip section for `pokemon` (the attacker) vs the opposing active. */
+/**
+ * Build our tooltip section for `pokemon` (the attacker) vs the opposing active.
+ * This is the thin cache/DOM shell: resolve the format, look up (or warm) the
+ * cached randbats data, then hand off to the pure `buildDamageSection`.
+ */
 export function buildSection(battle: ClientBattle, pokemon: ClientPokemon): string {
   const format = detectFormat(battle);
   if (!format) return '';
@@ -42,42 +32,7 @@ export function buildSection(battle: ClientBattle, pokemon: ClientPokemon): stri
     return '';
   }
 
-  const defenderMon = findOpposingActive(battle, pokemon);
-  if (!defenderMon) return ''; // team preview or no target on the field
-
-  const attackerFacts = toLiveFacts(pokemon);
-  const attackerEntry = pickEntry(data, attackerFacts.speciesForme);
-  if (!attackerEntry) return ''; // not a tracked randbats Pokémon
-
-  const defenderFacts = toLiveFacts(defenderMon);
-  const attacker = resolveMon(attackerFacts, attackerEntry);
-  const defender = resolveMon(defenderFacts, entryOrMinimal(pickEntry(data, defenderFacts.speciesForme), defenderFacts));
-
-  // Weather, terrain, and the defender's screens all change the numbers.
-  const field = readFieldFacts(battle, defenderMon.side);
-
-  const reports: DamageReport[] = [];
-  for (const move of attacker.possibleMoves) {
-    try {
-      reports.push(calcDamage(attacker, defender, move, {gen: format.gen, field}));
-    } catch {
-      // A single move that the calc can't handle shouldn't drop the whole section.
-    }
-  }
-  if (!reports.length) return '';
-
-  const notes: string[] = [];
-  if (attacker.assumptionsUncertainReason) notes.unshift(attacker.assumptionsUncertainReason);
-
-  const model: RenderModel = {
-    defenderName: defender.speciesForme,
-    defenderHpPercent: defenderFacts.hpPercent,
-    reports,
-    extraNotes: notes,
-    ...(attacker.teraType ? {attackerTera: attacker.teraType} : {}),
-    ...(defender.teraType ? {defenderTera: defender.teraType} : {}),
-  };
-  return renderDamageSection(model);
+  return buildDamageSection(battle, pokemon, data);
 }
 
 function injectStyleOnce(): void {

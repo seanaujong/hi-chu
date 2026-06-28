@@ -19,6 +19,9 @@ npm run build   # esbuild → dist/ (content.js + manifest.json)
 In-browser check: `npm run build`, then `chrome://extensions` → Developer mode → **Load
 unpacked** → pick `dist/`; open a Random Battle on play.pokemonshowdown.com and hover a
 Pokémon. (The logic is covered end-to-end by tests; only this hover needs a human.)
+```sh
+npm run drift-check   # LOCAL, needs Chrome: runs readState against a live replay (see below)
+```
 
 ## Architecture — where to make a change
 A **pure core + thin browser shell**. Dependencies point one way: the shell uses the
@@ -33,7 +36,15 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
   - `types.ts` — shared vocabulary (`LiveFacts`, `RandbatsEntry`, `ResolvedMon`, `FieldFacts`).
 - `src/battle/readState.ts` — Showdown's untyped client objects → typed `LiveFacts`/`FieldFacts`.
 - `src/data/randbats.ts` — fetch + cache the set feed.
-- `src/content.ts` — orchestrator; monkey-patches the tooltip (runs in MAIN world).
+- `src/section.ts` — pure shell orchestration: `buildDamageSection(battle, pokemon, data)` folds
+  read → resolve → calc → render into the tooltip HTML. No DOM/cache, so the real-battle fixture
+  test (`section.test.ts`) drives the exact path a live hover runs.
+- `src/content.ts` — thin shell; resolves the format, looks up/warms the cached feed, hands off to
+  `section.ts`, and monkey-patches the tooltip (runs in MAIN world).
+
+Tests come in two flavours: colocated `*.test.ts` with hand-built stubs, plus two driven by **real
+captured data** — `integration.test.ts` (real feed, synthetic mons) and `section.test.ts` (a real
+two-sided battle captured live from a replay; the fixture is `__fixtures__/replay-*.json`).
 
 For exact shapes and signatures, read the source and the colocated `*.test.ts` — the
 tests are the worked examples (and pin numbers against Showdown). Exception: `moves.ts`
@@ -66,8 +77,12 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   Checked by `npm run typecheck`.
 - 👁 **Client field names are reverse-engineered** (the client ships no types). The structural
   interfaces in `readState.ts` are the contract; the stubbed `readState` tests check *our*
-  parsing, not client drift. If a calc or read looks wrong, re-derive from the PS source
-  below and update those tests in lockstep.
+  parsing, not client drift. `npm run drift-check` is the live guard — it bundles the current
+  `readState` source, runs it against a real replay's `window.battle` in headless Chrome, and
+  exits non-zero if a field we read is gone or malformed. It's 👁 not ✅ because it needs a
+  browser + the live site, so it can't run in `npm run check`/CI — run it by hand after a client
+  update. If it flags drift (or a calc looks wrong), re-derive from the PS source below and update
+  `readState.ts` and its tests in lockstep.
 
 ## Pointers
 - `README.md` — full architecture, diagrams, install steps, known limitations.

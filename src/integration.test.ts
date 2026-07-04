@@ -77,9 +77,9 @@ describe('Breloom vs Tyranitar (multi-hit + status moves)', () => {
     const flipped = makeBattle(clientMon({speciesForme: 'Tyranitar'}), clientMon({speciesForme: 'Breloom'}));
     const html = buildPokemonSection(flipped, theirActive(flipped), data);
     expect(html).toContain('Possible sets');
-    expect(html).toMatch(/rbtb-mv">Spore<\/span>\?/);
-    expect(html).not.toMatch(/Spore<\/span>\?<\/span> <span class="rbtb-dmg">/);
-    expect(html).toMatch(/Bullet Seed<\/span>\?<\/span> <span class="rbtb-dmg">/);
+    expect(html).toMatch(/hichu-mv">Spore<\/span>\?/);
+    expect(html).not.toMatch(/Spore<\/span>\?<\/span> <span class="hichu-dmg">/);
+    expect(html).toMatch(/Bullet Seed<\/span>\?<\/span> <span class="hichu-dmg">/);
   });
 });
 

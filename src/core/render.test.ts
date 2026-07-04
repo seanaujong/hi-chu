@@ -103,8 +103,8 @@ describe('renderSetsSection', () => {
         abilities: [{name: 'Clear Body', known: false}, {name: 'Liquid Ooze', known: false}],
       }),
     );
-    expect(html).toContain('✓ <span class="rbtb-mv">Surf</span>');
-    expect(html).toMatch(/rbtb-maybe"><span class="rbtb-mv">Haze<\/span>\?/);
+    expect(html).toContain('✓ <span class="hichu-mv">Surf</span>');
+    expect(html).toMatch(/hichu-maybe"><span class="hichu-mv">Haze<\/span>\?/);
     expect(html).toContain('✓ Leftovers');
     expect(html).toContain('Clear Body?');
     expect(html).toContain('Liquid Ooze?');

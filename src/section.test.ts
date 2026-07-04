@@ -51,7 +51,7 @@ function loadBattle(over: {noivernTerastallized?: string} = {}): {battle: Client
 
 /** The mean-damage percentage a rendered dmg span prints, e.g. "… (66.3%)". */
 function meanPercent(html: string): number {
-  const m = /rbtb-dmg">[^(]*\(([\d.]+)%\)/.exec(html);
+  const m = /hichu-dmg">[^(]*\(([\d.]+)%\)/.exec(html);
   if (!m) throw new Error(`no damage span in:\n${html}`);
   return Number(m[1]);
 }
@@ -62,7 +62,7 @@ describe('buildMoveSection on the real captured battle (our move buttons)', () =
   it('calculates one move into the live opposing active at its real HP', () => {
     const html = buildMoveSection(battle, active('Noivern'), 'Draco Meteor', data);
     expect(html).toContain('vs Tentacruel (94.1% HP)');
-    expect(html).toContain('rbtb-dmg');
+    expect(html).toContain('hichu-dmg');
   });
 
   it('labels our active Tera (Noivern terastallized to Fire in this replay)', () => {
@@ -104,14 +104,14 @@ describe('buildPokemonSection hovering THEIR Tentacruel (the information game)',
 
   it('lists unrevealed feed moves as speculative, with damage attached', () => {
     // Nothing of Tentacruel's moveset is revealed at turn 5.
-    expect(html).toMatch(/rbtb-mv">Surf<\/span>\?/);
-    expect(html).toMatch(/Surf<\/span>\?<\/span> <span class="rbtb-dmg">/);
-    expect(html).toContain('rbtb-mv">Knock Off');
+    expect(html).toMatch(/hichu-mv">Surf<\/span>\?/);
+    expect(html).toMatch(/Surf<\/span>\?<\/span> <span class="hichu-dmg">/);
+    expect(html).toContain('hichu-mv">Knock Off');
   });
 
   it('keeps status moves in the set list but without damage figures', () => {
-    expect(html).toMatch(/rbtb-mv">Haze<\/span>\?/);
-    expect(html).not.toMatch(/Haze<\/span>\?<\/span> <span class="rbtb-dmg">/);
+    expect(html).toMatch(/hichu-mv">Haze<\/span>\?/);
+    expect(html).not.toMatch(/Haze<\/span>\?<\/span> <span class="hichu-dmg">/);
   });
 
   it('offers their still-possible Tera types without ever activating one', () => {
@@ -129,14 +129,14 @@ describe('buildPokemonSection hovering OUR Noivern (their read on us)', () => {
     expect(html).toContain('Their read on you');
     // Flamethrower is the one move we've shown — and it sits in both feed roles,
     // so the opponent still can't tell Fast Attacker from Fast Support.
-    expect(html).toContain('✓ <span class="rbtb-mv">Flamethrower</span>');
+    expect(html).toContain('✓ <span class="hichu-mv">Flamethrower</span>');
     expect(html).toContain('2 of 2 sets');
-    expect(html).toMatch(/rbtb-mv">Boomburst<\/span>\?/);
-    expect(html).toMatch(/rbtb-mv">Roost<\/span>\?/);
+    expect(html).toMatch(/hichu-mv">Boomburst<\/span>\?/);
+    expect(html).toMatch(/hichu-mv">Roost<\/span>\?/);
   });
 
   it('carries no damage figures — this view is about information, not threat', () => {
-    expect(html).not.toContain('rbtb-dmg');
+    expect(html).not.toContain('hichu-dmg');
   });
 
   it('shows our active Tera as settled information', () => {

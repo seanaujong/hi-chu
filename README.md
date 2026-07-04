@@ -1,4 +1,6 @@
-# Randbats Tooltip but Better
+# hi-chu
+
+*(hi-chew × pikachu; formerly "Randbats Tooltip but Better")*
 
 A browser extension that augments Pokémon Showdown's in-battle tooltips for Random
 Battles. On top of the usual "what set could this Pokémon have", it adds a damage

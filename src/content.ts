@@ -51,11 +51,11 @@ export function buildMoveButtonSection(battle: ClientBattle, pokemon: ClientPoke
 
 function injectStyleOnce(): void {
   if (typeof document === 'undefined') return; // no DOM (e.g. under test)
-  if (document.getElementById('rbtb-style')) return;
+  if (document.getElementById('hichu-style')) return;
   document.head.insertAdjacentHTML('beforeend', TOOLTIP_STYLE);
 }
 
-const PATCH_FLAG = '__rbtbPatched';
+const PATCH_FLAG = '__hichuPatched';
 
 /** Wrap a tooltip method so our section is appended and a failure changes nothing. */
 function append(

@@ -38,11 +38,11 @@ async function pickReplay() {
   throw new Error(`no ${FORMAT} replay with >= ${MIN_TURNS} turns in the recent list`);
 }
 
-/** Bundle the CURRENT readState.ts and expose its functions on window.__rbtbRead. */
+/** Bundle the CURRENT readState.ts and expose its functions on window.__hichuRead. */
 async function buildProbe() {
   const out = await esbuild.build({
     stdin: {
-      contents: "import * as rs from './src/battle/readState.ts'; globalThis.__rbtbRead = rs;",
+      contents: "import * as rs from './src/battle/readState.ts'; globalThis.__hichuRead = rs;",
       resolveDir: process.cwd(),
       loader: 'ts',
     },
@@ -56,7 +56,7 @@ async function buildProbe() {
 
 /** Runs in the page: exercise readState against the live battle, collect any drift. */
 function probeLiveClient() {
-  const R = globalThis.__rbtbRead;
+  const R = globalThis.__hichuRead;
   const b = globalThis.battle;
   const problems = [];
   const facts = [];

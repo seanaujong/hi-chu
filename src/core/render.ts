@@ -48,29 +48,29 @@ function multiHitDetail(r: DamageReport): string {
 
 /** The compact damage figures for one report: "74–88% (81%)" plus the KO tail. */
 function damageText(r: DamageReport): string {
-  const dmg = `<span class="rbtb-dmg">${r.percent.min}–${r.percent.max}% (${r.percent.mean}%)</span>`;
+  const dmg = `<span class="hichu-dmg">${r.percent.min}–${r.percent.max}% (${r.percent.mean}%)</span>`;
   const ko = koText(r.koChance);
-  return ko ? `${dmg} <span class="rbtb-ko">${ko}</span>` : dmg;
+  return ko ? `${dmg} <span class="hichu-ko">${ko}</span>` : dmg;
 }
 
-const STYLE_ID = 'rbtb-style';
+const STYLE_ID = 'hichu-style';
 
 /** A one-time <style> block; the content script injects it once into the page. */
 export const TOOLTIP_STYLE = `
 <style id="${STYLE_ID}">
-.rbtb { margin-top: 5px; padding-top: 4px; border-top: 1px solid rgba(128,128,128,.4); font-size: 10px; }
-.rbtb-h { margin: 0 0 2px; font-size: 10px; font-weight: bold; opacity: .85; }
-.rbtb-row { line-height: 1.35; }
-.rbtb-mv { font-weight: bold; }
-.rbtb-dmg { opacity: .95; }
-.rbtb-ko { color: #c0392b; font-weight: bold; }
-.rbtb-sub { opacity: .7; padding-left: 6px; }
-.rbtb-line, .rbtb-note { margin-top: 2px; }
-.rbtb-note { color: #b9770e; opacity: .8; }
-.rbtb-known { font-weight: bold; }
-.rbtb-maybe { opacity: .6; }
-.rbtb-lbl { opacity: .65; }
-.rbtb-tera { color: #8e44ad; font-weight: bold; }
+.hichu { margin-top: 5px; padding-top: 4px; border-top: 1px solid rgba(128,128,128,.4); font-size: 10px; }
+.hichu-h { margin: 0 0 2px; font-size: 10px; font-weight: bold; opacity: .85; }
+.hichu-row { line-height: 1.35; }
+.hichu-mv { font-weight: bold; }
+.hichu-dmg { opacity: .95; }
+.hichu-ko { color: #c0392b; font-weight: bold; }
+.hichu-sub { opacity: .7; padding-left: 6px; }
+.hichu-line, .hichu-note { margin-top: 2px; }
+.hichu-note { color: #b9770e; opacity: .8; }
+.hichu-known { font-weight: bold; }
+.hichu-maybe { opacity: .6; }
+.hichu-lbl { opacity: .65; }
+.hichu-tera { color: #8e44ad; font-weight: bold; }
 </style>`;
 
 // --- Move-button hover: one move vs the current target ----------------------
@@ -92,26 +92,26 @@ function teraLine(attackerTera: string | undefined, defenderTera: string | undef
   const bits: string[] = [];
   if (attackerTera) bits.push(`Tera ${esc(attackerTera)}`);
   if (defenderTera) bits.push(`vs Tera ${esc(defenderTera)}`);
-  return bits.length ? ` <span class="rbtb-tera">[${bits.join(' ')}]</span>` : '';
+  return bits.length ? ` <span class="hichu-tera">[${bits.join(' ')}]</span>` : '';
 }
 
 function noteDivs(notes: readonly string[]): string {
-  return notes.map((n) => `<div class="rbtb-note">⚠ ${esc(n)}</div>`).join('');
+  return notes.map((n) => `<div class="hichu-note">⚠ ${esc(n)}</div>`).join('');
 }
 
 /** The move-tooltip section: this move's damage into the current opposing active. */
 export function renderMoveSection(model: MoveRenderModel): string {
   const header =
-    `<h4 class="rbtb-h">vs ${esc(model.defenderName)} ` +
+    `<h4 class="hichu-h">vs ${esc(model.defenderName)} ` +
     `(${pct1(model.defenderHpPercent)} HP)${teraLine(model.attackerTera, model.defenderTera)}</h4>`;
 
   const r = model.report;
   const body = r
-    ? `<div class="rbtb-row">${damageText(r)}</div>` +
-      (multiHitDetail(r) ? `<div class="rbtb-sub">${esc(multiHitDetail(r))}</div>` : '')
-    : `<div class="rbtb-row rbtb-maybe">no damage (status move)</div>`;
+    ? `<div class="hichu-row">${damageText(r)}</div>` +
+      (multiHitDetail(r) ? `<div class="hichu-sub">${esc(multiHitDetail(r))}</div>` : '')
+    : `<div class="hichu-row hichu-maybe">no damage (status move)</div>`;
 
-  return `<div class="rbtb">${header}${body}${noteDivs(model.extraNotes)}</div>`;
+  return `<div class="hichu">${header}${body}${noteDivs(model.extraNotes)}</div>`;
 }
 
 // --- Pokémon hover: the information game -------------------------------------
@@ -143,25 +143,25 @@ export interface SetsRenderModel {
 /** "✓ Flame Orb" for confirmed facts, a dimmed "Guts?" for still-open options. */
 function optionSpan(o: KnownOption): string {
   return o.known
-    ? `<span class="rbtb-known">✓ ${esc(o.name)}</span>`
-    : `<span class="rbtb-maybe">${esc(o.name)}?</span>`;
+    ? `<span class="hichu-known">✓ ${esc(o.name)}</span>`
+    : `<span class="hichu-maybe">${esc(o.name)}?</span>`;
 }
 
 function optionLine(label: string, options: readonly KnownOption[]): string {
   if (options.length === 0) return '';
   const parts = options.map(optionSpan).join(' · ');
-  return `<div class="rbtb-line"><span class="rbtb-lbl">${label}:</span> ${parts}</div>`;
+  return `<div class="hichu-line"><span class="hichu-lbl">${label}:</span> ${parts}</div>`;
 }
 
 function moveRow(row: MoveKnowledgeRow): string {
   const mark = row.known
-    ? `<span class="rbtb-known">✓ <span class="rbtb-mv">${esc(row.name)}</span></span>`
-    : `<span class="rbtb-maybe"><span class="rbtb-mv">${esc(row.name)}</span>?</span>`;
+    ? `<span class="hichu-known">✓ <span class="hichu-mv">${esc(row.name)}</span></span>`
+    : `<span class="hichu-maybe"><span class="hichu-mv">${esc(row.name)}</span>?</span>`;
   const dmg = row.report ? ` ${damageText(row.report)}` : '';
   const sub = row.report && multiHitDetail(row.report)
-    ? `<div class="rbtb-sub">${esc(multiHitDetail(row.report))}</div>`
+    ? `<div class="hichu-sub">${esc(multiHitDetail(row.report))}</div>`
     : '';
-  return `<div class="rbtb-row">${mark}${dmg}</div>${sub}`;
+  return `<div class="hichu-row">${mark}${dmg}</div>${sub}`;
 }
 
 /**
@@ -181,7 +181,7 @@ export function renderSetsSection(model: SetsRenderModel): string {
 
   const title = model.perspective === 'foe' ? `Possible sets — ${roleCount}` : `Their read on you — ${roleCount}`;
   const header =
-    `<h4 class="rbtb-h">${title}${esc(roleNames)}${vsTarget}` +
+    `<h4 class="hichu-h">${title}${esc(roleNames)}${vsTarget}` +
     `${teraLine(model.attackerTera, model.defenderTera)}</h4>`;
 
   // Known moves first, then damaging possibilities by mean damage, then the rest.
@@ -196,5 +196,5 @@ export function renderSetsSection(model: SetsRenderModel): string {
     optionLine('Item', model.items) +
     optionLine('Tera', model.teraTypes);
 
-  return `<div class="rbtb">${header}${rows}${lines}${noteDivs(model.extraNotes)}</div>`;
+  return `<div class="hichu">${header}${rows}${lines}${noteDivs(model.extraNotes)}</div>`;
 }

@@ -1,7 +1,7 @@
 {
-  "name": "randbats-tooltip-but-better",
+  "name": "hi-chu",
   "version": "0.1.0",
-  "description": "An enhanced Pokémon Showdown random-battle tooltip: per-hit multi-hit damage distributions, true KO%, and active-Tera-aware calcs.",
+  "description": "hi-chu: Pokémon Showdown random-battle tooltips with per-move damage, true multi-hit KO%, and reveal-narrowed set possibilities.",
   "private": true,
   "type": "module",
   "scripts": {

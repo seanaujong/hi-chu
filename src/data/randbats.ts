@@ -9,7 +9,7 @@ import type {RandbatsData, RandbatsEntry} from '../core/types.js';
 
 const BASE_URL = 'https://pkmn.github.io/randbats/data';
 const TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
-const STORAGE_PREFIX = 'rbtb:randbats:';
+const STORAGE_PREFIX = 'hichu:randbats:';
 
 const memory = new Map<string, RandbatsData>();
 const inFlight = new Map<string, Promise<RandbatsData | null>>();

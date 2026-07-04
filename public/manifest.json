@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Randbats Tooltip but Better",
+  "name": "hi-chu",
   "version": "0.1.0",
-  "description": "Enhanced Pokémon Showdown random-battle tooltips: per-hit multi-hit damage distributions, true KO%, and active-Tera-aware calcs.",
+  "description": "Per-move damage, true multi-hit KO%, and set possibilities narrowed by revealed info — for Pokémon Showdown Random Battles.",
   "host_permissions": [
     "https://pkmn.github.io/*"
   ],

@@ -47,27 +47,50 @@ function multiHitDetail(r: DamageReport): string {
   return `${hits} · ${perHit}`;
 }
 
-/** "14.5–17.2%" — the damage range alone, matching the original's density. */
+/** "14.5–17.2%" — compact range for the set-view move lists (parens spot). */
 function rangeText(r: DamageReport): string {
   return `${r.percent.min}–${r.percent.max}%`;
+}
+
+/** "14.5% - 17.2%" — the native move tooltip's exact "Damage:" number format. */
+function moveDamageText(r: DamageReport): string {
+  return `${r.percent.min}% - ${r.percent.max}%`;
 }
 
 const STYLE_ID = 'hichu-style';
 
 /**
  * A one-time <style> block; the content script injects it once into the page.
- * Native tooltip font size throughout — crispness comes from structure (labelled
- * lines, underlined set names), not from shrinking and dimming.
+ *
+ * Deliberately minimal. The original Randbats Tooltip looks crisp because it adds
+ * NO CSS of its own — it reuses Showdown's native tooltip markup (`<p>` at 12px
+ * black, `<small>` grey labels, `.tooltip-section` for the divider) and inherits
+ * every font/size/colour. We do the same: our sections open with a native
+ * `.tooltip-section` paragraph, labels are `<small>`, set names are inline-
+ * underlined `<span>`s, confirmed facts are `<b>`. The only rules here are for the
+ * two things the original has no equivalent of — the red KO figure and the orange
+ * caveat line — our "better calc" surface, not restyling of the native shell.
  */
 export const TOOLTIP_STYLE = `
 <style id="${STYLE_ID}">
-.hichu { margin: 4px 0 0; padding: 2px 0 0; border-top: 1px solid #aaa; }
-.hichu p { margin: 2px 0; }
-.hichu-set { text-decoration: underline; font-weight: bold; }
-.hichu-known { font-weight: bold; }
 .hichu-ko { color: #c0392b; font-weight: bold; }
 .hichu-note { color: #b9770e; }
 </style>`;
+
+/**
+ * Wrap our lines the way a native tooltip section is built: the FIRST paragraph
+ * carries `.tooltip-section` (the native `border-top:1px solid #888; padding:2px 4px`
+ * divider), the rest are plain native `<p>`s. Empty lines are dropped so an absent
+ * KO/Hits line leaves no gap.
+ */
+function section(lines: readonly string[], notes: readonly string[] = []): string {
+  const ps = lines
+    .filter((l) => l !== '')
+    .map((l, i) => `<p${i === 0 ? ' class="tooltip-section"' : ''}>${l}</p>`)
+    .join('');
+  const notePs = notes.map((n) => `<p class="hichu-note">⚠ ${esc(n)}</p>`).join('');
+  return `<div class="hichu">${ps}${notePs}</div>`;
+}
 
 // --- Move-button hover: one move vs the current target ----------------------
 
@@ -90,33 +113,30 @@ function teraTag(attackerTera: string | undefined, defenderTera: string | undefi
   return bits.length ? ` <small>[${bits.join(' ')}]</small>` : '';
 }
 
-function noteParas(notes: readonly string[]): string {
-  return notes.map((n) => `<p class="hichu-note">⚠ ${esc(n)}</p>`).join('');
-}
-
 /**
- * The move-tooltip section, in the original's voice: a single bold-labelled
- * "Damage:" line (the native tooltip already names the target and typing), with
- * our KO chance and true multi-hit numbers underneath when they apply.
+ * The move-tooltip section, at parity with the native "Damage: X% - Y%" line — no
+ * "vs <target>" preamble (the native tooltip already names the target and typing).
+ * A non-damaging move gets NO section at all (returns ''), matching the original,
+ * which inserts nothing when there's no damage to show. Our better-calc value — the
+ * true KO chance and the real multi-hit breakdown — rides along only when it applies.
  */
 export function renderMoveSection(model: MoveRenderModel): string {
   const r = model.report;
+  if (!r) return ''; // status / unmodellable move → insert nothing
+
   const tera = teraTag(model.attackerTera, model.defenderTera);
-
-  if (!r) {
-    return `<div class="hichu"><p><b>Damage:</b> — (status move)${tera}</p>${noteParas(model.extraNotes)}</div>`;
-  }
-
-  const damage = `<p><b>Damage:</b> ${rangeText(r)} (avg ${r.percent.mean}%)${tera}</p>`;
-
   const ko = koText(r.koChance);
   const koCtx = model.defenderHpPercent < 0.995 ? ` at ${pct1(model.defenderHpPercent)} HP` : '';
-  const koLine = ko ? `<p><b>KO:</b> <span class="hichu-ko">${ko}</span>${koCtx}</p>` : '';
-
   const multi = multiHitDetail(r);
-  const multiLine = multi ? `<p><b>Hits:</b> ${esc(multi)}</p>` : '';
 
-  return `<div class="hichu">${damage}${koLine}${multiLine}${noteParas(model.extraNotes)}</div>`;
+  return section(
+    [
+      `<small>Damage:</small> ${moveDamageText(r)}${tera}`,
+      ko ? `<small>KO:</small> <span class="hichu-ko">${ko}</span>${koCtx}` : '',
+      multi ? `<small>Hits:</small> ${esc(multi)}` : '',
+    ],
+    model.extraNotes,
+  );
 }
 
 // --- Pokémon hover: per-set blocks, the original's layout -------------------
@@ -152,34 +172,37 @@ export interface SetsRenderModel {
 
 /** "✓ Leftovers" in bold once confirmed; plain names while still open. */
 function optionText(o: KnownOption): string {
-  return o.known ? `<span class="hichu-known">✓ ${esc(o.name)}</span>` : esc(o.name);
+  return o.known ? `<b>✓ ${esc(o.name)}</b>` : esc(o.name);
 }
 
+/** A labelled line ("Abilities: …"), or '' when the dimension has no options. */
 function optionLine(label: string, options: readonly KnownOption[]): string {
   if (options.length === 0) return '';
-  return `<p><small>${label}:</small> ${options.map(optionText).join(', ')}</p>`;
+  return `<small>${label}:</small> ${options.map(optionText).join(', ')}`;
 }
 
 /** A move entry: "✓ Giga Drain (63.9–75.3%)" — damage in the original's parens spot. */
 function moveText(row: MoveKnowledgeRow): string {
-  const name = row.known ? `<span class="hichu-known">✓ ${esc(row.name)}</span>` : esc(row.name);
+  const name = row.known ? `<b>✓ ${esc(row.name)}</b>` : esc(row.name);
   return row.report ? `${name} (${rangeText(row.report)})` : name;
 }
 
-function setBlock(c: CandidateBlock): string {
-  const title = c.name ? `<p class="hichu-set">${esc(c.name)}</p>` : '';
-  return (
-    title +
-    optionLine('Abilities', c.abilities) +
-    optionLine('Items', c.items) +
-    optionLine('Tera Types', c.teraTypes) +
-    `<p><small>Moves:</small> ${c.moves.map(moveText).join(', ')}</p>`
-  );
+/** One candidate set's lines: underlined name (native weight), then labelled lines. */
+function setLines(c: CandidateBlock): string[] {
+  const name = c.name ? `<span style="text-decoration: underline;">${esc(c.name)}</span>` : '';
+  return [
+    name,
+    optionLine('Abilities', c.abilities),
+    optionLine('Items', c.items),
+    optionLine('Tera Types', c.teraTypes),
+    `<small>Moves:</small> ${c.moves.map(moveText).join(', ')}`,
+  ];
 }
 
 /**
- * The Pokémon-tooltip section: one block per still-possible set, confirmed facts
- * bold with a ✓. The foe view's move lists carry damage vs our active in parens
+ * The Pokémon-tooltip section: one underlined-named block per still-possible set,
+ * confirmed facts bold with a ✓ — the original Randbats Tooltip's layout, native
+ * markup throughout. The foe view's move lists carry damage vs our active in parens
  * (their move buttons aren't hoverable for us, so threat numbers live here).
  */
 export function renderSetsSection(model: SetsRenderModel): string {
@@ -189,9 +212,7 @@ export function renderSetsSection(model: SetsRenderModel): string {
       ? ` · dmg vs ${esc(model.defenderName)} (${pct1(model.defenderHpPercent)} HP)`
       : '';
   const title = model.perspective === 'foe' ? 'Possible sets' : 'Their read on you';
-  const header =
-    `<p><b>${title}</b>${count}${esc(vsTarget)}${teraTag(model.attackerTera, model.defenderTera)}</p>`;
+  const header = `<small>${title}${esc(count)}${esc(vsTarget)}</small>${teraTag(model.attackerTera, model.defenderTera)}`;
 
-  const blocks = model.candidates.map(setBlock).join('');
-  return `<div class="hichu">${header}${blocks}${noteParas(model.extraNotes)}</div>`;
+  return section([header, ...model.candidates.flatMap(setLines)], model.extraNotes);
 }

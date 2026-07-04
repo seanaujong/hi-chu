@@ -52,14 +52,13 @@ describe('Breloom vs Tyranitar (multi-hit + status moves)', () => {
 
   it('renders Bullet Seed on the move button with a real hit-count estimate', () => {
     const html = buildMoveSection(battle, ourActive(battle), 'Bullet Seed', data);
-    expect(html).toContain('<b>Damage:</b>');
+    expect(html).toContain('<small>Damage:</small>');
     expect(html).toMatch(/≈\d(\.\d)? hits/);
     expect(html).toContain('per hit');
   });
 
-  it('renders a status move button as an explicit no-damage line', () => {
-    const html = buildMoveSection(battle, ourActive(battle), 'Spore', data);
-    expect(html).toContain('— (status move)');
+  it('inserts nothing for a status move button (Spore → empty)', () => {
+    expect(buildMoveSection(battle, ourActive(battle), 'Spore', data)).toBe('');
   });
 
   it('computes a sane Bullet Seed report (total spans 2..5 hits of the per-hit roll)', () => {
@@ -76,7 +75,7 @@ describe('Breloom vs Tyranitar (multi-hit + status moves)', () => {
     // Flip the seating: Breloom is THEIR active, hovered as the foe.
     const flipped = makeBattle(clientMon({speciesForme: 'Tyranitar'}), clientMon({speciesForme: 'Breloom'}));
     const html = buildPokemonSection(flipped, theirActive(flipped), data);
-    expect(html).toContain('<b>Possible sets</b>');
+    expect(html).toContain('Possible sets');
     expect(html).toContain('Spore');
     expect(html).not.toMatch(/Spore \(/);
     expect(html).toMatch(/Bullet Seed \(\d/);

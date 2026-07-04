@@ -37,9 +37,10 @@ describe('renderMoveSection', () => {
     };
   }
 
-  it("speaks the original's voice: a bold-labelled Damage line with our average", () => {
+  it("matches the native Damage line format exactly, no vs-target preamble", () => {
     const html = renderMoveSection(model({report: report({move: 'Earthquake'})}));
-    expect(html).toContain('<b>Damage:</b> 30–36% (avg 33%)');
+    expect(html).toContain('<small>Damage:</small> 30% - 36%');
+    expect(html).not.toContain('vs '); // the native tooltip already names the target
   });
 
   it('adds a KO line, with HP context only when the target is damaged', () => {
@@ -66,7 +67,7 @@ describe('renderMoveSection', () => {
         }),
       }),
     );
-    expect(html).toContain('<b>Hits:</b>');
+    expect(html).toContain('<small>Hits:</small>');
     expect(html).toContain('≈3.1 hits');
     expect(html).toContain('per hit'); // 14.7–18% per hit (49/333, 60/333)
   });
@@ -76,8 +77,8 @@ describe('renderMoveSection', () => {
     expect(html).toContain('multi-hit (approx.)');
   });
 
-  it('says so plainly when the move deals no damage', () => {
-    expect(renderMoveSection(model({moveName: 'Swords Dance'}))).toContain('— (status move)');
+  it('inserts nothing for a non-damaging move (no report → empty section)', () => {
+    expect(renderMoveSection(model({moveName: 'Swords Dance'}))).toBe('');
   });
 
   it('tags active Tera for attacker and defender', () => {
@@ -111,7 +112,7 @@ describe('renderSetsSection', () => {
 
   it("renders one block per set in the original's layout: name, then labelled lines", () => {
     const html = renderSetsSection(model());
-    expect(html).toContain('<p class="hichu-set">Bulky Support</p>');
+    expect(html).toContain('<span style="text-decoration: underline;">Bulky Support</span>');
     expect(html).toContain('<small>Abilities:</small> Clear Body, Liquid Ooze');
     expect(html).toContain('<small>Tera Types:</small> Flying, Grass');
     expect(html).toContain('<small>Moves:</small>');
@@ -119,15 +120,15 @@ describe('renderSetsSection', () => {
 
   it('bolds confirmed facts with a ✓ and leaves open options plain', () => {
     const html = renderSetsSection(model());
-    expect(html).toContain('<span class="hichu-known">✓ Leftovers</span>');
-    expect(html).toContain('<span class="hichu-known">✓ Surf</span>');
+    expect(html).toContain('<b>✓ Leftovers</b>');
+    expect(html).toContain('<b>✓ Surf</b>');
     expect(html).toContain('Haze');
     expect(html).not.toContain('✓ Haze');
   });
 
   it("puts damage in the original's parens spot, only for moves that deal any", () => {
     const html = renderSetsSection(model());
-    expect(html).toContain('✓ Surf</span> (30–36%)');
+    expect(html).toContain('<b>✓ Surf</b> (30–36%)');
     expect(html).not.toContain('Haze (');
   });
 
@@ -138,9 +139,9 @@ describe('renderSetsSection', () => {
 
   it('titles the two perspectives differently and names the damage target', () => {
     const foe = renderSetsSection(model({defenderName: 'Noivern', defenderHpPercent: 1}));
-    expect(foe).toContain('<b>Possible sets</b>');
+    expect(foe).toContain('Possible sets');
     expect(foe).toContain('dmg vs Noivern (100% HP)');
-    expect(renderSetsSection(model({perspective: 'own'}))).toContain('<b>Their read on you</b>');
+    expect(renderSetsSection(model({perspective: 'own'}))).toContain('Their read on you');
   });
 
   it('renders caveats as note lines', () => {

@@ -88,6 +88,18 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
 - ✅ **Format ids are derived like PS's own `toID`** (digits kept, whole title), so bracket
   tags with extra words work — checked by `readState.test.ts` ("[Gen 9 Champions] Random
   Battle" → `gen9championsrandombattle`).
+- 👁 **Match native tooltip styling; inject (almost) no CSS.** The original Randbats
+  Tooltip looks crisp because it reuses Showdown's own markup — `<p>` at 12px black,
+  `<small>` grey labels, `.tooltip-section` (`border-top:1px solid #888; padding:2px 4px`)
+  for the divider, set names as inline `<span style="text-decoration:underline">`, `<b>`
+  for confirmed facts — and inherits every font/size/colour. `render.ts` does the same;
+  `TOOLTIP_STYLE` is only the red KO figure and orange caveat line. Don't reintroduce
+  custom `font-size`/`opacity`/colour on the shell — that's exactly what read as muddy.
+  (Verified live against the real old extension via `room.tooltips.showPokemonTooltip`.)
+- 👁 **Move tooltip is at parity with the native `Damage: X% - Y%` line** — no "vs
+  <target>" preamble (native already names the target), and a **non-damaging move gets
+  no section at all** (`renderMoveSection` returns `''`). KO% and the multi-hit `Hits:`
+  line ride along only when they apply. Checked by `render.test.ts` / `section.test.ts`.
 - ✅ **Own the hit-count model** in `multihit.ts` (`@smogon/calc` collapses multi-hit to
   `k × one shared roll` and ignores Skill Link / Loaded Dice). Checked by `multihit.test.ts`
   (distributions + the "independent rolls narrow the distribution" guard) and `damage.test.ts`.

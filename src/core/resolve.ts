@@ -8,10 +8,12 @@
 
 import type {
   FullStats,
+  KnownOption,
   LiveFacts,
   RandbatsEntry,
   RandbatsRole,
   ResolvedMon,
+  SetKnowledge,
   StatsTable,
 } from './types.js';
 
@@ -35,34 +37,61 @@ function fillStats(base: number, override: StatsTable | undefined): FullStats {
   return s;
 }
 
+/** True when every piece of revealed evidence is consistent with this role. */
+function roleMatches(role: RandbatsRole, facts: LiveFacts): boolean {
+  const have = new Set(role.moves.map(toId));
+  for (const m of facts.revealedMoves) if (!have.has(toId(m))) return false;
+  // An item revealed mid-battle (held, consumed, or knocked off) pins the set the
+  // same way a used move does; likewise a revealed ability.
+  const revealedItem = facts.item ?? facts.prevItem;
+  if (revealedItem && role.items.length > 0 && !role.items.some((i) => toId(i) === toId(revealedItem))) {
+    return false;
+  }
+  if (facts.ability && role.abilities.length > 0 && !role.abilities.some((a) => toId(a) === toId(facts.ability!))) {
+    return false;
+  }
+  return true;
+}
+
+function anyEvidence(facts: LiveFacts): boolean {
+  return facts.revealedMoves.length > 0 || facts.item !== undefined || facts.prevItem !== undefined ||
+    facts.ability !== undefined;
+}
+
 /**
- * Pick the role(s) consistent with the moves we've actually seen used, and the
- * single role we'll calculate with. A role is consistent when every revealed move
- * appears in it. If nothing is consistent (or nothing has been revealed yet) we
- * keep all roles and flag the extra uncertainty.
+ * Pick the role(s) consistent with everything the battle has revealed (moves used,
+ * item, ability), and the single role we'll calculate with. If nothing is
+ * consistent (or nothing has been revealed yet) we keep all roles and flag the
+ * extra uncertainty.
  */
-function selectRoles(entry: RandbatsEntry, revealedMoves: readonly string[]): {
+function selectRoles(entry: RandbatsEntry, facts: LiveFacts): {
   chosen: RandbatsRole | undefined;
   candidates: readonly RandbatsRole[];
+  names: readonly string[];
   uncertain: string | undefined;
 } {
-  const roles = entry.roles ? Object.values(entry.roles) : [];
-  if (roles.length === 0) return {chosen: undefined, candidates: [], uncertain: undefined};
+  const named = entry.roles ? Object.entries(entry.roles) : [];
+  if (named.length === 0) return {chosen: undefined, candidates: [], names: [], uncertain: undefined};
 
-  const revealedIds = new Set(revealedMoves.map(toId));
-  const consistent = roles.filter((r) => {
-    const have = new Set(r.moves.map(toId));
-    for (const id of revealedIds) if (!have.has(id)) return false;
-    return true;
-  });
+  const consistent = named.filter(([, r]) => roleMatches(r, facts));
 
-  if (revealedIds.size > 0 && consistent.length === 0) {
-    // A revealed move matched no role (form change, transform, data drift) — don't
+  if (anyEvidence(facts) && consistent.length === 0) {
+    // Revealed evidence matched no role (form change, transform, data drift) — don't
     // pretend; calculate with the first role but mark the assumptions as shaky.
-    return {chosen: roles[0], candidates: roles, uncertain: 'revealed move matched no known role'};
+    return {
+      chosen: named[0]![1],
+      candidates: named.map(([, r]) => r),
+      names: named.map(([n]) => n),
+      uncertain: 'revealed moves/item/ability matched no known set',
+    };
   }
-  const candidates = consistent.length > 0 ? consistent : roles;
-  return {chosen: candidates[0], candidates, uncertain: undefined};
+  const kept = consistent.length > 0 ? consistent : named;
+  return {
+    chosen: kept[0]![1],
+    candidates: kept.map(([, r]) => r),
+    names: kept.map(([n]) => n),
+    uncertain: undefined,
+  };
 }
 
 /** Union of all moves across the given roles (falling back to the entry's moves). */
@@ -79,7 +108,7 @@ function firstDefined<T>(...vals: (T | undefined)[]): T | undefined {
 }
 
 export function resolveMon(facts: LiveFacts, entry: RandbatsEntry): ResolvedMon {
-  const {chosen, candidates, uncertain} = selectRoles(entry, facts.revealedMoves);
+  const {chosen, candidates, uncertain} = selectRoles(entry, facts);
 
   const evsOverride = chosen?.evs ?? entry.evs;
   const ivsOverride = chosen?.ivs ?? entry.ivs;
@@ -110,4 +139,51 @@ export function resolveMon(facts: LiveFacts, entry: RandbatsEntry): ResolvedMon 
     ...(uncertain ? {assumptionsUncertainReason: uncertain} : {}),
   };
   return resolved;
+}
+
+/** Union a pool into options, confirmed names first; dedup by id, keep display names. */
+function unionOptions(pool: readonly string[], confirmed: readonly string[]): KnownOption[] {
+  const seen = new Map<string, KnownOption>();
+  for (const name of confirmed) if (!seen.has(toId(name))) seen.set(toId(name), {name, known: true});
+  for (const name of pool) if (!seen.has(toId(name))) seen.set(toId(name), {name, known: false});
+  return [...seen.values()];
+}
+
+/**
+ * An exclusive dimension (ability, item, Tera type): once one value is confirmed,
+ * the alternatives are no longer possible — unlike moves, where a confirmed move
+ * only fills one of four slots.
+ */
+function exclusiveOptions(pool: readonly string[], confirmed: readonly string[]): KnownOption[] {
+  if (confirmed.length > 0) return unionOptions([], confirmed);
+  return unionOptions(pool, []);
+}
+
+/**
+ * Everything deducible about a Pokémon's set from public reveals: narrow the roles
+ * with the same evidence rule the calc uses, then union each dimension across the
+ * surviving roles (falling back to the entry-level pools for role-less gen ≤ 8
+ * feeds) and mark what the battle has confirmed.
+ */
+export function inferSets(facts: LiveFacts, entry: RandbatsEntry): SetKnowledge {
+  const {candidates, names, uncertain} = selectRoles(entry, facts);
+  const totalRoles = entry.roles ? Object.keys(entry.roles).length : 0;
+
+  const pool = <T>(fromRole: (r: RandbatsRole) => readonly T[], fromEntry: readonly T[]): T[] =>
+    candidates.length > 0 ? candidates.flatMap((r) => [...fromRole(r)]) : [...fromEntry];
+
+  const revealedItem = facts.item ?? facts.prevItem;
+
+  return {
+    roles: names,
+    totalRoles,
+    moves: unionOptions(pool((r) => r.moves, entry.moves ?? []), facts.revealedMoves),
+    abilities: exclusiveOptions(pool((r) => r.abilities, entry.abilities), facts.ability ? [facts.ability] : []),
+    items: exclusiveOptions(pool((r) => r.items, entry.items), revealedItem ? [revealedItem] : []),
+    teraTypes: exclusiveOptions(
+      pool((r) => r.teraTypes, entry.teraTypes ?? []),
+      facts.terastallized && facts.teraType ? [facts.teraType] : [],
+    ),
+    ...(uncertain ? {uncertainReason: uncertain} : {}),
+  };
 }

@@ -71,9 +71,40 @@ export interface LiveFacts {
   readonly terastallized: boolean;
   readonly ability?: string;
   readonly item?: string;
+  /** A revealed item no longer held (consumed berry, knocked-off orb) — still narrows the set. */
+  readonly prevItem?: string;
   /** Moves actually seen this battle — used to narrow which role they are running. */
   readonly revealedMoves: readonly string[];
   readonly gender?: 'M' | 'F' | 'N';
+}
+
+// --- Inferred set knowledge (the information game) --------------------------
+
+/** One candidate fact: `known` when the battle has confirmed it, else speculative. */
+export interface KnownOption {
+  readonly name: string;
+  readonly known: boolean;
+}
+
+/**
+ * What can be deduced about a Pokémon's set from public reveals alone: the
+ * candidate roles that survive the evidence, and each dimension's options with
+ * confirmed ones marked. Rendered on Pokémon hovers — for the opponent it answers
+ * "what could they still have?", pointed at our own side it answers "what has the
+ * opponent figured out about us?".
+ */
+export interface SetKnowledge {
+  /** Role names still consistent with everything revealed. */
+  readonly roles: readonly string[];
+  /** How many roles the species can run in this format, before narrowing. */
+  readonly totalRoles: number;
+  readonly moves: readonly KnownOption[];
+  readonly abilities: readonly KnownOption[];
+  readonly items: readonly KnownOption[];
+  /** Display only — a speculative Tera type must never reach the damage calc. */
+  readonly teraTypes: readonly KnownOption[];
+  /** Set when the reveals contradict every known role (form change, data drift). */
+  readonly uncertainReason?: string;
 }
 
 // --- Resolved set fed to the calc ------------------------------------------

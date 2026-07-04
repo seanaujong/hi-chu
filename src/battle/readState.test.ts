@@ -53,6 +53,12 @@ describe('toLiveFacts', () => {
     expect(f.boosts).toEqual({atk: 2, spe: -1});
   });
 
+  it('carries a consumed/knocked-off item as prevItem', () => {
+    const f = toLiveFacts(clientMon({item: '', prevItem: 'Sitrus Berry'}));
+    expect(f.item).toBeUndefined();
+    expect(f.prevItem).toBe('Sitrus Berry');
+  });
+
   it('prefers the current ability, falling back to the base ability', () => {
     expect(toLiveFacts(clientMon({ability: 'Multiscale'})).ability).toBe('Multiscale');
     expect(toLiveFacts(clientMon({ability: '', baseAbility: 'Inner Focus'})).ability).toBe('Inner Focus');

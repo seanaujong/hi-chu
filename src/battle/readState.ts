@@ -19,6 +19,8 @@ export interface ClientPokemon {
   readonly ability?: string;
   readonly baseAbility?: string;
   readonly item?: string;
+  /** A revealed item the Pokémon no longer holds (consumed berry, knocked-off orb). */
+  readonly prevItem?: string;
   readonly moveTrack?: ReadonlyArray<readonly [string, unknown]>;
   readonly gender?: string;
   readonly side?: ClientSide;
@@ -26,6 +28,8 @@ export interface ClientPokemon {
 
 export interface ClientSide {
   readonly active: ReadonlyArray<ClientPokemon | null>;
+  /** True for the side rendered at the top of the screen — the opponent, from the viewer's seat. */
+  readonly isFar?: boolean;
   /** Active side conditions keyed by id ("reflect", "lightscreen", "auroraveil", …). */
   readonly sideConditions?: Readonly<Record<string, unknown>>;
 }
@@ -77,6 +81,7 @@ export function toLiveFacts(p: ClientPokemon): LiveFacts {
     ...(p.terastallized ? {teraType: p.terastallized} : {}),
     ...(ability ? {ability} : {}),
     ...(p.item ? {item: p.item} : {}),
+    ...(p.prevItem ? {prevItem: p.prevItem} : {}),
     ...(gender ? {gender} : {}),
   };
   return facts;

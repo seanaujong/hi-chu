@@ -1,13 +1,17 @@
 # CLAUDE.md — Randbats Tooltip but Better
 
 ## At a glance
-An MV3 browser extension that adds a damage section to Pokémon Showdown **Random
-Battle** tooltips. Two things it does better than the original closed-source tooltip:
-**granular multi-hit damage** (a true KO% that integrates over the random 2–5 hit count,
-not `k × one roll`) and **reality-aware calcs** (it reads the live battle — active Tera,
-status, boosts, revealed ability/item, current HP, weather/terrain/screens — and lets
-`@smogon/calc` resolve the interactions). This file is the orientation map; `README.md`
-has the full prose and diagrams.
+An MV3 browser extension that augments Pokémon Showdown **Random Battle** tooltips
+on two surfaces: hovering one of **our move buttons** shows that move's damage into
+the opposing active (with **granular multi-hit damage** — a true KO% that integrates
+over the random 2–5 hit count, not `k × one roll`); hovering a **Pokémon** shows the
+**information game** — which randbats sets are still possible given every public
+reveal (moves used, item incl. consumed/knocked-off, ability), with damage vs our
+active attached on the opponent's tooltip, and the mirror ("their read on you") on
+our own. Calcs are **reality-aware** (active Tera, status, boosts, current HP,
+weather/terrain/screens) and delegated to `@smogon/calc` so interactions resolve
+correctly. This file is the orientation map; `README.md` has the full prose and
+diagrams.
 
 ## Build, test, run
 ```sh
@@ -30,17 +34,26 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
 - `src/core/` — pure: no DOM, no network, unit-tested. All the interesting logic lives here.
   - `multihit.ts` — the probability law (hit-count PMFs + convolution → KO%/expected).
   - `damage.ts` — wraps `@smogon/calc`; builds the calc `Field` from `FieldFacts`.
-  - `resolve.ts` — merges live facts over randbats possibilities into one set.
-  - `render.ts` — model → tooltip HTML string. `moves.ts` — multi-hit move table (data
-    only; no colocated test — covered via `damage.test.ts`).
-  - `types.ts` — shared vocabulary (`LiveFacts`, `RandbatsEntry`, `ResolvedMon`, `FieldFacts`).
+  - `resolve.ts` — the evidence law: `resolveMon` merges live facts over randbats
+    possibilities into the one set we calculate with; `inferSets` narrows the candidate
+    roles by ALL public evidence (moves, item incl. `prevItem`, ability) into a
+    `SetKnowledge` for display.
+  - `render.ts` — model → tooltip HTML string: `renderMoveSection` (one move's damage)
+    and `renderSetsSection` (the information game, both perspectives). `moves.ts` —
+    multi-hit move table (data only; no colocated test — covered via `damage.test.ts`).
+  - `types.ts` — shared vocabulary (`LiveFacts`, `RandbatsEntry`, `ResolvedMon`,
+    `SetKnowledge`, `FieldFacts`).
 - `src/battle/readState.ts` — Showdown's untyped client objects → typed `LiveFacts`/`FieldFacts`.
 - `src/data/randbats.ts` — fetch + cache the set feed.
-- `src/section.ts` — pure shell orchestration: `buildDamageSection(battle, pokemon, data)` folds
-  read → resolve → calc → render into the tooltip HTML. No DOM/cache, so the real-battle fixture
-  test (`section.test.ts`) drives the exact path a live hover runs.
+- `src/section.ts` — pure shell orchestration, one builder per tooltip surface:
+  `buildMoveSection(battle, pokemon, moveName, data)` for move-button hovers and
+  `buildPokemonSection(battle, pokemon, data)` for Pokémon hovers (foe → possible sets
+  + damage vs our active; own → what the opponent can deduce, decided by `side.isFar`).
+  No DOM/cache, so the real-battle fixture test (`section.test.ts`) drives the exact
+  path a live hover runs.
 - `src/content.ts` — thin shell; resolves the format, looks up/warms the cached feed, hands off to
-  `section.ts`, and monkey-patches the tooltip (runs in MAIN world).
+  `section.ts`, and monkey-patches BOTH tooltip renderers, `showPokemonTooltip` and
+  `showMoveTooltip` (runs in MAIN world).
 
 Tests come in two flavours: colocated `*.test.ts` with hand-built stubs, plus two driven by **real
 captured data** — `integration.test.ts` (real feed, synthetic mons) and `section.test.ts` (a real
@@ -65,7 +78,16 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   nothing stops a new hand-rolled modifier — keep this on review.
 - ✅ **`teraType` is set only when a Pokémon has actually terastallized** (setting it activates
   Tera in the calc; never speculate a Tera type). Checked by `resolve.test.ts` ("only applies
-  a Tera type when the Pokémon has actually terastallized").
+  a Tera type when the Pokémon has actually terastallized"). The sets view may LIST possible
+  Tera types, but they are display-only `SetKnowledge` — they never reach the calc.
+- ✅ **Set narrowing uses every public reveal, nothing private.** Roles are filtered by moves
+  used, revealed item (held or `prevItem`), and revealed ability — checked by
+  `resolve.test.ts` ("evidence beyond moves narrows the role"). The own-side mirror view is
+  honest only because client `Pokemon` objects carry public info exclusively (the private
+  team lives in `battle.myPokemon`, which we never read).
+- ✅ **Format ids are derived like PS's own `toID`** (digits kept, whole title), so bracket
+  tags with extra words work — checked by `readState.test.ts` ("[Gen 9 Champions] Random
+  Battle" → `gen9championsrandombattle`).
 - ✅ **Own the hit-count model** in `multihit.ts` (`@smogon/calc` collapses multi-hit to
   `k × one shared roll` and ignores Skill Link / Loaded Dice). Checked by `multihit.test.ts`
   (distributions + the "independent rolls narrow the distribution" guard) and `damage.test.ts`.

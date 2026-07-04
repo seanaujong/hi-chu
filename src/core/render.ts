@@ -1,23 +1,18 @@
-// Turn damage reports into the HTML we splice into Showdown's tooltip.
+// Turn calc results and set knowledge into the HTML we splice into Showdown's
+// tooltips. Two views:
+//
+//   renderMoveSection — one move's damage vs the current target (move-button hover).
+//   renderSetsSection — the information game (Pokémon hover): which sets are still
+//     possible given what the battle has revealed. Pointed at the opponent it also
+//     carries each move's damage vs our active; pointed at our own side it shows
+//     what the opponent can deduce about us.
 //
 // Pure: a model in, a string out. That is deliberate — rendering is the part most
 // tempting to "just eyeball in the browser", so we make the frame a value and
 // snapshot it. No DOM, no @smogon/calc here.
 
 import type {DamageReport} from './damage.js';
-
-export interface RenderModel {
-  readonly defenderName: string;
-  /** Defender current HP as a fraction in [0,1]. */
-  readonly defenderHpPercent: number;
-  /** Active Tera type of the attacker (the hovered Pokémon), if terastallized. */
-  readonly attackerTera?: string;
-  /** Active Tera type of the defender, if terastallized. */
-  readonly defenderTera?: string;
-  readonly reports: readonly DamageReport[];
-  /** Caveats to surface (field effects omitted, role uncertainty, …). */
-  readonly extraNotes: readonly string[];
-}
+import type {KnownOption} from './types.js';
 
 /** Escape the few characters that matter when injecting into innerHTML. */
 function esc(s: string): string {
@@ -45,22 +40,17 @@ export function koText(chance: number): string {
 /** The "≈3.1 hits" / per-hit detail line for a multi-hit move. */
 function multiHitDetail(r: DamageReport): string {
   if (!r.multiHit) return '';
-  if (r.approximate || !r.hits || !r.perHit) return ' · multi-hit (approx.)';
+  if (r.approximate || !r.hits || !r.perHit) return 'multi-hit (approx.)';
   const hits = `≈${Math.round(r.hits.expected * 10) / 10} hits`;
   const perHit = `${asPercent(r.perHit.min, r.defenderMaxHP)}–${asPercent(r.perHit.max, r.defenderMaxHP)}% per hit`;
-  return ` · ${hits} · ${perHit}`;
+  return `${hits} · ${perHit}`;
 }
 
-function damageRow(r: DamageReport): string {
-  const dmg = `${r.percent.min}–${r.percent.max}% (${r.percent.mean}%)`;
+/** The compact damage figures for one report: "74–88% (81%)" plus the KO tail. */
+function damageText(r: DamageReport): string {
+  const dmg = `<span class="rbtb-dmg">${r.percent.min}–${r.percent.max}% (${r.percent.mean}%)</span>`;
   const ko = koText(r.koChance);
-  const koSpan = ko ? ` <span class="rbtb-ko">${ko}</span>` : '';
-  const sub = multiHitDetail(r);
-  const subDiv = sub ? `<div class="rbtb-sub">${esc(sub.replace(/^ · /, ''))}</div>` : '';
-  return (
-    `<div class="rbtb-row"><span class="rbtb-mv">${esc(r.move)}</span> ` +
-    `<span class="rbtb-dmg">${dmg}</span>${koSpan}${subDiv}</div>`
-  );
+  return ko ? `${dmg} <span class="rbtb-ko">${ko}</span>` : dmg;
 }
 
 const STYLE_ID = 'rbtb-style';
@@ -75,39 +65,136 @@ export const TOOLTIP_STYLE = `
 .rbtb-dmg { opacity: .95; }
 .rbtb-ko { color: #c0392b; font-weight: bold; }
 .rbtb-sub { opacity: .7; padding-left: 6px; }
-.rbtb-status, .rbtb-note { opacity: .65; margin-top: 2px; }
-.rbtb-note { color: #b9770e; }
+.rbtb-line, .rbtb-note { margin-top: 2px; }
+.rbtb-note { color: #b9770e; opacity: .8; }
+.rbtb-known { font-weight: bold; }
+.rbtb-maybe { opacity: .6; }
+.rbtb-lbl { opacity: .65; }
 .rbtb-tera { color: #8e44ad; font-weight: bold; }
 </style>`;
 
-/**
- * The tooltip section HTML for one matchup. Damaging moves are ranked by mean
- * damage; status moves are summarised on one line; caveats follow.
- */
-export function renderDamageSection(model: RenderModel): string {
-  const damaging = model.reports
-    .filter((r) => r.category !== 'Status')
-    .slice()
-    .sort((a, b) => b.percent.mean - a.percent.mean);
-  const statusMoves = model.reports.filter((r) => r.category === 'Status').map((r) => r.move);
+// --- Move-button hover: one move vs the current target ----------------------
 
-  const teraBits: string[] = [];
-  if (model.attackerTera) teraBits.push(`Tera ${esc(model.attackerTera)}`);
-  if (model.defenderTera) teraBits.push(`vs Tera ${esc(model.defenderTera)}`);
-  const teraLine = teraBits.length ? ` <span class="rbtb-tera">[${teraBits.join(' ')}]</span>` : '';
+export interface MoveRenderModel {
+  readonly moveName: string;
+  readonly defenderName: string;
+  /** Defender current HP as a fraction in [0,1]. */
+  readonly defenderHpPercent: number;
+  /** Active Tera types, if terastallized — shown so a surprising number explains itself. */
+  readonly attackerTera?: string;
+  readonly defenderTera?: string;
+  /** Absent for status moves and moves the calc can't model. */
+  readonly report?: DamageReport;
+  readonly extraNotes: readonly string[];
+}
 
+function teraLine(attackerTera: string | undefined, defenderTera: string | undefined): string {
+  const bits: string[] = [];
+  if (attackerTera) bits.push(`Tera ${esc(attackerTera)}`);
+  if (defenderTera) bits.push(`vs Tera ${esc(defenderTera)}`);
+  return bits.length ? ` <span class="rbtb-tera">[${bits.join(' ')}]</span>` : '';
+}
+
+function noteDivs(notes: readonly string[]): string {
+  return notes.map((n) => `<div class="rbtb-note">⚠ ${esc(n)}</div>`).join('');
+}
+
+/** The move-tooltip section: this move's damage into the current opposing active. */
+export function renderMoveSection(model: MoveRenderModel): string {
   const header =
-    `<h4 class="rbtb-h">⚔ vs ${esc(model.defenderName)} (${pct1(model.defenderHpPercent)})${teraLine}</h4>`;
+    `<h4 class="rbtb-h">vs ${esc(model.defenderName)} ` +
+    `(${pct1(model.defenderHpPercent)} HP)${teraLine(model.attackerTera, model.defenderTera)}</h4>`;
 
-  const rows = damaging.length
-    ? damaging.map(damageRow).join('')
-    : `<div class="rbtb-row" style="opacity:.6">no damaging moves</div>`;
+  const r = model.report;
+  const body = r
+    ? `<div class="rbtb-row">${damageText(r)}</div>` +
+      (multiHitDetail(r) ? `<div class="rbtb-sub">${esc(multiHitDetail(r))}</div>` : '')
+    : `<div class="rbtb-row rbtb-maybe">no damage (status move)</div>`;
 
-  const status = statusMoves.length
-    ? `<div class="rbtb-status">Status: ${esc(statusMoves.join(', '))}</div>`
+  return `<div class="rbtb">${header}${body}${noteDivs(model.extraNotes)}</div>`;
+}
+
+// --- Pokémon hover: the information game -------------------------------------
+
+/** One move in the sets view; `report` carries its damage vs our active (foe view). */
+export interface MoveKnowledgeRow {
+  readonly name: string;
+  readonly known: boolean;
+  readonly report?: DamageReport;
+}
+
+export interface SetsRenderModel {
+  /** 'foe' = what could they have; 'own' = what can they deduce about us. */
+  readonly perspective: 'foe' | 'own';
+  readonly roles: readonly string[];
+  readonly totalRoles: number;
+  readonly moves: readonly MoveKnowledgeRow[];
+  readonly abilities: readonly KnownOption[];
+  readonly items: readonly KnownOption[];
+  readonly teraTypes: readonly KnownOption[];
+  /** Foe view: who their moves are being calculated against, at what HP. */
+  readonly defenderName?: string;
+  readonly defenderHpPercent?: number;
+  readonly attackerTera?: string;
+  readonly defenderTera?: string;
+  readonly extraNotes: readonly string[];
+}
+
+/** "✓ Flame Orb" for confirmed facts, a dimmed "Guts?" for still-open options. */
+function optionSpan(o: KnownOption): string {
+  return o.known
+    ? `<span class="rbtb-known">✓ ${esc(o.name)}</span>`
+    : `<span class="rbtb-maybe">${esc(o.name)}?</span>`;
+}
+
+function optionLine(label: string, options: readonly KnownOption[]): string {
+  if (options.length === 0) return '';
+  const parts = options.map(optionSpan).join(' · ');
+  return `<div class="rbtb-line"><span class="rbtb-lbl">${label}:</span> ${parts}</div>`;
+}
+
+function moveRow(row: MoveKnowledgeRow): string {
+  const mark = row.known
+    ? `<span class="rbtb-known">✓ <span class="rbtb-mv">${esc(row.name)}</span></span>`
+    : `<span class="rbtb-maybe"><span class="rbtb-mv">${esc(row.name)}</span>?</span>`;
+  const dmg = row.report ? ` ${damageText(row.report)}` : '';
+  const sub = row.report && multiHitDetail(row.report)
+    ? `<div class="rbtb-sub">${esc(multiHitDetail(row.report))}</div>`
     : '';
+  return `<div class="rbtb-row">${mark}${dmg}</div>${sub}`;
+}
 
-  const notes = model.extraNotes.map((n) => `<div class="rbtb-note">⚠ ${esc(n)}</div>`).join('');
+/**
+ * The Pokémon-tooltip section. Confirmed facts are ✓ and bold; open possibilities
+ * are dimmed with a trailing "?". Foe view ranks damaging moves by mean damage and
+ * appends each move's numbers vs our active.
+ */
+export function renderSetsSection(model: SetsRenderModel): string {
+  const narrowed = model.totalRoles > 0 && model.roles.length < model.totalRoles;
+  const roleCount = model.totalRoles > 0 ? `${model.roles.length} of ${model.totalRoles} sets` : 'possible set';
+  const roleNames = narrowed && model.roles.length > 0 ? `: ${model.roles.map(esc).join(', ')}` : '';
 
-  return `<div class="rbtb">${header}${rows}${status}${notes}</div>`;
+  const vsTarget =
+    model.perspective === 'foe' && model.defenderName !== undefined && model.defenderHpPercent !== undefined
+      ? ` · dmg vs ${esc(model.defenderName)} (${pct1(model.defenderHpPercent)} HP)`
+      : '';
+
+  const title = model.perspective === 'foe' ? `Possible sets — ${roleCount}` : `Their read on you — ${roleCount}`;
+  const header =
+    `<h4 class="rbtb-h">${title}${esc(roleNames)}${vsTarget}` +
+    `${teraLine(model.attackerTera, model.defenderTera)}</h4>`;
+
+  // Known moves first, then damaging possibilities by mean damage, then the rest.
+  const rank = (r: MoveKnowledgeRow): number => (r.report ? r.report.percent.mean : -1);
+  const rows = [...model.moves]
+    .sort((a, b) => Number(b.known) - Number(a.known) || rank(b) - rank(a))
+    .map(moveRow)
+    .join('');
+
+  const lines =
+    optionLine('Ability', model.abilities) +
+    optionLine('Item', model.items) +
+    optionLine('Tera', model.teraTypes);
+
+  return `<div class="rbtb">${header}${rows}${lines}${noteDivs(model.extraNotes)}</div>`;
 }

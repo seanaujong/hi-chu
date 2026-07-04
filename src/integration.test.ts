@@ -1,5 +1,5 @@
-// End-to-end test of the value chain that the content script folds together:
-//   client Pokémon → toLiveFacts → resolveMon → calcDamage → renderDamageSection
+// End-to-end test of the value chain the content script folds together:
+//   client Pokémon → toLiveFacts → resolveMon → calcDamage → rendered section
 //
 // It runs on REAL randbats set data (a small captured fixture) so it exercises the
 // same path a live hover does, minus the DOM/monkey-patch. This is the "green
@@ -7,11 +7,11 @@
 
 import {describe, it, expect} from 'vitest';
 import sample from './__fixtures__/gen9.sample.json';
-import {toLiveFacts, type ClientPokemon} from './battle/readState.js';
+import {toLiveFacts, type ClientBattle, type ClientPokemon, type ClientSide} from './battle/readState.js';
 import {resolveMon} from './core/resolve.js';
 import {calcDamage, type DamageReport} from './core/damage.js';
-import {renderDamageSection, type RenderModel} from './core/render.js';
 import {pickEntry} from './data/randbats.js';
+import {buildMoveSection, buildPokemonSection} from './section.js';
 import type {FieldFacts, RandbatsData} from './core/types.js';
 
 const data = sample as unknown as RandbatsData;
@@ -20,48 +20,50 @@ function clientMon(over: Partial<ClientPokemon> & {speciesForme: string}): Clien
   return {level: 100, hp: 100, maxhp: 100, status: '', boosts: {}, terastallized: '', ...over};
 }
 
-/** Run the full pipeline for attacker vs defender and return the rendered HTML. */
-function pipeline(
+/** A minimal two-sided battle: `ours` on the near side, `theirs` on the far side. */
+function makeBattle(ours: ClientPokemon, theirs: ClientPokemon): ClientBattle {
+  const near = {isFar: false, active: [] as (ClientPokemon | null)[]};
+  const far = {isFar: true, active: [] as (ClientPokemon | null)[]};
+  near.active = [{...ours, side: near as unknown as ClientSide} as ClientPokemon];
+  far.active = [{...theirs, side: far as unknown as ClientSide} as ClientPokemon];
+  return {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far] as unknown as ClientSide[]};
+}
+
+const ourActive = (b: ClientBattle): ClientPokemon => b.sides[0]!.active[0]!;
+const theirActive = (b: ClientBattle): ClientPokemon => b.sides[1]!.active[0]!;
+
+/** The raw damage reports for every possible move of attacker into defender. */
+function reportsFor(
   attackerC: ClientPokemon,
   defenderC: ClientPokemon,
   opts: {gen?: number; field?: FieldFacts} = {},
-): {html: string; reports: DamageReport[]} {
+): DamageReport[] {
   const aFacts = toLiveFacts(attackerC);
   const dFacts = toLiveFacts(defenderC);
   const attacker = resolveMon(aFacts, pickEntry(data, aFacts.speciesForme)!);
   const defender = resolveMon(dFacts, pickEntry(data, dFacts.speciesForme)!);
-  const reports = attacker.possibleMoves.map((m) =>
+  return attacker.possibleMoves.map((m) =>
     calcDamage(attacker, defender, m, {gen: opts.gen ?? 9, ...(opts.field ? {field: opts.field} : {})}),
   );
-  const model: RenderModel = {
-    defenderName: defender.speciesForme,
-    defenderHpPercent: dFacts.hpPercent,
-    reports,
-    extraNotes: [],
-    ...(attacker.teraType ? {attackerTera: attacker.teraType} : {}),
-  };
-  return {html: renderDamageSection(model), reports};
 }
 
 describe('Breloom vs Tyranitar (multi-hit + status moves)', () => {
-  const {html, reports} = pipeline(
-    clientMon({speciesForme: 'Breloom'}),
-    clientMon({speciesForme: 'Tyranitar', hp: 100, maxhp: 100}),
-  );
+  const battle = makeBattle(clientMon({speciesForme: 'Breloom'}), clientMon({speciesForme: 'Tyranitar'}));
 
-  it("renders Bullet Seed with a real hit-count estimate and per-hit damage", () => {
-    expect(html).toContain('Bullet Seed');
+  it('renders Bullet Seed on the move button with a real hit-count estimate', () => {
+    const html = buildMoveSection(battle, ourActive(battle), 'Bullet Seed', data);
+    expect(html).toContain('vs Tyranitar');
     expect(html).toMatch(/≈\d(\.\d)? hits/);
     expect(html).toContain('per hit');
   });
 
-  it('separates Breloom’s status moves out of the damage rows', () => {
-    expect(html).toMatch(/Status:.*Spore/);
-    expect(html).toMatch(/Status:.*Swords Dance/);
+  it('renders a status move button as an explicit no-damage line', () => {
+    const html = buildMoveSection(battle, ourActive(battle), 'Spore', data);
+    expect(html).toContain('no damage (status move)');
   });
 
   it('computes a sane Bullet Seed report (total spans 2..5 hits of the per-hit roll)', () => {
-    const bs = reports.find((r) => r.move === 'Bullet Seed')!;
+    const bs = reportsFor(ourActive(battle), theirActive(battle)).find((r) => r.move === 'Bullet Seed')!;
     expect(bs.multiHit).toBe(true);
     expect(bs.approximate).toBe(false);
     expect(bs.total.min).toBe(bs.perHit!.min * 2);
@@ -70,48 +72,55 @@ describe('Breloom vs Tyranitar (multi-hit + status moves)', () => {
     expect(bs.koChance).toBeLessThanOrEqual(1);
   });
 
+  it('shows the foe’s status moves in the sets view without damage figures', () => {
+    // Flip the seating: Breloom is THEIR active, hovered as the foe.
+    const flipped = makeBattle(clientMon({speciesForme: 'Tyranitar'}), clientMon({speciesForme: 'Breloom'}));
+    const html = buildPokemonSection(flipped, theirActive(flipped), data);
+    expect(html).toContain('Possible sets');
+    expect(html).toMatch(/rbtb-mv">Spore<\/span>\?/);
+    expect(html).not.toMatch(/Spore<\/span>\?<\/span> <span class="rbtb-dmg">/);
+    expect(html).toMatch(/Bullet Seed<\/span>\?<\/span> <span class="rbtb-dmg">/);
+  });
 });
 
 describe('field effects flow through the pipeline', () => {
-  it('Rain boosts Cloyster’s Hydro Pump in the rendered section', () => {
+  it('Rain boosts Cloyster’s Hydro Pump', () => {
     const noField: FieldFacts = {defenderScreens: {reflect: false, lightScreen: false, auroraVeil: false}};
-    const dry = pipeline(clientMon({speciesForme: 'Cloyster'}), clientMon({speciesForme: 'Tyranitar'}), {field: noField});
-    const rain = pipeline(clientMon({speciesForme: 'Cloyster'}), clientMon({speciesForme: 'Tyranitar'}), {
-      field: {...noField, weather: 'Rain'},
-    });
-    const dryHP = dry.reports.find((r) => r.move === 'Hydro Pump')!;
-    const rainHP = rain.reports.find((r) => r.move === 'Hydro Pump')!;
-    expect(rainHP.total.mean).toBeGreaterThan(dryHP.total.mean);
+    const cloyster = clientMon({speciesForme: 'Cloyster'});
+    const ttar = clientMon({speciesForme: 'Tyranitar'});
+    const dry = reportsFor(cloyster, ttar, {field: noField}).find((r) => r.move === 'Hydro Pump')!;
+    const rain = reportsFor(cloyster, ttar, {field: {...noField, weather: 'Rain'}}).find((r) => r.move === 'Hydro Pump')!;
+    expect(rain.total.mean).toBeGreaterThan(dry.total.mean);
   });
 });
 
 describe('active Tera shows in the header and changes damage', () => {
   it('a terastallized Dragonite is labelled and hits differently', () => {
-    const plain = pipeline(clientMon({speciesForme: 'Dragonite'}), clientMon({speciesForme: 'Garchomp'}));
-    const tera = pipeline(
+    const plainBattle = makeBattle(clientMon({speciesForme: 'Dragonite'}), clientMon({speciesForme: 'Garchomp'}));
+    const teraBattle = makeBattle(
       clientMon({speciesForme: 'Dragonite', terastallized: 'Flying'}),
       clientMon({speciesForme: 'Garchomp'}),
     );
-    expect(tera.html).toContain('Tera Flying');
-    expect(plain.html).not.toContain('Tera Flying');
+    expect(buildMoveSection(teraBattle, ourActive(teraBattle), 'Tera Blast', data)).toContain('Tera Flying');
+    expect(buildMoveSection(plainBattle, ourActive(plainBattle), 'Tera Blast', data)).not.toContain('Tera Flying');
 
     // Tera Blast is Normal (no STAB) normally; Tera Flying turns it Flying with 2× STAB,
     // so it should hit much harder — exactly the active-Tera effect we set out to model.
-    const plainBlast = plain.reports.find((r) => r.move === 'Tera Blast')!;
-    const teraBlast = tera.reports.find((r) => r.move === 'Tera Blast')!;
+    const plainBlast = reportsFor(ourActive(plainBattle), theirActive(plainBattle)).find((r) => r.move === 'Tera Blast')!;
+    const teraBlast = reportsFor(ourActive(teraBattle), theirActive(teraBattle)).find((r) => r.move === 'Tera Blast')!;
     expect(teraBlast.total.mean).toBeGreaterThan(plainBlast.total.mean * 1.5);
   });
 });
 
 describe('current HP changes the KO math (Multiscale)', () => {
   it('a hurt defender takes more damage than a full-HP one', () => {
-    const full = pipeline(clientMon({speciesForme: 'Garchomp'}), clientMon({speciesForme: 'Dragonite', hp: 100, maxhp: 100}));
-    const hurt = pipeline(clientMon({speciesForme: 'Garchomp'}), clientMon({speciesForme: 'Dragonite', hp: 30, maxhp: 100}));
-    // Outrage (Garchomp uses Dragonite isn't immune to it, unlike Earthquake/Flying).
-    // At full HP, Dragonite's Multiscale halves it (no KO); at 30% Multiscale is off
-    // AND little HP remains — both effects raise the KO chance.
-    const fullOutrage = full.reports.find((r) => r.move === 'Outrage')!;
-    const hurtOutrage = hurt.reports.find((r) => r.move === 'Outrage')!;
+    const garchomp = clientMon({speciesForme: 'Garchomp'});
+    const full = reportsFor(garchomp, clientMon({speciesForme: 'Dragonite', hp: 100, maxhp: 100}));
+    const hurt = reportsFor(garchomp, clientMon({speciesForme: 'Dragonite', hp: 30, maxhp: 100}));
+    // At full HP, Dragonite's Multiscale halves Outrage (no KO); at 30% Multiscale is
+    // off AND little HP remains — both effects raise the KO chance.
+    const fullOutrage = full.find((r) => r.move === 'Outrage')!;
+    const hurtOutrage = hurt.find((r) => r.move === 'Outrage')!;
     expect(hurtOutrage.koChance).toBeGreaterThan(fullOutrage.koChance);
   });
 });

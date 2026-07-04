@@ -1,15 +1,25 @@
 // The shell's orchestration, made pure and testable: given the live battle, the
-// hovered Pokémon, and the randbats data for the format, fold
-//   read → resolve → calc → render
-// into the tooltip section HTML. No DOM, no cache, no network — content.ts owns
-// that plumbing and hands the cached data in. Keeping this pure is what lets the
+// hovered thing, and the randbats data for the format, fold
+//   read → infer/resolve → calc → render
+// into tooltip section HTML. No DOM, no cache, no network — content.ts owns that
+// plumbing and hands the cached data in. Keeping this pure is what lets the
 // real-battle fixture test (section.test.ts) drive the exact code path a live hover
 // runs, instead of a copy that can drift from it.
+//
+// Two entry points, one per tooltip we augment:
+//   buildMoveSection    — a move-button hover: that move's damage vs the opposing active.
+//   buildPokemonSection — a Pokémon hover: the information game (possible sets narrowed
+//     by reveals; damage numbers attached when the hovered mon is the opponent's).
 
 import {calcDamage, type DamageReport} from './core/damage.js';
-import {resolveMon} from './core/resolve.js';
-import {renderDamageSection, type RenderModel} from './core/render.js';
-import type {LiveFacts, RandbatsData, RandbatsEntry} from './core/types.js';
+import {inferSets, resolveMon} from './core/resolve.js';
+import {
+  renderMoveSection,
+  renderSetsSection,
+  type MoveKnowledgeRow,
+  type SetsRenderModel,
+} from './core/render.js';
+import type {LiveFacts, RandbatsData, RandbatsEntry, ResolvedMon} from './core/types.js';
 import {pickEntry} from './data/randbats.js';
 import {
   toLiveFacts,
@@ -20,55 +30,148 @@ import {
   type ClientPokemon,
 } from './battle/readState.js';
 
+/** Showdown id form: lowercase, alphanumerics only ("Ice Punch" → "icepunch"). */
+function toId(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 /** A defender entry when the feed doesn't cover it: facts only, default spread. */
 function entryOrMinimal(entry: RandbatsEntry | undefined, facts: LiveFacts): RandbatsEntry {
   return entry ?? {level: facts.level, abilities: [], items: []};
 }
 
+/** True when the hovered Pokémon belongs to the opponent (the far side, from our seat). */
+function isFoe(battle: ClientBattle, pokemon: ClientPokemon): boolean {
+  if (pokemon.side?.isFar !== undefined) return pokemon.side.isFar;
+  return pokemon.side === battle.sides[1]; // client default: near side is sides[0]
+}
+
 /**
- * The tooltip section HTML for `pokemon` (the attacker) vs the opposing active,
- * using the randbats `data` for this format. Returns '' when there's nothing to
- * show: not a Random Battle, no target on the field (team preview), an untracked
- * species, or no move the calc can handle.
+ * The damage reports for `attacker`'s moves into `defender`, keyed by move id.
+ * Status moves and moves the calc can't model are simply absent.
  */
-export function buildDamageSection(battle: ClientBattle, pokemon: ClientPokemon, data: RandbatsData): string {
+function reportsByMove(
+  attacker: ResolvedMon,
+  defender: ResolvedMon,
+  moves: readonly string[],
+  gen: number,
+  field: ReturnType<typeof readFieldFacts>,
+): Map<string, DamageReport> {
+  const out = new Map<string, DamageReport>();
+  for (const move of moves) {
+    try {
+      const report = calcDamage(attacker, defender, move, {gen, field});
+      if (report.category !== 'Status') out.set(toId(move), report);
+    } catch {
+      // One unmodellable move shouldn't drop the whole section.
+    }
+  }
+  return out;
+}
+
+/**
+ * The move-button tooltip section: `moveName` from our active `pokemon` into the
+ * opposing active. Returns '' when there's nothing to show (not a Random Battle,
+ * no target, untracked species, unmodellable move).
+ */
+export function buildMoveSection(
+  battle: ClientBattle,
+  pokemon: ClientPokemon,
+  moveName: string,
+  data: RandbatsData,
+): string {
   const format = detectFormat(battle);
   if (!format) return '';
 
   const defenderMon = findOpposingActive(battle, pokemon);
-  if (!defenderMon) return ''; // team preview or no target on the field
+  if (!defenderMon) return '';
 
   const attackerFacts = toLiveFacts(pokemon);
   const attackerEntry = pickEntry(data, attackerFacts.speciesForme);
-  if (!attackerEntry) return ''; // not a tracked randbats Pokémon
+  if (!attackerEntry) return '';
 
   const defenderFacts = toLiveFacts(defenderMon);
   const attacker = resolveMon(attackerFacts, attackerEntry);
   const defender = resolveMon(defenderFacts, entryOrMinimal(pickEntry(data, defenderFacts.speciesForme), defenderFacts));
-
-  // Weather, terrain, and the defender's screens all change the numbers.
   const field = readFieldFacts(battle, defenderMon.side);
 
-  const reports: DamageReport[] = [];
-  for (const move of attacker.possibleMoves) {
-    try {
-      reports.push(calcDamage(attacker, defender, move, {gen: format.gen, field}));
-    } catch {
-      // A single move that the calc can't handle shouldn't drop the whole section.
-    }
+  let report: DamageReport | undefined;
+  try {
+    const r = calcDamage(attacker, defender, moveName, {gen: format.gen, field});
+    report = r.category === 'Status' ? undefined : r;
+  } catch {
+    return ''; // a move outside the calc's world (e.g. Struggle edge cases)
   }
-  if (!reports.length) return '';
 
-  const notes: string[] = [];
-  if (attacker.assumptionsUncertainReason) notes.unshift(attacker.assumptionsUncertainReason);
-
-  const model: RenderModel = {
+  return renderMoveSection({
+    moveName,
     defenderName: defender.speciesForme,
     defenderHpPercent: defenderFacts.hpPercent,
-    reports,
-    extraNotes: notes,
+    extraNotes: [],
+    ...(report ? {report} : {}),
     ...(attacker.teraType ? {attackerTera: attacker.teraType} : {}),
     ...(defender.teraType ? {defenderTera: defender.teraType} : {}),
+  });
+}
+
+/**
+ * The Pokémon tooltip section — the information game. Hovering the opponent shows
+ * which sets are still possible given their reveals, each damaging move carrying its
+ * numbers vs our active. Hovering our own Pokémon shows the mirror: what the
+ * opponent can deduce about us from what we've made public. Returns '' when the
+ * format or species isn't covered.
+ */
+export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon, data: RandbatsData): string {
+  const format = detectFormat(battle);
+  if (!format) return '';
+
+  const facts = toLiveFacts(pokemon);
+  const entry = pickEntry(data, facts.speciesForme);
+  if (!entry) return ''; // not a tracked randbats Pokémon
+
+  const knowledge = inferSets(facts, entry);
+  if (knowledge.moves.length === 0) return '';
+
+  const perspective = isFoe(battle, pokemon) ? 'foe' : 'own';
+  const notes = knowledge.uncertainReason ? [knowledge.uncertainReason] : [];
+
+  // Foe view: attach each possible move's damage into OUR active (their move buttons
+  // aren't hoverable for us, so threat numbers must live on their Pokémon tooltip).
+  let damage: Map<string, DamageReport> | undefined;
+  let target: {name: string; hpPercent: number; tera?: string} | undefined;
+  if (perspective === 'foe') {
+    const ourMon = findOpposingActive(battle, pokemon);
+    if (ourMon) {
+      const ourFacts = toLiveFacts(ourMon);
+      const attacker = resolveMon(facts, entry);
+      const defender = resolveMon(ourFacts, entryOrMinimal(pickEntry(data, ourFacts.speciesForme), ourFacts));
+      const field = readFieldFacts(battle, ourMon.side);
+      damage = reportsByMove(attacker, defender, knowledge.moves.map((m) => m.name), format.gen, field);
+      target = {
+        name: defender.speciesForme,
+        hpPercent: ourFacts.hpPercent,
+        ...(defender.teraType ? {tera: defender.teraType} : {}),
+      };
+    }
+  }
+
+  const rows: MoveKnowledgeRow[] = knowledge.moves.map((m) => {
+    const report = damage?.get(toId(m.name));
+    return {name: m.name, known: m.known, ...(report ? {report} : {})};
+  });
+
+  const model: SetsRenderModel = {
+    perspective,
+    roles: knowledge.roles,
+    totalRoles: knowledge.totalRoles,
+    moves: rows,
+    abilities: knowledge.abilities,
+    items: knowledge.items,
+    teraTypes: knowledge.teraTypes,
+    extraNotes: notes,
+    ...(target ? {defenderName: target.name, defenderHpPercent: target.hpPercent} : {}),
+    ...(facts.terastallized && facts.teraType ? {attackerTera: facts.teraType} : {}),
+    ...(target?.tera ? {defenderTera: target.tera} : {}),
   };
-  return renderDamageSection(model);
+  return renderSetsSection(model);
 }

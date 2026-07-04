@@ -75,6 +75,19 @@ describe('detectFormat', () => {
     expect(detectFormat(battle('[Gen 9] Random Battle (Blitz)'))?.formatId).toBe('gen9randombattle');
   });
 
+  it('keeps extra words inside the bracket tag ("[Gen 9 Champions] Random Battle")', () => {
+    // The feed serves gen9championsrandombattle.json; a prefix-only strip used to
+    // mangle this id and silently disable the extension in the format.
+    expect(detectFormat(battle('[Gen 9 Champions] Random Battle'))).toEqual({
+      gen: 9,
+      formatId: 'gen9championsrandombattle',
+    });
+  });
+
+  it('prepends the gen when the title carries none', () => {
+    expect(detectFormat(battle('Random Battle'))?.formatId).toBe('gen9randombattle');
+  });
+
   it('returns null for non-random formats', () => {
     expect(detectFormat(battle('[Gen 9] OU'))).toBeNull();
   });

@@ -99,13 +99,17 @@ export function detectFormat(battle: ClientBattle): {gen: number; formatId: stri
   const tier = battle.tier || '';
   if (!/random/i.test(tier)) return null;
   const gen = battle.gen || 9;
+  // Derive the id the way PS itself does: toID over the whole title, digits kept.
+  // Pattern-matching only a "[Gen 9]" prefix broke tags with extra words —
+  // "[Gen 9 Champions] Random Battle" must become "gen9championsrandombattle".
+  // Parenthesised qualifiers like "(Blitz)" share the base format's sets, so they
+  // are dropped before the id is formed.
   const name = tier
-    .replace(/\[gen\s*\d+\]/i, '') // drop the "[Gen 9]" prefix
-    .replace(/\(.*?\)/g, '') //       drop "(Blitz)" and similar qualifiers
-    .replace(/[^a-z]/gi, '')
+    .replace(/\(.*?\)/g, '')
+    .replace(/[^a-z0-9]/gi, '')
     .toLowerCase();
   if (!name) return null;
-  return {gen, formatId: `gen${gen}${name}`};
+  return {gen, formatId: name.startsWith('gen') ? name : `gen${gen}${name}`};
 }
 
 function toId(s: string): string {

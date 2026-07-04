@@ -31,20 +31,29 @@ describe('renderMoveSection', () => {
   function model(over: Partial<MoveRenderModel> = {}): MoveRenderModel {
     return {
       moveName: 'Earthquake',
-      defenderName: 'Tyranitar',
-      defenderHpPercent: 0.941,
+      defenderHpPercent: 1,
       extraNotes: [],
       ...over,
     };
   }
 
-  it('names the target and its current HP so the numbers explain themselves', () => {
+  it("speaks the original's voice: a bold-labelled Damage line with our average", () => {
     const html = renderMoveSection(model({report: report({move: 'Earthquake'})}));
-    expect(html).toContain('vs Tyranitar (94.1% HP)');
-    expect(html).toContain('30–36% (33%)');
+    expect(html).toContain('<b>Damage:</b> 30–36% (avg 33%)');
   });
 
-  it('shows expected hits and per-hit % for a uniform multi-hit move', () => {
+  it('adds a KO line, with HP context only when the target is damaged', () => {
+    const hurt = renderMoveSection(
+      model({defenderHpPercent: 0.78, report: report({move: 'Earthquake', koChance: 0.52})}),
+    );
+    expect(hurt).toContain('52% to KO');
+    expect(hurt).toContain('at 78% HP');
+    const full = renderMoveSection(model({report: report({move: 'Earthquake', koChance: 0.52})}));
+    expect(full).toContain('52% to KO');
+    expect(full).not.toContain('at 100% HP');
+  });
+
+  it('shows the true multi-hit breakdown on its own Hits line', () => {
     const html = renderMoveSection(
       model({
         moveName: 'Bullet Seed',
@@ -54,13 +63,12 @@ describe('renderMoveSection', () => {
           perHit: {min: 49, max: 60},
           hits: {expected: 3.1, distribution: [[2, 0.35], [3, 0.35], [4, 0.15], [5, 0.15]]},
           percent: {min: 29.4, max: 90.1, mean: 45.6},
-          koChance: 0.52,
         }),
       }),
     );
+    expect(html).toContain('<b>Hits:</b>');
     expect(html).toContain('≈3.1 hits');
     expect(html).toContain('per hit'); // 14.7–18% per hit (49/333, 60/333)
-    expect(html).toContain('52% to KO');
   });
 
   it('marks variable-power multi-hit as approximate', () => {
@@ -69,12 +77,11 @@ describe('renderMoveSection', () => {
   });
 
   it('says so plainly when the move deals no damage', () => {
-    const html = renderMoveSection(model({moveName: 'Swords Dance'}));
-    expect(html).toContain('no damage (status move)');
+    expect(renderMoveSection(model({moveName: 'Swords Dance'}))).toContain('— (status move)');
   });
 
-  it('surfaces active Tera for attacker and defender', () => {
-    const html = renderMoveSection(model({attackerTera: 'Flying', defenderTera: 'Steel'}));
+  it('tags active Tera for attacker and defender', () => {
+    const html = renderMoveSection(model({attackerTera: 'Flying', defenderTera: 'Steel', report: report({move: 'X'})}));
     expect(html).toContain('Tera Flying');
     expect(html).toContain('vs Tera Steel');
   });
@@ -84,66 +91,56 @@ describe('renderSetsSection', () => {
   function model(over: Partial<SetsRenderModel> = {}): SetsRenderModel {
     return {
       perspective: 'foe',
-      roles: ['Bulky Support'],
       totalRoles: 1,
-      moves: [],
-      abilities: [],
-      items: [],
-      teraTypes: [],
+      candidates: [
+        {
+          name: 'Bulky Support',
+          abilities: [{name: 'Clear Body', known: false}, {name: 'Liquid Ooze', known: false}],
+          items: [{name: 'Leftovers', known: true}],
+          teraTypes: [{name: 'Flying', known: false}, {name: 'Grass', known: false}],
+          moves: [
+            {name: 'Surf', known: true, report: report({move: 'Surf', percent: {min: 30, max: 36, mean: 33}})},
+            {name: 'Haze', known: false},
+          ],
+        },
+      ],
       extraNotes: [],
       ...over,
     };
   }
 
-  it('marks confirmed facts with ✓ and open options with a dimmed trailing ?', () => {
-    const html = renderSetsSection(
-      model({
-        moves: [{name: 'Surf', known: true}, {name: 'Haze', known: false}],
-        items: [{name: 'Leftovers', known: true}],
-        abilities: [{name: 'Clear Body', known: false}, {name: 'Liquid Ooze', known: false}],
-      }),
-    );
-    expect(html).toContain('✓ <span class="hichu-mv">Surf</span>');
-    expect(html).toMatch(/hichu-maybe"><span class="hichu-mv">Haze<\/span>\?/);
-    expect(html).toContain('✓ Leftovers');
-    expect(html).toContain('Clear Body?');
-    expect(html).toContain('Liquid Ooze?');
+  it("renders one block per set in the original's layout: name, then labelled lines", () => {
+    const html = renderSetsSection(model());
+    expect(html).toContain('<p class="hichu-set">Bulky Support</p>');
+    expect(html).toContain('<small>Abilities:</small> Clear Body, Liquid Ooze');
+    expect(html).toContain('<small>Tera Types:</small> Flying, Grass');
+    expect(html).toContain('<small>Moves:</small>');
   });
 
-  it('counts how far the roles have been narrowed and names the survivors', () => {
-    const html = renderSetsSection(model({roles: ['Fast Support'], totalRoles: 2}));
-    expect(html).toContain('1 of 2 sets');
-    expect(html).toContain('Fast Support');
+  it('bolds confirmed facts with a ✓ and leaves open options plain', () => {
+    const html = renderSetsSection(model());
+    expect(html).toContain('<span class="hichu-known">✓ Leftovers</span>');
+    expect(html).toContain('<span class="hichu-known">✓ Surf</span>');
+    expect(html).toContain('Haze');
+    expect(html).not.toContain('✓ Haze');
   });
 
-  it('skips the survivor list when nothing has been ruled out yet', () => {
-    const html = renderSetsSection(model({roles: ['A', 'B'], totalRoles: 2}));
-    expect(html).toContain('2 of 2 sets');
-    expect(html).not.toContain(': A, B');
+  it("puts damage in the original's parens spot, only for moves that deal any", () => {
+    const html = renderSetsSection(model());
+    expect(html).toContain('✓ Surf</span> (30–36%)');
+    expect(html).not.toContain('Haze (');
   });
 
-  it('titles the two perspectives differently', () => {
-    expect(renderSetsSection(model({perspective: 'foe'}))).toContain('Possible sets');
-    expect(renderSetsSection(model({perspective: 'own'}))).toContain('Their read on you');
+  it('counts the narrowing only when the species has multiple sets', () => {
+    expect(renderSetsSection(model({totalRoles: 2}))).toContain('(1 of 2 sets)');
+    expect(renderSetsSection(model({totalRoles: 1}))).not.toContain('of 1 sets');
   });
 
-  it('names the damage target in the foe view header', () => {
-    const html = renderSetsSection(model({perspective: 'foe', defenderName: 'Noivern', defenderHpPercent: 1}));
-    expect(html).toContain('dmg vs Noivern (100% HP)');
-  });
-
-  it('puts known moves first, then ranks the rest by mean damage', () => {
-    const html = renderSetsSection(
-      model({
-        moves: [
-          {name: 'Weak', known: false, report: report({move: 'Weak', percent: {min: 5, max: 7, mean: 6}})},
-          {name: 'Strong', known: false, report: report({move: 'Strong', percent: {min: 80, max: 95, mean: 88}})},
-          {name: 'Seen', known: true, report: report({move: 'Seen', percent: {min: 10, max: 12, mean: 11}})},
-        ],
-      }),
-    );
-    expect(html.indexOf('Seen')).toBeLessThan(html.indexOf('Strong'));
-    expect(html.indexOf('Strong')).toBeLessThan(html.indexOf('Weak'));
+  it('titles the two perspectives differently and names the damage target', () => {
+    const foe = renderSetsSection(model({defenderName: 'Noivern', defenderHpPercent: 1}));
+    expect(foe).toContain('<b>Possible sets</b>');
+    expect(foe).toContain('dmg vs Noivern (100% HP)');
+    expect(renderSetsSection(model({perspective: 'own'}))).toContain('<b>Their read on you</b>');
   });
 
   it('renders caveats as note lines', () => {

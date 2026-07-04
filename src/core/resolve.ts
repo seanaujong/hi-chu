@@ -42,7 +42,7 @@ function roleMatches(role: RandbatsRole, facts: LiveFacts): boolean {
   const have = new Set(role.moves.map(toId));
   for (const m of facts.revealedMoves) if (!have.has(toId(m))) return false;
   // An item revealed mid-battle (held, consumed, or knocked off) pins the set the
-  // same way a used move does; likewise a revealed ability.
+  // same way a used move does; likewise a revealed ability or an active Tera type.
   const revealedItem = facts.item ?? facts.prevItem;
   if (revealedItem && role.items.length > 0 && !role.items.some((i) => toId(i) === toId(revealedItem))) {
     return false;
@@ -50,12 +50,16 @@ function roleMatches(role: RandbatsRole, facts: LiveFacts): boolean {
   if (facts.ability && role.abilities.length > 0 && !role.abilities.some((a) => toId(a) === toId(facts.ability!))) {
     return false;
   }
+  const activeTera = facts.terastallized ? facts.teraType : undefined;
+  if (activeTera && role.teraTypes.length > 0 && !role.teraTypes.some((t) => toId(t) === toId(activeTera))) {
+    return false;
+  }
   return true;
 }
 
 function anyEvidence(facts: LiveFacts): boolean {
   return facts.revealedMoves.length > 0 || facts.item !== undefined || facts.prevItem !== undefined ||
-    facts.ability !== undefined;
+    facts.ability !== undefined || (facts.terastallized && facts.teraType !== undefined);
 }
 
 /**
@@ -161,29 +165,40 @@ function exclusiveOptions(pool: readonly string[], confirmed: readonly string[])
 
 /**
  * Everything deducible about a Pokémon's set from public reveals: narrow the roles
- * with the same evidence rule the calc uses, then union each dimension across the
- * surviving roles (falling back to the entry-level pools for role-less gen ≤ 8
- * feeds) and mark what the battle has confirmed.
+ * with the same evidence rule the calc uses, and keep each surviving candidate
+ * WHOLE (which item goes with which moves is the information), reveals marked.
+ * Role-less gen ≤ 8 entries become a single unnamed candidate from the entry pools.
  */
 export function inferSets(facts: LiveFacts, entry: RandbatsEntry): SetKnowledge {
   const {candidates, names, uncertain} = selectRoles(entry, facts);
   const totalRoles = entry.roles ? Object.keys(entry.roles).length : 0;
 
-  const pool = <T>(fromRole: (r: RandbatsRole) => readonly T[], fromEntry: readonly T[]): T[] =>
-    candidates.length > 0 ? candidates.flatMap((r) => [...fromRole(r)]) : [...fromEntry];
-
   const revealedItem = facts.item ?? facts.prevItem;
+  const activeTera = facts.terastallized && facts.teraType ? [facts.teraType] : [];
+
+  const toCandidate = (name: string, role: RandbatsRole): SetKnowledge['candidates'][number] => ({
+    name,
+    abilities: exclusiveOptions(role.abilities, facts.ability ? [facts.ability] : []),
+    items: exclusiveOptions(role.items, revealedItem ? [revealedItem] : []),
+    teraTypes: exclusiveOptions(role.teraTypes, activeTera),
+    moves: unionOptions(role.moves, facts.revealedMoves),
+  });
+
+  const sets =
+    candidates.length > 0
+      ? candidates.map((role, i) => toCandidate(names[i] ?? '', role))
+      : [
+          toCandidate('', {
+            abilities: entry.abilities,
+            items: entry.items,
+            teraTypes: entry.teraTypes ?? [],
+            moves: entry.moves ?? [],
+          }),
+        ];
 
   return {
-    roles: names,
+    candidates: sets,
     totalRoles,
-    moves: unionOptions(pool((r) => r.moves, entry.moves ?? []), facts.revealedMoves),
-    abilities: exclusiveOptions(pool((r) => r.abilities, entry.abilities), facts.ability ? [facts.ability] : []),
-    items: exclusiveOptions(pool((r) => r.items, entry.items), revealedItem ? [revealedItem] : []),
-    teraTypes: exclusiveOptions(
-      pool((r) => r.teraTypes, entry.teraTypes ?? []),
-      facts.terastallized && facts.teraType ? [facts.teraType] : [],
-    ),
     ...(uncertain ? {uncertainReason: uncertain} : {}),
   };
 }

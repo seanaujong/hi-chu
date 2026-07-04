@@ -120,6 +120,8 @@ function noivernFacts(over: Partial<LiveFacts> = {}): LiveFacts {
 }
 
 describe('evidence beyond moves narrows the role', () => {
+  const names = (k: ReturnType<typeof inferSets>): string[] => k.candidates.map((c) => c.name);
+
   it('a revealed held item rules out roles that never run it', () => {
     const r = resolveMon(noivernFacts({item: 'Choice Specs'}), NOIVERN);
     expect(r.possibleMoves).toContain('Boomburst');
@@ -128,61 +130,73 @@ describe('evidence beyond moves narrows the role', () => {
   });
 
   it('a consumed/knocked-off item (prevItem) narrows exactly like a held one', () => {
-    const k = inferSets(noivernFacts({prevItem: 'Heavy-Duty Boots'}), NOIVERN);
-    expect(k.roles).toEqual(['Fast Support']);
+    expect(names(inferSets(noivernFacts({prevItem: 'Heavy-Duty Boots'}), NOIVERN))).toEqual(['Fast Support']);
   });
 
   it('a revealed ability rules out roles that cannot have it', () => {
-    const k = inferSets(noivernFacts({ability: 'Frisk'}), NOIVERN);
-    expect(k.roles).toEqual(['Fast Support']);
+    expect(names(inferSets(noivernFacts({ability: 'Frisk'}), NOIVERN))).toEqual(['Fast Support']);
+  });
+
+  it('an active Tera type rules out roles that never run it', () => {
+    // Only Fast Support runs Tera Fire — terastallizing reveals the set.
+    expect(names(inferSets(noivernFacts({terastallized: true, teraType: 'Fire'}), NOIVERN))).toEqual([
+      'Fast Support',
+    ]);
   });
 });
 
 describe('inferSets', () => {
-  it('starts wide open: every role, every option speculative', () => {
+  const names = (k: ReturnType<typeof inferSets>): string[] => k.candidates.map((c) => c.name);
+
+  it('starts wide open: every set kept whole, every option speculative', () => {
     const k = inferSets(noivernFacts(), NOIVERN);
-    expect(k.roles).toEqual(['Fast Attacker', 'Fast Support']);
+    expect(names(k)).toEqual(['Fast Attacker', 'Fast Support']);
     expect(k.totalRoles).toBe(2);
-    expect(k.moves.every((m) => !m.known)).toBe(true);
-    expect(k.items.map((i) => i.name).sort()).toEqual(['Choice Specs', 'Heavy-Duty Boots']);
+    expect(k.candidates[0]!.items).toEqual([{name: 'Choice Specs', known: false}]);
+    expect(k.candidates[1]!.items).toEqual([{name: 'Heavy-Duty Boots', known: false}]);
+    expect(k.candidates.every((c) => c.moves.every((m) => !m.known))).toBe(true);
   });
 
-  it('marks revealed moves as known and keeps the rest speculative', () => {
+  it('marks revealed moves as known inside every surviving set', () => {
     const k = inferSets(noivernFacts({revealedMoves: ['Flamethrower']}), NOIVERN);
-    const byName = new Map(k.moves.map((m) => [m.name, m.known]));
-    expect(byName.get('Flamethrower')).toBe(true);
-    expect(byName.get('Hurricane')).toBe(false);
-    expect(k.roles).toHaveLength(2); // Flamethrower is in both roles — no narrowing yet
+    expect(names(k)).toHaveLength(2); // Flamethrower is in both roles — no narrowing yet
+    for (const c of k.candidates) {
+      const byName = new Map(c.moves.map((m) => [m.name, m.known]));
+      expect(byName.get('Flamethrower')).toBe(true);
+      expect(byName.get('Hurricane')).toBe(false);
+    }
   });
 
   it('collapses an exclusive dimension once its value is confirmed', () => {
-    // Item revealed → the other role's item is no longer a possibility at all.
+    // Item revealed → only its set survives, and its item line is settled fact.
     const k = inferSets(noivernFacts({item: 'Choice Specs'}), NOIVERN);
-    expect(k.items).toEqual([{name: 'Choice Specs', known: true}]);
-    expect(k.roles).toEqual(['Fast Attacker']);
-    expect(k.teraTypes).toEqual([{name: 'Normal', known: false}]);
+    expect(names(k)).toEqual(['Fast Attacker']);
+    expect(k.candidates[0]!.items).toEqual([{name: 'Choice Specs', known: true}]);
+    expect(k.candidates[0]!.teraTypes).toEqual([{name: 'Normal', known: false}]);
   });
 
-  it('narrowing one dimension narrows the others through the role', () => {
+  it('narrowing one dimension narrows the others through the set', () => {
     // Defog only appears in Fast Support → item must be Heavy-Duty Boots.
     const k = inferSets(noivernFacts({revealedMoves: ['Defog']}), NOIVERN);
-    expect(k.roles).toEqual(['Fast Support']);
-    expect(k.items).toEqual([{name: 'Heavy-Duty Boots', known: false}]);
+    expect(names(k)).toEqual(['Fast Support']);
+    expect(k.candidates[0]!.items).toEqual([{name: 'Heavy-Duty Boots', known: false}]);
   });
 
-  it('an active Tera collapses the Tera dimension to the known type', () => {
+  it('an active Tera narrows the sets AND settles the Tera line', () => {
     const k = inferSets(noivernFacts({terastallized: true, teraType: 'Fire'}), NOIVERN);
-    expect(k.teraTypes).toEqual([{name: 'Fire', known: true}]);
+    expect(names(k)).toEqual(['Fast Support']);
+    expect(k.candidates[0]!.teraTypes).toEqual([{name: 'Fire', known: true}]);
   });
 
-  it('keeps every role and flags uncertainty when evidence matches nothing', () => {
+  it('keeps every set and flags uncertainty when evidence matches nothing', () => {
     const k = inferSets(noivernFacts({revealedMoves: ['Hydro Pump']}), NOIVERN);
-    expect(k.roles).toHaveLength(2);
+    expect(names(k)).toHaveLength(2);
     expect(k.uncertainReason).toBeDefined();
-    expect(k.moves.find((m) => m.name === 'Hydro Pump')?.known).toBe(true); // reveals always shown
+    // Reveals are always shown, even when they fit no known set.
+    expect(k.candidates[0]!.moves.find((m) => m.name === 'Hydro Pump')?.known).toBe(true);
   });
 
-  it('falls back to entry-level pools for role-less (older-gen) entries', () => {
+  it('falls back to a single unnamed set for role-less (older-gen) entries', () => {
     const entry: RandbatsEntry = {
       level: 80,
       abilities: ['Levitate'],
@@ -191,7 +205,8 @@ describe('inferSets', () => {
     };
     const k = inferSets(noivernFacts(), entry);
     expect(k.totalRoles).toBe(0);
-    expect(k.moves.map((m) => m.name)).toEqual(['Sludge Bomb', 'Flamethrower']);
-    expect(k.items).toEqual([{name: 'Life Orb', known: false}]);
+    expect(names(k)).toEqual(['']);
+    expect(k.candidates[0]!.moves.map((m) => m.name)).toEqual(['Sludge Bomb', 'Flamethrower']);
+    expect(k.candidates[0]!.items).toEqual([{name: 'Life Orb', known: false}]);
   });
 });

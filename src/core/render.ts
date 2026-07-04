@@ -1,11 +1,12 @@
 // Turn calc results and set knowledge into the HTML we splice into Showdown's
-// tooltips. Two views:
+// tooltips. The layout deliberately mirrors the original Randbats Tooltip — the
+// point of this extension is that familiar look with better numbers underneath:
 //
-//   renderMoveSection — one move's damage vs the current target (move-button hover).
-//   renderSetsSection — the information game (Pokémon hover): which sets are still
-//     possible given what the battle has revealed. Pointed at the opponent it also
-//     carries each move's damage vs our active; pointed at our own side it shows
-//     what the opponent can deduce about us.
+//   renderMoveSection — a "Damage:" line for one move vs the current target
+//     (move-button hover), plus KO chance and the true multi-hit breakdown.
+//   renderSetsSection — per-set blocks (Pokémon hover): each candidate set kept
+//     whole with its Abilities/Items/Tera Types/Moves lines, reveals marked ✓,
+//     and damage ranges beside the opponent's possible moves.
 //
 // Pure: a model in, a string out. That is deliberate — rendering is the part most
 // tempting to "just eyeball in the browser", so we make the frame a value and
@@ -37,7 +38,7 @@ export function koText(chance: number): string {
   return `${Math.round(chance * 100)}% to KO`;
 }
 
-/** The "≈3.1 hits" / per-hit detail line for a multi-hit move. */
+/** The "≈3.1 hits" / per-hit detail for a multi-hit move. */
 function multiHitDetail(r: DamageReport): string {
   if (!r.multiHit) return '';
   if (r.approximate || !r.hits || !r.perHit) return 'multi-hit (approx.)';
@@ -46,39 +47,33 @@ function multiHitDetail(r: DamageReport): string {
   return `${hits} · ${perHit}`;
 }
 
-/** The compact damage figures for one report: "74–88% (81%)" plus the KO tail. */
-function damageText(r: DamageReport): string {
-  const dmg = `<span class="hichu-dmg">${r.percent.min}–${r.percent.max}% (${r.percent.mean}%)</span>`;
-  const ko = koText(r.koChance);
-  return ko ? `${dmg} <span class="hichu-ko">${ko}</span>` : dmg;
+/** "14.5–17.2%" — the damage range alone, matching the original's density. */
+function rangeText(r: DamageReport): string {
+  return `${r.percent.min}–${r.percent.max}%`;
 }
 
 const STYLE_ID = 'hichu-style';
 
-/** A one-time <style> block; the content script injects it once into the page. */
+/**
+ * A one-time <style> block; the content script injects it once into the page.
+ * Native tooltip font size throughout — crispness comes from structure (labelled
+ * lines, underlined set names), not from shrinking and dimming.
+ */
 export const TOOLTIP_STYLE = `
 <style id="${STYLE_ID}">
-.hichu { margin-top: 5px; padding-top: 4px; border-top: 1px solid rgba(128,128,128,.4); font-size: 10px; }
-.hichu-h { margin: 0 0 2px; font-size: 10px; font-weight: bold; opacity: .85; }
-.hichu-row { line-height: 1.35; }
-.hichu-mv { font-weight: bold; }
-.hichu-dmg { opacity: .95; }
-.hichu-ko { color: #c0392b; font-weight: bold; }
-.hichu-sub { opacity: .7; padding-left: 6px; }
-.hichu-line, .hichu-note { margin-top: 2px; }
-.hichu-note { color: #b9770e; opacity: .8; }
+.hichu { margin: 4px 0 0; padding: 2px 0 0; border-top: 1px solid #aaa; }
+.hichu p { margin: 2px 0; }
+.hichu-set { text-decoration: underline; font-weight: bold; }
 .hichu-known { font-weight: bold; }
-.hichu-maybe { opacity: .6; }
-.hichu-lbl { opacity: .65; }
-.hichu-tera { color: #8e44ad; font-weight: bold; }
+.hichu-ko { color: #c0392b; font-weight: bold; }
+.hichu-note { color: #b9770e; }
 </style>`;
 
 // --- Move-button hover: one move vs the current target ----------------------
 
 export interface MoveRenderModel {
   readonly moveName: string;
-  readonly defenderName: string;
-  /** Defender current HP as a fraction in [0,1]. */
+  /** Defender current HP as a fraction in [0,1] — KO chance is relative to it. */
   readonly defenderHpPercent: number;
   /** Active Tera types, if terastallized — shown so a surprising number explains itself. */
   readonly attackerTera?: string;
@@ -88,50 +83,65 @@ export interface MoveRenderModel {
   readonly extraNotes: readonly string[];
 }
 
-function teraLine(attackerTera: string | undefined, defenderTera: string | undefined): string {
+function teraTag(attackerTera: string | undefined, defenderTera: string | undefined): string {
   const bits: string[] = [];
   if (attackerTera) bits.push(`Tera ${esc(attackerTera)}`);
   if (defenderTera) bits.push(`vs Tera ${esc(defenderTera)}`);
-  return bits.length ? ` <span class="hichu-tera">[${bits.join(' ')}]</span>` : '';
+  return bits.length ? ` <small>[${bits.join(' ')}]</small>` : '';
 }
 
-function noteDivs(notes: readonly string[]): string {
-  return notes.map((n) => `<div class="hichu-note">⚠ ${esc(n)}</div>`).join('');
+function noteParas(notes: readonly string[]): string {
+  return notes.map((n) => `<p class="hichu-note">⚠ ${esc(n)}</p>`).join('');
 }
 
-/** The move-tooltip section: this move's damage into the current opposing active. */
+/**
+ * The move-tooltip section, in the original's voice: a single bold-labelled
+ * "Damage:" line (the native tooltip already names the target and typing), with
+ * our KO chance and true multi-hit numbers underneath when they apply.
+ */
 export function renderMoveSection(model: MoveRenderModel): string {
-  const header =
-    `<h4 class="hichu-h">vs ${esc(model.defenderName)} ` +
-    `(${pct1(model.defenderHpPercent)} HP)${teraLine(model.attackerTera, model.defenderTera)}</h4>`;
-
   const r = model.report;
-  const body = r
-    ? `<div class="hichu-row">${damageText(r)}</div>` +
-      (multiHitDetail(r) ? `<div class="hichu-sub">${esc(multiHitDetail(r))}</div>` : '')
-    : `<div class="hichu-row hichu-maybe">no damage (status move)</div>`;
+  const tera = teraTag(model.attackerTera, model.defenderTera);
 
-  return `<div class="hichu">${header}${body}${noteDivs(model.extraNotes)}</div>`;
+  if (!r) {
+    return `<div class="hichu"><p><b>Damage:</b> — (status move)${tera}</p>${noteParas(model.extraNotes)}</div>`;
+  }
+
+  const damage = `<p><b>Damage:</b> ${rangeText(r)} (avg ${r.percent.mean}%)${tera}</p>`;
+
+  const ko = koText(r.koChance);
+  const koCtx = model.defenderHpPercent < 0.995 ? ` at ${pct1(model.defenderHpPercent)} HP` : '';
+  const koLine = ko ? `<p><b>KO:</b> <span class="hichu-ko">${ko}</span>${koCtx}</p>` : '';
+
+  const multi = multiHitDetail(r);
+  const multiLine = multi ? `<p><b>Hits:</b> ${esc(multi)}</p>` : '';
+
+  return `<div class="hichu">${damage}${koLine}${multiLine}${noteParas(model.extraNotes)}</div>`;
 }
 
-// --- Pokémon hover: the information game -------------------------------------
+// --- Pokémon hover: per-set blocks, the original's layout -------------------
 
-/** One move in the sets view; `report` carries its damage vs our active (foe view). */
+/** One move in a set block; `report` carries its damage vs our active (foe view). */
 export interface MoveKnowledgeRow {
   readonly name: string;
   readonly known: boolean;
   readonly report?: DamageReport;
 }
 
-export interface SetsRenderModel {
-  /** 'foe' = what could they have; 'own' = what can they deduce about us. */
-  readonly perspective: 'foe' | 'own';
-  readonly roles: readonly string[];
-  readonly totalRoles: number;
-  readonly moves: readonly MoveKnowledgeRow[];
+/** One candidate set rendered as its own block, exactly like the original. */
+export interface CandidateBlock {
+  readonly name: string;
   readonly abilities: readonly KnownOption[];
   readonly items: readonly KnownOption[];
   readonly teraTypes: readonly KnownOption[];
+  readonly moves: readonly MoveKnowledgeRow[];
+}
+
+export interface SetsRenderModel {
+  /** 'foe' = what could they have; 'own' = what can they deduce about us. */
+  readonly perspective: 'foe' | 'own';
+  readonly totalRoles: number;
+  readonly candidates: readonly CandidateBlock[];
   /** Foe view: who their moves are being calculated against, at what HP. */
   readonly defenderName?: string;
   readonly defenderHpPercent?: number;
@@ -140,61 +150,48 @@ export interface SetsRenderModel {
   readonly extraNotes: readonly string[];
 }
 
-/** "✓ Flame Orb" for confirmed facts, a dimmed "Guts?" for still-open options. */
-function optionSpan(o: KnownOption): string {
-  return o.known
-    ? `<span class="hichu-known">✓ ${esc(o.name)}</span>`
-    : `<span class="hichu-maybe">${esc(o.name)}?</span>`;
+/** "✓ Leftovers" in bold once confirmed; plain names while still open. */
+function optionText(o: KnownOption): string {
+  return o.known ? `<span class="hichu-known">✓ ${esc(o.name)}</span>` : esc(o.name);
 }
 
 function optionLine(label: string, options: readonly KnownOption[]): string {
   if (options.length === 0) return '';
-  const parts = options.map(optionSpan).join(' · ');
-  return `<div class="hichu-line"><span class="hichu-lbl">${label}:</span> ${parts}</div>`;
+  return `<p><small>${label}:</small> ${options.map(optionText).join(', ')}</p>`;
 }
 
-function moveRow(row: MoveKnowledgeRow): string {
-  const mark = row.known
-    ? `<span class="hichu-known">✓ <span class="hichu-mv">${esc(row.name)}</span></span>`
-    : `<span class="hichu-maybe"><span class="hichu-mv">${esc(row.name)}</span>?</span>`;
-  const dmg = row.report ? ` ${damageText(row.report)}` : '';
-  const sub = row.report && multiHitDetail(row.report)
-    ? `<div class="hichu-sub">${esc(multiHitDetail(row.report))}</div>`
-    : '';
-  return `<div class="hichu-row">${mark}${dmg}</div>${sub}`;
+/** A move entry: "✓ Giga Drain (63.9–75.3%)" — damage in the original's parens spot. */
+function moveText(row: MoveKnowledgeRow): string {
+  const name = row.known ? `<span class="hichu-known">✓ ${esc(row.name)}</span>` : esc(row.name);
+  return row.report ? `${name} (${rangeText(row.report)})` : name;
+}
+
+function setBlock(c: CandidateBlock): string {
+  const title = c.name ? `<p class="hichu-set">${esc(c.name)}</p>` : '';
+  return (
+    title +
+    optionLine('Abilities', c.abilities) +
+    optionLine('Items', c.items) +
+    optionLine('Tera Types', c.teraTypes) +
+    `<p><small>Moves:</small> ${c.moves.map(moveText).join(', ')}</p>`
+  );
 }
 
 /**
- * The Pokémon-tooltip section. Confirmed facts are ✓ and bold; open possibilities
- * are dimmed with a trailing "?". Foe view ranks damaging moves by mean damage and
- * appends each move's numbers vs our active.
+ * The Pokémon-tooltip section: one block per still-possible set, confirmed facts
+ * bold with a ✓. The foe view's move lists carry damage vs our active in parens
+ * (their move buttons aren't hoverable for us, so threat numbers live here).
  */
 export function renderSetsSection(model: SetsRenderModel): string {
-  const narrowed = model.totalRoles > 0 && model.roles.length < model.totalRoles;
-  const roleCount = model.totalRoles > 0 ? `${model.roles.length} of ${model.totalRoles} sets` : 'possible set';
-  const roleNames = narrowed && model.roles.length > 0 ? `: ${model.roles.map(esc).join(', ')}` : '';
-
+  const count = model.totalRoles > 1 ? ` (${model.candidates.length} of ${model.totalRoles} sets)` : '';
   const vsTarget =
     model.perspective === 'foe' && model.defenderName !== undefined && model.defenderHpPercent !== undefined
       ? ` · dmg vs ${esc(model.defenderName)} (${pct1(model.defenderHpPercent)} HP)`
       : '';
-
-  const title = model.perspective === 'foe' ? `Possible sets — ${roleCount}` : `Their read on you — ${roleCount}`;
+  const title = model.perspective === 'foe' ? 'Possible sets' : 'Their read on you';
   const header =
-    `<h4 class="hichu-h">${title}${esc(roleNames)}${vsTarget}` +
-    `${teraLine(model.attackerTera, model.defenderTera)}</h4>`;
+    `<p><b>${title}</b>${count}${esc(vsTarget)}${teraTag(model.attackerTera, model.defenderTera)}</p>`;
 
-  // Known moves first, then damaging possibilities by mean damage, then the rest.
-  const rank = (r: MoveKnowledgeRow): number => (r.report ? r.report.percent.mean : -1);
-  const rows = [...model.moves]
-    .sort((a, b) => Number(b.known) - Number(a.known) || rank(b) - rank(a))
-    .map(moveRow)
-    .join('');
-
-  const lines =
-    optionLine('Ability', model.abilities) +
-    optionLine('Item', model.items) +
-    optionLine('Tera', model.teraTypes);
-
-  return `<div class="hichu">${header}${rows}${lines}${noteDivs(model.extraNotes)}</div>`;
+  const blocks = model.candidates.map(setBlock).join('');
+  return `<div class="hichu">${header}${blocks}${noteParas(model.extraNotes)}</div>`;
 }

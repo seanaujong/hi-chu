@@ -49,9 +49,9 @@ function loadBattle(over: {noivernTerastallized?: string} = {}): {battle: Client
   return {battle, active};
 }
 
-/** The mean-damage percentage a rendered dmg span prints, e.g. "… (66.3%)". */
+/** The average-damage percentage a Damage line prints, e.g. "(avg 66.3%)". */
 function meanPercent(html: string): number {
-  const m = /hichu-dmg">[^(]*\(([\d.]+)%\)/.exec(html);
+  const m = /\(avg ([\d.]+)%\)/.exec(html);
   if (!m) throw new Error(`no damage span in:\n${html}`);
   return Number(m[1]);
 }
@@ -59,20 +59,20 @@ function meanPercent(html: string): number {
 describe('buildMoveSection on the real captured battle (our move buttons)', () => {
   const {battle, active} = loadBattle();
 
-  it('calculates one move into the live opposing active at its real HP', () => {
+  it('renders the Damage line for one move into the live opposing active', () => {
     const html = buildMoveSection(battle, active('Noivern'), 'Draco Meteor', data);
-    expect(html).toContain('vs Tentacruel (94.1% HP)');
-    expect(html).toContain('hichu-dmg');
+    expect(html).toContain('<b>Damage:</b>');
+    expect(html).toMatch(/\d+(\.\d+)?–\d+(\.\d+)?% \(avg \d+(\.\d+)?%\)/);
   });
 
   it('labels our active Tera (Noivern terastallized to Fire in this replay)', () => {
     const html = buildMoveSection(battle, active('Noivern'), 'Flamethrower', data);
-    expect(html).toContain('[Tera Fire]');
+    expect(html).toContain('Tera Fire');
   });
 
   it('renders a status move as an explicit no-damage line', () => {
     const html = buildMoveSection(battle, active('Noivern'), 'Roost', data);
-    expect(html).toContain('no damage (status move)');
+    expect(html).toContain('— (status move)');
   });
 
   it('reflects the defensive Tera: Surf hits the Tera-Fire Noivern far harder', () => {
@@ -85,39 +85,33 @@ describe('buildMoveSection on the real captured battle (our move buttons)', () =
   });
 });
 
-describe('buildPokemonSection hovering THEIR Tentacruel (the information game)', () => {
+describe('buildPokemonSection hovering THEIR Tentacruel (possible sets)', () => {
   const {battle, active} = loadBattle();
   const html = buildPokemonSection(battle, active('Tentacruel'), data);
 
-  it('shows the possible-sets view with damage aimed at our live active', () => {
-    expect(html).toContain('Possible sets');
+  it('shows the sets view with damage aimed at our live active', () => {
+    expect(html).toContain('<b>Possible sets</b>');
     expect(html).toContain('dmg vs Noivern (100% HP)');
-    expect(html).toContain('[vs Tera Fire]'); // our Noivern is the terastallized one
+    expect(html).toContain('vs Tera Fire'); // our Noivern is the terastallized one
+  });
+
+  it("renders the set as a named block in the original's layout", () => {
+    expect(html).toContain('<p class="hichu-set">Bulky Support</p>');
+    expect(html).toContain('<small>Tera Types:</small> Flying, Grass');
   });
 
   it('treats the revealed Leftovers as fact and drops Assault Vest entirely', () => {
     // The feed lists Assault Vest and Leftovers for Bulky Support; the battle
-    // revealed Leftovers, so the item dimension is settled — not a list of maybes.
+    // revealed Leftovers, so the item line is settled — not a list of maybes.
     expect(html).toContain('✓ Leftovers');
     expect(html).not.toContain('Assault Vest');
   });
 
-  it('lists unrevealed feed moves as speculative, with damage attached', () => {
+  it('attaches damage in parens to damaging moves, and none to status moves', () => {
     // Nothing of Tentacruel's moveset is revealed at turn 5.
-    expect(html).toMatch(/hichu-mv">Surf<\/span>\?/);
-    expect(html).toMatch(/Surf<\/span>\?<\/span> <span class="hichu-dmg">/);
-    expect(html).toContain('hichu-mv">Knock Off');
-  });
-
-  it('keeps status moves in the set list but without damage figures', () => {
-    expect(html).toMatch(/hichu-mv">Haze<\/span>\?/);
-    expect(html).not.toMatch(/Haze<\/span>\?<\/span> <span class="hichu-dmg">/);
-  });
-
-  it('offers their still-possible Tera types without ever activating one', () => {
-    expect(html).toContain('Flying?');
-    expect(html).toContain('Grass?');
-    expect(html).not.toContain('[Tera Flying'); // display-only: no active-Tera label for them
+    expect(html).toMatch(/Surf \(\d+(\.\d+)?–\d+(\.\d+)?%\)/);
+    expect(html).toContain('Haze');
+    expect(html).not.toMatch(/Haze \(/);
   });
 });
 
@@ -125,21 +119,21 @@ describe('buildPokemonSection hovering OUR Noivern (their read on us)', () => {
   const {battle, active} = loadBattle();
   const html = buildPokemonSection(battle, active('Noivern'), data);
 
-  it('shows the mirror view: what our public reveals give away', () => {
-    expect(html).toContain('Their read on you');
-    // Flamethrower is the one move we've shown — and it sits in both feed roles,
-    // so the opponent still can't tell Fast Attacker from Fast Support.
-    expect(html).toContain('✓ <span class="hichu-mv">Flamethrower</span>');
-    expect(html).toContain('2 of 2 sets');
-    expect(html).toMatch(/hichu-mv">Boomburst<\/span>\?/);
-    expect(html).toMatch(/hichu-mv">Roost<\/span>\?/);
+  it('shows the mirror view: our public reveals give the set away', () => {
+    expect(html).toContain('<b>Their read on you</b>');
+    // We terastallized Fire, and only Fast Support runs Tera Fire — so the
+    // opponent can already pin our exact set from public info alone.
+    expect(html).toContain('(1 of 2 sets)');
+    expect(html).toContain('<p class="hichu-set">Fast Support</p>');
+    expect(html).not.toContain('Boomburst'); // Fast Attacker is ruled out
+  });
+
+  it('marks what they have actually seen', () => {
+    expect(html).toContain('✓ Flamethrower');
+    expect(html).toContain('✓ Fire'); // the active Tera is public
   });
 
   it('carries no damage figures — this view is about information, not threat', () => {
-    expect(html).not.toContain('hichu-dmg');
-  });
-
-  it('shows our active Tera as settled information', () => {
-    expect(html).toContain('✓ Fire');
+    expect(html).not.toMatch(/\(\d+(\.\d+)?–\d+(\.\d+)?%\)/);
   });
 });

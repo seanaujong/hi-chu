@@ -86,23 +86,28 @@ export interface KnownOption {
   readonly known: boolean;
 }
 
-/**
- * What can be deduced about a Pokémon's set from public reveals alone: the
- * candidate roles that survive the evidence, and each dimension's options with
- * confirmed ones marked. Rendered on Pokémon hovers — for the opponent it answers
- * "what could they still have?", pointed at our own side it answers "what has the
- * opponent figured out about us?".
- */
-export interface SetKnowledge {
-  /** Role names still consistent with everything revealed. */
-  readonly roles: readonly string[];
-  /** How many roles the species can run in this format, before narrowing. */
-  readonly totalRoles: number;
-  readonly moves: readonly KnownOption[];
+/** One candidate set, kept whole: its name and every dimension, reveals marked. */
+export interface CandidateSet {
+  /** The feed's role name ("Bulky Setup"); '' for role-less (older-gen) entries. */
+  readonly name: string;
   readonly abilities: readonly KnownOption[];
   readonly items: readonly KnownOption[];
   /** Display only — a speculative Tera type must never reach the damage calc. */
   readonly teraTypes: readonly KnownOption[];
+  readonly moves: readonly KnownOption[];
+}
+
+/**
+ * What can be deduced about a Pokémon's set from public reveals alone: the
+ * candidate sets that survive the evidence, each kept whole (which item goes with
+ * which moves is the information). Rendered on Pokémon hovers — for the opponent it
+ * answers "what could they still have?", pointed at our own side it answers "what
+ * has the opponent figured out about us?".
+ */
+export interface SetKnowledge {
+  readonly candidates: readonly CandidateSet[];
+  /** How many roles the species can run in this format, before narrowing. */
+  readonly totalRoles: number;
   /** Set when the reveals contradict every known role (form change, data drift). */
   readonly uncertainReason?: string;
 }

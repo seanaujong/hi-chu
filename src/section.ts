@@ -8,18 +8,19 @@
 //
 // Two entry points, one per tooltip we augment:
 //   buildMoveSection    — a move-button hover: that move's damage vs the opposing active.
-//   buildPokemonSection — a Pokémon hover: the information game (possible sets narrowed
-//     by reveals; damage numbers attached when the hovered mon is the opponent's).
+//   buildPokemonSection — a Pokémon hover: the still-possible sets (narrowed by reveals),
+//     with damage numbers attached when the hovered mon is the opponent's.
 
 import {calcDamage, type DamageReport} from './core/damage.js';
 import {inferSets, resolveMon} from './core/resolve.js';
 import {
   renderMoveSection,
   renderSetsSection,
+  type CandidateBlock,
   type MoveKnowledgeRow,
   type SetsRenderModel,
 } from './core/render.js';
-import type {LiveFacts, RandbatsData, RandbatsEntry, ResolvedMon} from './core/types.js';
+import type {LiveFacts, RandbatsData, RandbatsEntry, ResolvedMon, SetKnowledge} from './core/types.js';
 import {pickEntry} from './data/randbats.js';
 import {
   toLiveFacts,
@@ -105,7 +106,6 @@ export function buildMoveSection(
 
   return renderMoveSection({
     moveName,
-    defenderName: defender.speciesForme,
     defenderHpPercent: defenderFacts.hpPercent,
     extraNotes: [],
     ...(report ? {report} : {}),
@@ -114,12 +114,26 @@ export function buildMoveSection(
   });
 }
 
+/** Attach damage reports (foe view) to each candidate set's move list. */
+function toBlocks(knowledge: SetKnowledge, damage: Map<string, DamageReport> | undefined): CandidateBlock[] {
+  return knowledge.candidates.map((c) => ({
+    name: c.name,
+    abilities: c.abilities,
+    items: c.items,
+    teraTypes: c.teraTypes,
+    moves: c.moves.map((m): MoveKnowledgeRow => {
+      const report = damage?.get(toId(m.name));
+      return {name: m.name, known: m.known, ...(report ? {report} : {})};
+    }),
+  }));
+}
+
 /**
- * The Pokémon tooltip section — the information game. Hovering the opponent shows
- * which sets are still possible given their reveals, each damaging move carrying its
- * numbers vs our active. Hovering our own Pokémon shows the mirror: what the
- * opponent can deduce about us from what we've made public. Returns '' when the
- * format or species isn't covered.
+ * The Pokémon tooltip section: the still-possible sets, one block per candidate,
+ * in the original Randbats Tooltip's layout. Hovering the opponent narrows their
+ * sets by every public reveal and attaches each move's damage vs our active;
+ * hovering our own Pokémon shows the mirror — what the opponent can deduce from
+ * what we've made public. Returns '' when the format or species isn't covered.
  */
 export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon, data: RandbatsData): string {
   const format = detectFormat(battle);
@@ -130,7 +144,7 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
   if (!entry) return ''; // not a tracked randbats Pokémon
 
   const knowledge = inferSets(facts, entry);
-  if (knowledge.moves.length === 0) return '';
+  if (knowledge.candidates.every((c) => c.moves.length === 0)) return '';
 
   const perspective = isFoe(battle, pokemon) ? 'foe' : 'own';
   const notes = knowledge.uncertainReason ? [knowledge.uncertainReason] : [];
@@ -146,7 +160,8 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
       const attacker = resolveMon(facts, entry);
       const defender = resolveMon(ourFacts, entryOrMinimal(pickEntry(data, ourFacts.speciesForme), ourFacts));
       const field = readFieldFacts(battle, ourMon.side);
-      damage = reportsByMove(attacker, defender, knowledge.moves.map((m) => m.name), format.gen, field);
+      const allMoves = [...new Set(knowledge.candidates.flatMap((c) => c.moves.map((m) => m.name)))];
+      damage = reportsByMove(attacker, defender, allMoves, format.gen, field);
       target = {
         name: defender.speciesForme,
         hpPercent: ourFacts.hpPercent,
@@ -155,19 +170,10 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
     }
   }
 
-  const rows: MoveKnowledgeRow[] = knowledge.moves.map((m) => {
-    const report = damage?.get(toId(m.name));
-    return {name: m.name, known: m.known, ...(report ? {report} : {})};
-  });
-
   const model: SetsRenderModel = {
     perspective,
-    roles: knowledge.roles,
     totalRoles: knowledge.totalRoles,
-    moves: rows,
-    abilities: knowledge.abilities,
-    items: knowledge.items,
-    teraTypes: knowledge.teraTypes,
+    candidates: toBlocks(knowledge, damage),
     extraNotes: notes,
     ...(target ? {defenderName: target.name, defenderHpPercent: target.hpPercent} : {}),
     ...(facts.terastallized && facts.teraType ? {attackerTera: facts.teraType} : {}),

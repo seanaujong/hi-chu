@@ -1,5 +1,5 @@
 import {describe, it, expect} from 'vitest';
-import {inferSets, resolveMon} from './resolve.js';
+import {inferSets, resolveByRole, resolveMon, resolveVariants} from './resolve.js';
 import type {LiveFacts, RandbatsEntry} from './types.js';
 
 const DRAGONITE: RandbatsEntry = {
@@ -265,5 +265,69 @@ describe('inferSets', () => {
     expect(names(k)).toEqual(['']);
     expect(k.candidates[0]!.moves.map((m) => m.name)).toEqual(['Sludge Bomb', 'Flamethrower']);
     expect(k.candidates[0]!.items).toEqual([{name: 'Life Orb', known: false}]);
+  });
+});
+
+// One role whose hidden item could be Assault Vest OR Leftovers — the shape that makes
+// a single move deal two different amounts (AV halves the special hit).
+const TENTACRUEL: RandbatsEntry = {
+  level: 82,
+  abilities: ['Liquid Ooze'],
+  items: [],
+  roles: {
+    'Bulky Support': {
+      abilities: ['Liquid Ooze'],
+      items: ['Assault Vest', 'Leftovers'],
+      teraTypes: ['Flying', 'Grass'],
+      moves: ['Surf', 'Haze', 'Rapid Spin', 'Toxic Spikes'],
+    },
+  },
+};
+
+function tentacruelFacts(over: Partial<LiveFacts> = {}): LiveFacts {
+  return {speciesForme: 'Tentacruel', level: 82, hpPercent: 1, boosts: {}, terastallized: false, revealedMoves: [], ...over};
+}
+
+describe('resolveVariants — the still-possible sets to calc over', () => {
+  const items = (vs: ReturnType<typeof resolveVariants>): string[] => [...new Set(vs.map((v) => v.mon.item ?? 'none'))];
+
+  it('enumerates one variant per hidden item when the item is unknown', () => {
+    const vs = resolveVariants(tentacruelFacts(), TENTACRUEL);
+    expect(items(vs).sort()).toEqual(['Assault Vest', 'Leftovers']);
+  });
+
+  it('collapses to a single variant once the item is revealed', () => {
+    const vs = resolveVariants(tentacruelFacts({item: 'Leftovers'}), TENTACRUEL);
+    expect(vs).toHaveLength(1);
+    expect(vs[0]!.mon.item).toBe('Leftovers');
+  });
+
+  it('dedupes roles that resolve identically — no fan-out from redundant sets', () => {
+    // Two roles with the same spread, ability, and item are one calc, not two.
+    const twin: RandbatsEntry = {
+      level: 80,
+      abilities: ['Levitate'],
+      items: [],
+      roles: {
+        'Role A': {abilities: ['Levitate'], items: ['Leftovers'], teraTypes: ['Fire'], moves: ['Flamethrower']},
+        'Role B': {abilities: ['Levitate'], items: ['Leftovers'], teraTypes: ['Fire'], moves: ['Flamethrower']},
+      },
+    };
+    expect(resolveVariants(noivernFacts({speciesForme: 'Rotom'}), twin)).toHaveLength(1);
+  });
+});
+
+describe('resolveByRole — one resolution per surviving set, aligned with inferSets', () => {
+  it('yields a resolution per candidate, in the same order as inferSets', () => {
+    const byRole = resolveByRole(noivernFacts(), NOIVERN);
+    const inferred = inferSets(noivernFacts(), NOIVERN);
+    expect(byRole.map((v) => v.role)).toEqual(inferred.candidates.map((c) => c.name));
+  });
+
+  it("uses each set's own representative item, not one set's shared across all", () => {
+    const byRole = resolveByRole(noivernFacts(), NOIVERN);
+    const byName = new Map(byRole.map((v) => [v.role, v.mon.item]));
+    expect(byName.get('Fast Attacker')).toBe('Choice Specs');
+    expect(byName.get('Fast Support')).toBe('Heavy-Duty Boots');
   });
 });

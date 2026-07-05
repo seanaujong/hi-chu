@@ -28,11 +28,14 @@ describe('koText', () => {
 });
 
 describe('renderMoveSection', () => {
-  function model(over: Partial<MoveRenderModel> = {}): MoveRenderModel {
+  // Tests still pass a single `report`; wrap it as the one bucket the plain line renders.
+  function model(over: Partial<MoveRenderModel> & {report?: DamageReport} = {}): MoveRenderModel {
+    const {report, ...rest} = over;
     return {
       defenderHpPercent: 1,
       extraNotes: [],
-      ...over,
+      buckets: report ? [{label: '', report}] : [],
+      ...rest,
     };
   }
 
@@ -88,6 +91,35 @@ describe('renderMoveSection', () => {
     const html = renderMoveSection(model({attackerTera: 'Flying', defenderTera: 'Steel', report: report({move: 'X'})}));
     expect(html).toContain('Tera Flying');
     expect(html).toContain('vs Tera Steel');
+  });
+
+  it('splits into one labelled line per distinct outcome when the item is unknown', () => {
+    const html = renderMoveSection(
+      model({
+        buckets: [
+          {label: 'Leftovers', report: report({move: 'Surf', percent: {min: 78, max: 92, mean: 85}, koChance: 0.71})},
+          {label: 'Assault Vest', report: report({move: 'Surf', percent: {min: 53, max: 63, mean: 58}, koChance: 0})},
+        ],
+      }),
+    );
+    // Both outcomes are shown, each named by the item that produces it, in one block.
+    expect(html).toContain('<small>Damage (Leftovers):</small> 78% - 92%');
+    expect(html).toContain('<small>Damage (Assault Vest):</small> 53% - 63%');
+    expect(html.match(/<div class="hichu-block">/g)).toHaveLength(1);
+    expect(html).not.toContain('<small>Damage:</small>'); // the plain line only appears when there's one outcome
+  });
+
+  it('shows the KO flip: the item that saves the KO reads "no KO"', () => {
+    const html = renderMoveSection(
+      model({
+        buckets: [
+          {label: 'Leftovers', report: report({move: 'Surf', koChance: 0.71})},
+          {label: 'Assault Vest', report: report({move: 'Surf', koChance: 0})},
+        ],
+      }),
+    );
+    expect(html).toContain('71% to KO');
+    expect(html).toContain('no KO');
   });
 });
 

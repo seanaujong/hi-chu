@@ -35,14 +35,20 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
   - `multihit.ts` — the probability law (hit-count PMFs + convolution → KO%/expected).
   - `damage.ts` — wraps `@smogon/calc`; builds the calc `Field` from `FieldFacts`.
   - `resolve.ts` — the evidence law: `resolveMon` merges live facts over randbats
-    possibilities into the one set we calculate with; `inferSets` narrows the candidate
-    roles by ALL public evidence (moves, item incl. `prevItem`, ability) into a
-    `SetKnowledge` for display.
-  - `render.ts` — model → tooltip HTML string: `renderMoveSection` (one move's damage)
-    and `renderSetsSection` (the information game, both perspectives). `moves.ts` —
+    possibilities into the one set we calculate with; `resolveVariants` enumerates EVERY
+    still-possible set (when the item/ability is hidden) for uncertainty-aware damage,
+    and `resolveByRole` gives one resolution per surviving set (for the sets view's
+    per-block numbers); `inferSets` narrows the candidate roles by ALL public evidence
+    (moves, item incl. `prevItem`, ability) into a `SetKnowledge` for display.
+  - `variants.ts` — the distinct-outcome law: run the calc per `resolveVariants` result,
+    then `bucketByDamage` collapses identical rolls into the few DISTINCT outcomes and
+    names each bucket by the axis that differs (an Assault Vest that changes the number).
+  - `render.ts` — model → tooltip HTML string: `renderMoveSection` (one move's damage,
+    or one labelled line per damage bucket when the target's item is unknown) and
+    `renderSetsSection` (the information game, both perspectives). `moves.ts` —
     multi-hit move table (data only; no colocated test — covered via `damage.test.ts`).
   - `types.ts` — shared vocabulary (`LiveFacts`, `RandbatsEntry`, `ResolvedMon`,
-    `SetKnowledge`, `FieldFacts`).
+    `SetVariant`, `SetKnowledge`, `FieldFacts`).
 - `src/battle/readState.ts` — Showdown's untyped client objects → typed `LiveFacts`/`FieldFacts`.
 - `src/data/randbats.ts` — fetch + cache the set feed.
 - `src/section.ts` — pure shell orchestration, one builder per tooltip surface:
@@ -92,6 +98,15 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   the "✓ ability" display, while the calc still uses the live `ability` (a Traced Teravolt is
   really active). Checked by `resolve.test.ts` ("set inference uses the INNATE ability") and
   `readState.test.ts`. Without it, a Traced mon panics with "matched no known set".
+- ✅ **Damage under a hidden item/ability is split by DISTINCT outcome, not by set.**
+  When the target's item is unknown, `resolveVariants` enumerates every still-possible
+  set and the move tooltip shows one labelled line per *distinct* damage result — but
+  `bucketByDamage` keys on the SHOWN numbers (`percent` + KO), so the many sets that
+  deal the same (a defensively-inert item, a shared spread) collapse back to one plain
+  line. Only a real swing (Assault Vest halving a special hit) ever splits. Checked by
+  `variants.test.ts` ("collapses many sets with identical shown numbers into ONE bucket"
+  and the AV split) and `section.test.ts` (the real fixture: special move splits AV vs
+  Leftovers, physical move stays one line). A revealed item is just the one-set case.
 - ✅ **Format ids are derived like PS's own `toID`** (digits kept, whole title), so bracket
   tags with extra words work — checked by `readState.test.ts` ("[Gen 9 Champions] Random
   Battle" → `gen9championsrandombattle`).

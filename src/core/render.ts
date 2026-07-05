@@ -13,6 +13,7 @@
 // snapshot it. No DOM, no @smogon/calc here.
 
 import type {DamageReport} from './damage.js';
+import type {DamageBucket} from './variants.js';
 import type {Gimmick, KnownOption} from './types.js';
 
 /** Escape the few characters that matter when injecting into innerHTML. */
@@ -106,8 +107,13 @@ export interface MoveRenderModel {
   /** Active Tera types, if terastallized — shown so a surprising number explains itself. */
   readonly attackerTera?: string;
   readonly defenderTera?: string;
-  /** Absent for status moves and moves the calc can't model. */
-  readonly report?: DamageReport;
+  /**
+   * The distinct damage outcomes vs the target. Empty for status/unmodellable moves
+   * (→ no section). One bucket (item known, or every possible item deals the same) →
+   * the plain "Damage:" line. Two or more (an Assault Vest that changes the number) →
+   * one labelled line each.
+   */
+  readonly buckets: readonly DamageBucket[];
   readonly extraNotes: readonly string[];
 }
 
@@ -118,29 +124,49 @@ function teraTag(attackerTera: string | undefined, defenderTera: string | undefi
   return bits.length ? ` <small>[${bits.join(' ')}]</small>` : '';
 }
 
+/** One labelled outcome when the target's item is uncertain: "Damage (Assault Vest):
+ *  53% - 63% · no KO", compact on one line so several buckets stay in one block. */
+function variantLine(bucket: DamageBucket, model: MoveRenderModel, tera: string): string {
+  const r = bucket.report;
+  const ko = koText(r.koChance);
+  const koCtx = ko && model.defenderHpPercent < 0.995 ? ` at ${pct1(model.defenderHpPercent)} HP` : '';
+  const koPart = `<span class="hichu-ko">${ko || 'no KO'}</span>${koCtx}`;
+  const multi = multiHitDetail(r);
+  return `<small>Damage (${esc(bucket.label)}):</small> ${moveDamageText(r)}${tera} · ${koPart}${multi ? ` · ${esc(multi)}` : ''}`;
+}
+
 /**
  * The move-tooltip section, at parity with the native "Damage: X% - Y%" line — no
  * "vs <target>" preamble (the native tooltip already names the target and typing).
  * A non-damaging move gets NO section at all (returns ''), matching the original,
  * which inserts nothing when there's no damage to show. Our better-calc value — the
  * true KO chance and the real multi-hit breakdown — rides along only when it applies.
+ *
+ * When the target's item is unknown and it changes the number (an Assault Vest that
+ * might or might not be there), each distinct outcome gets its own labelled line;
+ * when it's known — or every possible item deals the same — it's the plain line.
  */
 export function renderMoveSection(model: MoveRenderModel): string {
-  const r = model.report;
-  if (!r) return ''; // status / unmodellable move → insert nothing
+  if (model.buckets.length === 0) return ''; // status / unmodellable move → insert nothing
 
   const tera = teraTag(model.attackerTera, model.defenderTera);
-  const ko = koText(r.koChance);
-  const koCtx = model.defenderHpPercent < 0.995 ? ` at ${pct1(model.defenderHpPercent)} HP` : '';
-  const multi = multiHitDetail(r);
 
-  return (
-    block([
-      `<small>Damage:</small> ${moveDamageText(r)}${tera}`,
-      ko ? `<small>KO:</small> <span class="hichu-ko">${ko}</span>${koCtx}` : '',
-      multi ? `<small>Hits:</small> ${esc(multi)}` : '',
-    ]) + notesBlock(model.extraNotes)
-  );
+  if (model.buckets.length === 1) {
+    const r = model.buckets[0]!.report;
+    const ko = koText(r.koChance);
+    const koCtx = model.defenderHpPercent < 0.995 ? ` at ${pct1(model.defenderHpPercent)} HP` : '';
+    const multi = multiHitDetail(r);
+    return (
+      block([
+        `<small>Damage:</small> ${moveDamageText(r)}${tera}`,
+        ko ? `<small>KO:</small> <span class="hichu-ko">${ko}</span>${koCtx}` : '',
+        multi ? `<small>Hits:</small> ${esc(multi)}` : '',
+      ]) + notesBlock(model.extraNotes)
+    );
+  }
+
+  const lines = model.buckets.map((b, i) => variantLine(b, model, i === 0 ? tera : ''));
+  return block(lines) + notesBlock(model.extraNotes);
 }
 
 // --- Pokémon hover: per-set blocks, the original's layout -------------------

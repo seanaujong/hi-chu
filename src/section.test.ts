@@ -26,14 +26,17 @@ const data = fixture.randbats as unknown as RandbatsData;
  * The client's classes are untyped and cyclic, so the reconstruction casts through
  * `unknown` — the shapes match readState's structural interfaces.
  */
-function loadBattle(over: {noivernTerastallized?: string} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
+function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
   const sides: ClientSide[] = fixture.battle.sides.map((s, i) => {
     const side = {isFar: i === 1, sideConditions: {...s.sideConditions}, active: [] as (ClientPokemon | null)[]};
     side.active = s.active.map((p) => {
       const terastallized = p.speciesForme === 'Noivern' && over.noivernTerastallized !== undefined
         ? over.noivernTerastallized
         : p.terastallized;
-      return {...p, terastallized, side} as unknown as ClientPokemon;
+      // Un-reveal Tentacruel's item to exercise the still-unknown-item split (its
+      // Bulky Support set can run Assault Vest OR Leftovers).
+      const item = p.speciesForme === 'Tentacruel' && over.tentacruelItem !== undefined ? over.tentacruelItem : p.item;
+      return {...p, terastallized, item, side} as unknown as ClientPokemon;
     });
     return side as unknown as ClientSide;
   });
@@ -80,6 +83,37 @@ describe('buildMoveSection on the real captured battle (our move buttons)', () =
     const plain = loadBattle({noivernTerastallized: ''});
     const plainPct = maxPercent(buildMoveSection(plain.battle, plain.active('Tentacruel'), 'Surf', data));
     expect(tera).toBeGreaterThan(plainPct * 1.7);
+  });
+});
+
+describe('buildMoveSection when the target item is still unknown (the Assault Vest split)', () => {
+  // Tentacruel's Bulky Support can hold Assault Vest or Leftovers; un-reveal the item.
+  const {battle, active} = loadBattle({tentacruelItem: ''});
+  const noivern = () => active('Noivern');
+
+  it('splits a special move into two labelled outcomes — AV vs not', () => {
+    // Draco Meteor is special, so Assault Vest's +50% SpD changes the number.
+    const html = buildMoveSection(battle, noivern(), 'Draco Meteor', data);
+    expect(html).toContain('Damage (Assault Vest):');
+    expect(html).toContain('Damage (Leftovers):');
+    // The AV outcome must be strictly lower than the Leftovers one.
+    const av = /Damage \(Assault Vest\):<\/small> [\d.]+% - ([\d.]+)%/.exec(html);
+    const lefto = /Damage \(Leftovers\):<\/small> [\d.]+% - ([\d.]+)%/.exec(html);
+    expect(Number(av![1])).toBeLessThan(Number(lefto![1]));
+  });
+
+  it('does NOT split a physical move — Assault Vest leaves it identical (no dupes)', () => {
+    // U-turn is physical; AV boosts only SpD, so both items deal the same → one line.
+    const html = buildMoveSection(battle, noivern(), 'U-turn', data);
+    expect(html).toContain('<small>Damage:</small>');
+    expect(html).not.toContain('Damage (');
+  });
+
+  it('collapses back to the plain line once the item is revealed', () => {
+    const known = loadBattle(); // fixture default: Leftovers is revealed
+    const html = buildMoveSection(known.battle, known.active('Noivern'), 'Draco Meteor', data);
+    expect(html).toContain('<small>Damage:</small>');
+    expect(html).not.toContain('Damage (');
   });
 });
 

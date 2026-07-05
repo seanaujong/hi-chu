@@ -4,3 +4,8 @@ dist/
 .DS_Store
 .claude/
 hi-chu-*.zip
+
+# The optimized demo GIF (demo/hichu-demo.gif) IS committed so the README renders
+# it reliably; intermediate/large recordings are not.
+demo/*.mp4
+demo/*-raw.gif

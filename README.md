@@ -2,6 +2,11 @@
 
 *(hi-chew × pikachu; formerly "Randbats Tooltip but Better")*
 
+<p align="center">
+  <img src="demo/hichu-demo.gif" width="820"
+       alt="Hovering a Pokémon in a Showdown Random Battle reveals its still-possible sets and each move's damage into the active Pokémon">
+</p>
+
 Random Battle helpers, one hover away. hi-chu is a small browser extension that enriches
 Pokémon Showdown's in-battle tooltips — hover a Pokémon or one of your move buttons and it
 fills in what you'd otherwise tab out to a calculator or a set dump for:

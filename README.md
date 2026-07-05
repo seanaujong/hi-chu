@@ -3,7 +3,7 @@
 *(hi-chew × pikachu)*
 
 <p align="center">
-  <img src="demo/hichu-enemy-hover.png" width="820"
+  <img src="demo/hichu-enemy-hover.png" width="380"
        alt="Hovering an opponent in a Showdown Random Battle reveals its still-possible sets and each move's damage into the active Pokémon">
 </p>
 

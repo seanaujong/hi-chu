@@ -200,6 +200,12 @@ For readers new to competitive Pokémon / Showdown:
 - **screens** — Reflect / Light Screen / Aurora Veil, which halve incoming damage.
 - **multi-hit move** — a move that strikes several times in one use (a random 2–5, or a fixed count).
 
+## Disclaimer
+
+hi-chu is an unofficial, fan-made tool. It is not affiliated with, endorsed by, or associated
+with Nintendo, Game Freak, The Pokémon Company, or Pokémon Showdown. "Pokémon" and all related
+names are trademarks of their respective owners.
+
 [orig]: https://chromewebstore.google.com/detail/pok%C3%A9mon-showdown-randbats/ipfdjoljmkcfabfppnclebjgbehjemch
 [feed]: https://github.com/pkmn/randbats
 [calc]: https://github.com/smogon/damage-calc

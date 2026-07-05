@@ -50,6 +50,10 @@ hi-chu is free and open source (MIT). It collects no data. It was inspired by th
 closed-source "Randbats Tooltip" — a fresh, open, maintained take on the same
 convenience.
 
+hi-chu is an unofficial fan-made tool. It is not affiliated with, endorsed by, or
+associated with Nintendo, Game Freak, The Pokémon Company, or Pokémon Showdown.
+"Pokémon" and all related names are trademarks of their respective owners.
+
 Source & issues: https://github.com/seanaujong/hi-chu
 ```
 

@@ -138,8 +138,9 @@ hi-chu adds extra lines to Pokémon Showdown's Random Battle tooltips. It does
 nothing outside a Random Battle, so to see it work:
 
 1. Install the extension, then open https://play.pokemonshowdown.com
-2. Click "Choose name" (top right) and pick any name — no account or password
-   is required.
+2. Click "Choose name" (top right) and pick any unclaimed name (max 20
+   characters). If a name is already registered it will ask for a password, so
+   just choose a different one — no account or password is required.
 3. Start a Random Battle: pick format "[Gen 9] Random Battle" and click
    "Battle!". (Alternatively, no play needed: Menu > "Watch a battle" and open
    any live Random Battle to spectate.)

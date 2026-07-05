@@ -39,16 +39,28 @@ function fillStats(base: number, override: StatsTable | undefined): FullStats {
 }
 
 /** True when every piece of revealed evidence is consistent with this role. */
+/**
+ * The ability that narrows the set: the INNATE one, not the live one. Trace, Skill
+ * Swap, Worry Seed, Entrainment, Simple Beam, Gastro Acid, and Mummy/Wandering
+ * Spirit all replace or suppress the current ability, but the randbats set is keyed
+ * to what the Pokémon was BUILT with — so we match on `baseAbility` (falling back to
+ * `ability` when nothing has changed and only the current one is known).
+ */
+function innateAbility(facts: LiveFacts): string | undefined {
+  return facts.baseAbility ?? facts.ability;
+}
+
 function roleMatches(role: RandbatsRole, facts: LiveFacts): boolean {
   const have = new Set(role.moves.map(toId));
   for (const m of facts.revealedMoves) if (!have.has(toId(m))) return false;
   // An item revealed mid-battle (held, consumed, or knocked off) pins the set the
-  // same way a used move does; likewise a revealed ability or an active Tera type.
+  // same way a used move does; likewise the innate ability or an active Tera type.
   const revealedItem = facts.item ?? facts.prevItem;
   if (revealedItem && role.items.length > 0 && !role.items.some((i) => toId(i) === toId(revealedItem))) {
     return false;
   }
-  if (facts.ability && role.abilities.length > 0 && !role.abilities.some((a) => toId(a) === toId(facts.ability!))) {
+  const ability = innateAbility(facts);
+  if (ability && role.abilities.length > 0 && !role.abilities.some((a) => toId(a) === toId(ability))) {
     return false;
   }
   const activeTera = facts.terastallized ? facts.teraType : undefined;
@@ -60,7 +72,7 @@ function roleMatches(role: RandbatsRole, facts: LiveFacts): boolean {
 
 function anyEvidence(facts: LiveFacts): boolean {
   return facts.revealedMoves.length > 0 || facts.item !== undefined || facts.prevItem !== undefined ||
-    facts.ability !== undefined || (facts.terastallized && facts.teraType !== undefined);
+    innateAbility(facts) !== undefined || (facts.terastallized && facts.teraType !== undefined);
 }
 
 /**
@@ -219,6 +231,7 @@ export function inferSets(facts: LiveFacts, entry: RandbatsEntry): SetKnowledge 
   const totalRoles = entry.roles ? Object.keys(entry.roles).length : 0;
 
   const revealedItem = facts.item ?? facts.prevItem;
+  const revealedAbility = innateAbility(facts);
   const activeTera = facts.terastallized && facts.teraType ? [facts.teraType] : [];
   const species = baseSpecies(facts.speciesForme);
 
@@ -227,7 +240,7 @@ export function inferSets(facts: LiveFacts, entry: RandbatsEntry): SetKnowledge 
     const teraTypes = exclusiveOptions(role.teraTypes, activeTera);
     return {
       name,
-      abilities: exclusiveOptions(role.abilities, facts.ability ? [facts.ability] : []),
+      abilities: exclusiveOptions(role.abilities, revealedAbility ? [revealedAbility] : []),
       items,
       moves: unionOptions(role.moves, facts.revealedMoves),
       gimmicks: deriveGimmicks(items, teraTypes, species),

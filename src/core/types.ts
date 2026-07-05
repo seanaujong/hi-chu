@@ -69,7 +69,10 @@ export interface LiveFacts {
   /** The Tera type the Pokémon has ALREADY terastallized into, if any. */
   readonly teraType?: string;
   readonly terastallized: boolean;
+  /** The CURRENT effective ability (post-Trace/Skill-Swap/suppression) — drives the calc. */
   readonly ability?: string;
+  /** The INNATE ability the set was built with — drives set inference, not the live ability. */
+  readonly baseAbility?: string;
   readonly item?: string;
   /** A revealed item no longer held (consumed berry, knocked-off orb) — still narrows the set. */
   readonly prevItem?: string;

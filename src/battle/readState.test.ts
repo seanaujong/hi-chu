@@ -64,6 +64,17 @@ describe('toLiveFacts', () => {
     expect(toLiveFacts(clientMon({ability: '', baseAbility: 'Inner Focus'})).ability).toBe('Inner Focus');
     expect(toLiveFacts(clientMon({})).ability).toBeUndefined();
   });
+
+  it('carries the current AND innate ability separately when Trace has changed it', () => {
+    // Gardevoir Traced Teravolt: `ability` is the live one, `baseAbility` the innate set one.
+    const f = toLiveFacts(clientMon({ability: 'Teravolt', baseAbility: 'Trace'}));
+    expect(f.ability).toBe('Teravolt');
+    expect(f.baseAbility).toBe('Trace');
+  });
+
+  it('mirrors a single known ability into baseAbility when nothing has changed', () => {
+    expect(toLiveFacts(clientMon({ability: 'Multiscale'})).baseAbility).toBe('Multiscale');
+  });
 });
 
 describe('detectFormat', () => {

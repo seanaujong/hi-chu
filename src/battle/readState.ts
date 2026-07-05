@@ -67,7 +67,13 @@ export function toLiveFacts(p: ClientPokemon): LiveFacts {
     if (v) boosts[stat] = v;
   }
 
+  // The client tracks two abilities: `ability` is the CURRENT effective one (what
+  // Trace/Skill Swap/Mummy/suppression left active — this drives the live calc), and
+  // `baseAbility` is the INNATE one the set was built with (`rememberAbility` stamps
+  // it once and never overwrites it). Set inference must use the innate ability — a
+  // Gardevoir that Traced Teravolt is still a Trace set — so we carry both.
   const ability = p.ability || p.baseAbility || undefined;
+  const baseAbility = p.baseAbility || p.ability || undefined;
   const gender = asGender(p.gender);
 
   const facts: LiveFacts = {
@@ -80,6 +86,7 @@ export function toLiveFacts(p: ClientPokemon): LiveFacts {
     ...(asStatus(p.status) ? {status: asStatus(p.status)!} : {}),
     ...(p.terastallized ? {teraType: p.terastallized} : {}),
     ...(ability ? {ability} : {}),
+    ...(baseAbility ? {baseAbility} : {}),
     ...(p.item ? {item: p.item} : {}),
     ...(p.prevItem ? {prevItem: p.prevItem} : {}),
     ...(gender ? {gender} : {}),

@@ -85,6 +85,13 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   `resolve.test.ts` ("evidence beyond moves narrows the role"). The own-side mirror view is
   honest only because client `Pokemon` objects carry public info exclusively (the private
   team lives in `battle.myPokemon`, which we never read).
+- ✅ **Set inference keys on the INNATE ability (`baseAbility`), not the live one.** Trace,
+  Skill Swap, Worry Seed, Entrainment, Simple Beam, Gastro Acid, and Mummy/Wandering Spirit
+  all change or suppress the current `ability`; the randbats set is keyed to what the mon was
+  BUILT with. `innateAbility(facts) = facts.baseAbility ?? facts.ability` drives narrowing and
+  the "✓ ability" display, while the calc still uses the live `ability` (a Traced Teravolt is
+  really active). Checked by `resolve.test.ts` ("set inference uses the INNATE ability") and
+  `readState.test.ts`. Without it, a Traced mon panics with "matched no known set".
 - ✅ **Format ids are derived like PS's own `toID`** (digits kept, whole title), so bracket
   tags with extra words work — checked by `readState.test.ts` ("[Gen 9 Champions] Random
   Battle" → `gen9championsrandombattle`).

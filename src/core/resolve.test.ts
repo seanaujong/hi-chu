@@ -145,6 +145,63 @@ describe('evidence beyond moves narrows the role', () => {
   });
 });
 
+// A single-role set whose ability (Trace) copies the opponent's mid-battle. Its
+// CURRENT ability then differs from what the set was built with.
+const GARDEVOIR: RandbatsEntry = {
+  level: 83,
+  abilities: ['Trace'],
+  items: [],
+  roles: {
+    'Fast Attacker': {
+      abilities: ['Trace'],
+      items: ['Choice Scarf', 'Choice Specs', 'Life Orb'],
+      teraTypes: ['Fairy', 'Fighting', 'Fire'],
+      moves: ['Calm Mind', 'Focus Blast', 'Moonblast', 'Psychic', 'Psyshock', 'Trick'],
+    },
+  },
+};
+
+function gardevoirFacts(over: Partial<LiveFacts> = {}): LiveFacts {
+  return {speciesForme: 'Gardevoir', level: 83, hpPercent: 1, boosts: {}, terastallized: false, revealedMoves: [], ...over};
+}
+
+describe('set inference uses the INNATE ability, not the live one', () => {
+  // Trace/Skill Swap/Worry Seed/Entrainment/Simple Beam/Gastro Acid/Mummy all leave
+  // `ability` (current) different from `baseAbility` (innate). Matching the current
+  // ability against the set used to panic ("matched no known set"); the innate ability
+  // is what the set is keyed to.
+  it('does not panic when Trace has copied the opponent’s ability', () => {
+    // Gardevoir Traced Zekrom's Teravolt: current = Teravolt, innate = Trace.
+    const k = inferSets(gardevoirFacts({ability: 'Teravolt', baseAbility: 'Trace', revealedMoves: ['Moonblast']}), GARDEVOIR);
+    expect(k.uncertainReason).toBeUndefined();
+    expect(k.candidates).toHaveLength(1);
+    // The set's own ability (Trace) is shown as confirmed — never the traced Teravolt.
+    expect(k.candidates[0]!.abilities).toEqual([{name: 'Trace', known: true}]);
+    expect(JSON.stringify(k)).not.toContain('Teravolt');
+  });
+
+  it('resolves the role cleanly for the calc (no shaky-assumptions flag)', () => {
+    const r = resolveMon(gardevoirFacts({ability: 'Teravolt', baseAbility: 'Trace'}), GARDEVOIR);
+    expect(r.assumptionsUncertainReason).toBeUndefined();
+    // The calc still uses the LIVE ability (Teravolt is what's actually active).
+    expect(r.ability).toBe('Teravolt');
+  });
+
+  it('handles a suppressed ability (Gastro Acid) the same way', () => {
+    // Gastro Acid: current = "(suppressed)", innate = Trace. Inference uses the innate.
+    const k = inferSets(gardevoirFacts({ability: '(suppressed)', baseAbility: 'Trace'}), GARDEVOIR);
+    expect(k.uncertainReason).toBeUndefined();
+    expect(k.candidates[0]!.abilities).toEqual([{name: 'Trace', known: true}]);
+  });
+
+  it('falls back to the current ability when nothing has changed', () => {
+    // A normal mon: only `ability` known, `baseAbility` absent → still narrows on it.
+    expect(inferSets(noivernFacts({ability: 'Frisk'}), NOIVERN).candidates.map((c) => c.name)).toEqual([
+      'Fast Support',
+    ]);
+  });
+});
+
 describe('inferSets', () => {
   const names = (k: ReturnType<typeof inferSets>): string[] => k.candidates.map((c) => c.name);
 

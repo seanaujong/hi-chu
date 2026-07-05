@@ -62,40 +62,45 @@ const STYLE_ID = 'hichu-style';
 /**
  * A one-time <style> block; the content script injects it once into the page.
  *
- * Deliberately minimal. The original Randbats Tooltip looks crisp because it adds
- * NO CSS of its own — it reuses Showdown's native tooltip markup (`<p>` at 12px
- * black, `<small>` grey labels, `.tooltip-section` for the divider) and inherits
- * every font/size/colour. We do the same: our sections open with a native
- * `.tooltip-section` paragraph, labels are `<small>`, set names are inline-
- * underlined `<span>`s, confirmed facts are `<b>`. The only rules here are for the
- * two things the original has no equivalent of — the red KO figure and the orange
- * caveat line — our "better calc" surface, not restyling of the native shell.
+ * Near-minimal by design. The original Randbats Tooltip looks crisp because it
+ * reuses Showdown's native tooltip markup (`<p>` at 12px black, `<small>` grey
+ * labels) and inherits every font/size/colour; we do the same. `.hichu-block` is
+ * the one structural rule: it reproduces the native `.tooltip-section` divider
+ * (`border-top:1px solid #888; padding:2px 4px`) AND adds the slight grey panel
+ * behind our content, so each block is visually separated the way the original's
+ * per-set blocks are. Everything else here is our "better calc" surface with no
+ * native equivalent — the red KO figure and the orange caveat line.
  */
 export const TOOLTIP_STYLE = `
 <style id="${STYLE_ID}">
+.hichu-block { border-top: 1px solid #888; padding: 2px 4px; background: rgba(0,0,0,.045); }
+.hichu-block p { margin: 0; }
 .hichu-ko { color: #c0392b; font-weight: bold; }
 .hichu-note { color: #b9770e; }
 </style>`;
 
 /**
- * Wrap our lines the way a native tooltip section is built: the FIRST paragraph
- * carries `.tooltip-section` (the native `border-top:1px solid #888; padding:2px 4px`
- * divider), the rest are plain native `<p>`s. Empty lines are dropped so an absent
- * KO/Hits line leaves no gap.
+ * One visually-separated block: the native `.tooltip-section` divider + slight grey
+ * panel, holding plain native `<p>`s (empty lines dropped, so an absent KO/Hits line
+ * leaves no gap). Each candidate set is its own block; the move tooltip is one block.
  */
-function section(lines: readonly string[], notes: readonly string[] = []): string {
+function block(lines: readonly string[]): string {
   const ps = lines
     .filter((l) => l !== '')
-    .map((l, i) => `<p${i === 0 ? ' class="tooltip-section"' : ''}>${l}</p>`)
+    .map((l) => `<p>${l}</p>`)
     .join('');
-  const notePs = notes.map((n) => `<p class="hichu-note">⚠ ${esc(n)}</p>`).join('');
-  return `<div class="hichu">${ps}${notePs}</div>`;
+  return ps ? `<div class="hichu-block">${ps}</div>` : '';
+}
+
+/** A trailing caveat block (form change, data drift), or '' when there are none. */
+function notesBlock(notes: readonly string[]): string {
+  if (notes.length === 0) return '';
+  return block(notes.map((n) => `<span class="hichu-note">⚠ ${esc(n)}</span>`));
 }
 
 // --- Move-button hover: one move vs the current target ----------------------
 
 export interface MoveRenderModel {
-  readonly moveName: string;
   /** Defender current HP as a fraction in [0,1] — KO chance is relative to it. */
   readonly defenderHpPercent: number;
   /** Active Tera types, if terastallized — shown so a surprising number explains itself. */
@@ -129,13 +134,12 @@ export function renderMoveSection(model: MoveRenderModel): string {
   const koCtx = model.defenderHpPercent < 0.995 ? ` at ${pct1(model.defenderHpPercent)} HP` : '';
   const multi = multiHitDetail(r);
 
-  return section(
-    [
+  return (
+    block([
       `<small>Damage:</small> ${moveDamageText(r)}${tera}`,
       ko ? `<small>KO:</small> <span class="hichu-ko">${ko}</span>${koCtx}` : '',
       multi ? `<small>Hits:</small> ${esc(multi)}` : '',
-    ],
-    model.extraNotes,
+    ]) + notesBlock(model.extraNotes)
   );
 }
 
@@ -158,15 +162,7 @@ export interface CandidateBlock {
 }
 
 export interface SetsRenderModel {
-  /** 'foe' = what could they have; 'own' = what can they deduce about us. */
-  readonly perspective: 'foe' | 'own';
-  readonly totalRoles: number;
   readonly candidates: readonly CandidateBlock[];
-  /** Foe view: who their moves are being calculated against, at what HP. */
-  readonly defenderName?: string;
-  readonly defenderHpPercent?: number;
-  readonly attackerTera?: string;
-  readonly defenderTera?: string;
   readonly extraNotes: readonly string[];
 }
 
@@ -200,19 +196,14 @@ function setLines(c: CandidateBlock): string[] {
 }
 
 /**
- * The Pokémon-tooltip section: one underlined-named block per still-possible set,
- * confirmed facts bold with a ✓ — the original Randbats Tooltip's layout, native
- * markup throughout. The foe view's move lists carry damage vs our active in parens
- * (their move buttons aren't hoverable for us, so threat numbers live here).
+ * The Pokémon-tooltip section: one underlined-named, grey-panelled block per
+ * still-possible set — the original Randbats Tooltip's layout, native markup
+ * throughout, each set divided from the next. No summary header (the blocks speak
+ * for themselves); confirmed facts are bold with a ✓. The foe view's move lists
+ * carry damage vs our active in parens (their move buttons aren't hoverable for us,
+ * so threat numbers live here); the own-side mirror simply omits the numbers.
  */
 export function renderSetsSection(model: SetsRenderModel): string {
-  const count = model.totalRoles > 1 ? ` (${model.candidates.length} of ${model.totalRoles} sets)` : '';
-  const vsTarget =
-    model.perspective === 'foe' && model.defenderName !== undefined && model.defenderHpPercent !== undefined
-      ? ` · dmg vs ${esc(model.defenderName)} (${pct1(model.defenderHpPercent)} HP)`
-      : '';
-  const title = model.perspective === 'foe' ? 'Possible sets' : 'Their read on you';
-  const header = `<small>${title}${esc(count)}${esc(vsTarget)}</small>${teraTag(model.attackerTera, model.defenderTera)}`;
-
-  return section([header, ...model.candidates.flatMap(setLines)], model.extraNotes);
+  const blocks = model.candidates.map((c) => block(setLines(c))).join('');
+  return blocks + notesBlock(model.extraNotes);
 }

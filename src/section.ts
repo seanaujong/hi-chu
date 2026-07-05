@@ -105,7 +105,6 @@ export function buildMoveSection(
   }
 
   return renderMoveSection({
-    moveName,
     defenderHpPercent: defenderFacts.hpPercent,
     extraNotes: [],
     ...(report ? {report} : {}),
@@ -146,14 +145,13 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
   const knowledge = inferSets(facts, entry);
   if (knowledge.candidates.every((c) => c.moves.length === 0)) return '';
 
-  const perspective = isFoe(battle, pokemon) ? 'foe' : 'own';
   const notes = knowledge.uncertainReason ? [knowledge.uncertainReason] : [];
 
   // Foe view: attach each possible move's damage into OUR active (their move buttons
   // aren't hoverable for us, so threat numbers must live on their Pokémon tooltip).
+  // The own-side mirror carries no damage — it shows only what we've made public.
   let damage: Map<string, DamageReport> | undefined;
-  let target: {name: string; hpPercent: number; tera?: string} | undefined;
-  if (perspective === 'foe') {
+  if (isFoe(battle, pokemon)) {
     const ourMon = findOpposingActive(battle, pokemon);
     if (ourMon) {
       const ourFacts = toLiveFacts(ourMon);
@@ -162,22 +160,8 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
       const field = readFieldFacts(battle, ourMon.side);
       const allMoves = [...new Set(knowledge.candidates.flatMap((c) => c.moves.map((m) => m.name)))];
       damage = reportsByMove(attacker, defender, allMoves, format.gen, field);
-      target = {
-        name: defender.speciesForme,
-        hpPercent: ourFacts.hpPercent,
-        ...(defender.teraType ? {tera: defender.teraType} : {}),
-      };
     }
   }
 
-  const model: SetsRenderModel = {
-    perspective,
-    totalRoles: knowledge.totalRoles,
-    candidates: toBlocks(knowledge, damage),
-    extraNotes: notes,
-    ...(target ? {defenderName: target.name, defenderHpPercent: target.hpPercent} : {}),
-    ...(facts.terastallized && facts.teraType ? {attackerTera: facts.teraType} : {}),
-    ...(target?.tera ? {defenderTera: target.tera} : {}),
-  };
-  return renderSetsSection(model);
+  return renderSetsSection({candidates: toBlocks(knowledge, damage), extraNotes: notes});
 }

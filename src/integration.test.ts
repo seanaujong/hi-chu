@@ -75,7 +75,7 @@ describe('Breloom vs Tyranitar (multi-hit + status moves)', () => {
     // Flip the seating: Breloom is THEIR active, hovered as the foe.
     const flipped = makeBattle(clientMon({speciesForme: 'Tyranitar'}), clientMon({speciesForme: 'Breloom'}));
     const html = buildPokemonSection(flipped, theirActive(flipped), data);
-    expect(html).toContain('Possible sets');
+    expect(html).toContain('<div class="hichu-block">');
     expect(html).toContain('Spore');
     expect(html).not.toMatch(/Spore \(/);
     expect(html).toMatch(/Bullet Seed \(\d/);

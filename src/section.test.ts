@@ -87,10 +87,10 @@ describe('buildPokemonSection hovering THEIR Tentacruel (possible sets)', () => 
   const {battle, active} = loadBattle();
   const html = buildPokemonSection(battle, active('Tentacruel'), data);
 
-  it('shows the sets view with damage aimed at our live active', () => {
-    expect(html).toContain('Possible sets');
-    expect(html).toContain('dmg vs Noivern (100% HP)');
-    expect(html).toContain('vs Tera Fire'); // our Noivern is the terastallized one
+  it('renders each set as its own grey-panelled divider block (no summary header)', () => {
+    expect(html).toContain('<div class="hichu-block">');
+    expect(html).not.toContain('Possible sets'); // the removed top line
+    expect(html).not.toContain('dmg vs');
   });
 
   it("renders the set as a named block in the original's layout", () => {
@@ -118,10 +118,9 @@ describe('buildPokemonSection hovering OUR Noivern (their read on us)', () => {
   const html = buildPokemonSection(battle, active('Noivern'), data);
 
   it('shows the mirror view: our public reveals give the set away', () => {
-    expect(html).toContain('Their read on you');
     // We terastallized Fire, and only Fast Support runs Tera Fire — so the
-    // opponent can already pin our exact set from public info alone.
-    expect(html).toContain('(1 of 2 sets)');
+    // opponent can already pin our exact set from public info alone: one block.
+    expect(html.match(/<div class="hichu-block">/g)).toHaveLength(1);
     expect(html).toContain('<span style="text-decoration: underline;">Fast Support</span>');
     expect(html).not.toContain('Boomburst'); // Fast Attacker is ruled out
   });

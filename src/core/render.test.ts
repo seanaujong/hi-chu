@@ -30,7 +30,6 @@ describe('koText', () => {
 describe('renderMoveSection', () => {
   function model(over: Partial<MoveRenderModel> = {}): MoveRenderModel {
     return {
-      moveName: 'Earthquake',
       defenderHpPercent: 1,
       extraNotes: [],
       ...over,
@@ -41,6 +40,11 @@ describe('renderMoveSection', () => {
     const html = renderMoveSection(model({report: report({move: 'Earthquake'})}));
     expect(html).toContain('<small>Damage:</small> 30% - 36%');
     expect(html).not.toContain('vs '); // the native tooltip already names the target
+  });
+
+  it('wraps its lines in a grey-panelled divider block', () => {
+    const html = renderMoveSection(model({report: report({move: 'Earthquake'})}));
+    expect(html).toContain('<div class="hichu-block">');
   });
 
   it('adds a KO line, with HP context only when the target is damaged', () => {
@@ -57,7 +61,6 @@ describe('renderMoveSection', () => {
   it('shows the true multi-hit breakdown on its own Hits line', () => {
     const html = renderMoveSection(
       model({
-        moveName: 'Bullet Seed',
         report: report({
           move: 'Bullet Seed',
           multiHit: true,
@@ -78,7 +81,7 @@ describe('renderMoveSection', () => {
   });
 
   it('inserts nothing for a non-damaging move (no report → empty section)', () => {
-    expect(renderMoveSection(model({moveName: 'Swords Dance'}))).toBe('');
+    expect(renderMoveSection(model())).toBe('');
   });
 
   it('tags active Tera for attacker and defender', () => {
@@ -89,25 +92,18 @@ describe('renderMoveSection', () => {
 });
 
 describe('renderSetsSection', () => {
+  const bulkySupport = {
+    name: 'Bulky Support',
+    abilities: [{name: 'Clear Body', known: false}, {name: 'Liquid Ooze', known: false}],
+    items: [{name: 'Leftovers', known: true}],
+    teraTypes: [{name: 'Flying', known: false}, {name: 'Grass', known: false}],
+    moves: [
+      {name: 'Surf', known: true, report: report({move: 'Surf', percent: {min: 30, max: 36, mean: 33}})},
+      {name: 'Haze', known: false},
+    ],
+  };
   function model(over: Partial<SetsRenderModel> = {}): SetsRenderModel {
-    return {
-      perspective: 'foe',
-      totalRoles: 1,
-      candidates: [
-        {
-          name: 'Bulky Support',
-          abilities: [{name: 'Clear Body', known: false}, {name: 'Liquid Ooze', known: false}],
-          items: [{name: 'Leftovers', known: true}],
-          teraTypes: [{name: 'Flying', known: false}, {name: 'Grass', known: false}],
-          moves: [
-            {name: 'Surf', known: true, report: report({move: 'Surf', percent: {min: 30, max: 36, mean: 33}})},
-            {name: 'Haze', known: false},
-          ],
-        },
-      ],
-      extraNotes: [],
-      ...over,
-    };
+    return {candidates: [bulkySupport], extraNotes: [], ...over};
   }
 
   it("renders one block per set in the original's layout: name, then labelled lines", () => {
@@ -116,6 +112,18 @@ describe('renderSetsSection', () => {
     expect(html).toContain('<small>Abilities:</small> Clear Body, Liquid Ooze');
     expect(html).toContain('<small>Tera Types:</small> Flying, Grass');
     expect(html).toContain('<small>Moves:</small>');
+  });
+
+  it('gives each set its own grey-panelled divider block', () => {
+    const twoSets = renderSetsSection(model({candidates: [bulkySupport, {...bulkySupport, name: 'Fast Attacker'}]}));
+    expect(twoSets.match(/<div class="hichu-block">/g)).toHaveLength(2);
+  });
+
+  it('omits the summary header entirely — the blocks speak for themselves', () => {
+    const html = renderSetsSection(model());
+    expect(html).not.toContain('Possible sets');
+    expect(html).not.toContain('dmg vs');
+    expect(html).not.toContain('sets)'); // no "1 of 2 sets" count line
   });
 
   it('bolds confirmed facts with a ✓ and leaves open options plain', () => {
@@ -132,20 +140,9 @@ describe('renderSetsSection', () => {
     expect(html).not.toContain('Haze (');
   });
 
-  it('counts the narrowing only when the species has multiple sets', () => {
-    expect(renderSetsSection(model({totalRoles: 2}))).toContain('(1 of 2 sets)');
-    expect(renderSetsSection(model({totalRoles: 1}))).not.toContain('of 1 sets');
-  });
-
-  it('titles the two perspectives differently and names the damage target', () => {
-    const foe = renderSetsSection(model({defenderName: 'Noivern', defenderHpPercent: 1}));
-    expect(foe).toContain('Possible sets');
-    expect(foe).toContain('dmg vs Noivern (100% HP)');
-    expect(renderSetsSection(model({perspective: 'own'}))).toContain('Their read on you');
-  });
-
-  it('renders caveats as note lines', () => {
+  it('renders caveats as a trailing note block', () => {
     const html = renderSetsSection(model({extraNotes: ['revealed moves/item/ability matched no known set']}));
     expect(html).toContain('matched no known set');
+    expect(html).toContain('hichu-note');
   });
 });

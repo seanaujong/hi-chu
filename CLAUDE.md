@@ -88,14 +88,20 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
 - ✅ **Format ids are derived like PS's own `toID`** (digits kept, whole title), so bracket
   tags with extra words work — checked by `readState.test.ts` ("[Gen 9 Champions] Random
   Battle" → `gen9championsrandombattle`).
-- 👁 **Match native tooltip styling; inject (almost) no CSS.** The original Randbats
+- 👁 **Match native tooltip styling; inject almost no CSS.** The original Randbats
   Tooltip looks crisp because it reuses Showdown's own markup — `<p>` at 12px black,
-  `<small>` grey labels, `.tooltip-section` (`border-top:1px solid #888; padding:2px 4px`)
-  for the divider, set names as inline `<span style="text-decoration:underline">`, `<b>`
-  for confirmed facts — and inherits every font/size/colour. `render.ts` does the same;
-  `TOOLTIP_STYLE` is only the red KO figure and orange caveat line. Don't reintroduce
-  custom `font-size`/`opacity`/colour on the shell — that's exactly what read as muddy.
-  (Verified live against the real old extension via `room.tooltips.showPokemonTooltip`.)
+  `<small>` grey labels, set names as inline `<span style="text-decoration:underline">`,
+  `<b>` for confirmed facts — and inherits every font/size/colour. `render.ts` does the
+  same. `TOOLTIP_STYLE` has exactly one structural rule, `.hichu-block` (reproduces the
+  native `.tooltip-section` divider `border-top:1px solid #888; padding:2px 4px` plus a
+  slight grey panel `rgba(0,0,0,.045)`), and the two colour value-adds the original lacks
+  (red KO, orange caveat). Each candidate set is one `.hichu-block`; the move tooltip is
+  one. Don't reintroduce custom `font-size`/`opacity`/colour on the shell — that's exactly
+  what read as muddy. (Verified live against the real old extension and under Showdown's
+  own stylesheet via `room.tooltips.showPokemonTooltip`.)
+- 👁 **No summary header on the sets view.** The per-set blocks speak for themselves;
+  there is no "Possible sets (N of M) · dmg vs …" line (removed by request). Checked by
+  `render.test.ts` ("omits the summary header entirely").
 - 👁 **Move tooltip is at parity with the native `Damage: X% - Y%` line** — no "vs
   <target>" preamble (native already names the target), and a **non-damaging move gets
   no section at all** (`renderMoveSection` returns `''`). KO% and the multi-hit `Hits:`

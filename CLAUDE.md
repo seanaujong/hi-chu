@@ -1,4 +1,4 @@
-# CLAUDE.md — hi-chu (formerly Randbats Tooltip but Better)
+# CLAUDE.md — hi-chu
 
 ## At a glance
 An MV3 browser extension that augments Pokémon Showdown **Random Battle** tooltips

@@ -1,6 +1,6 @@
 # hi-chu
 
-*(hi-chew × pikachu; formerly "Randbats Tooltip but Better")*
+*(hi-chew × pikachu)*
 
 <p align="center">
   <img src="demo/hichu-demo.gif" width="820"

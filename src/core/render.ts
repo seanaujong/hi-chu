@@ -191,6 +191,8 @@ function gimmickLine(g: Gimmick): string {
       return optionLine('Tera Types', g.types);
     case 'mega':
       return `<small>Mega:</small> ${optionText(g.stone)} → ${esc(g.forme)}`;
+    case 'zmove':
+      return `<small>Z-Move:</small> ${optionText(g.crystal)}`;
     default:
       return ((_: never) => '')(g); // exhaustiveness guard — unreachable
   }

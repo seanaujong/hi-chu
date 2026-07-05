@@ -90,4 +90,20 @@ describe('normalizes the loose feed shape (gen9championsrandombattle)', () => {
     const dragonite = inferSets(facts({speciesForme: 'Dragonite'}), pickEntry(championsFeed, 'Dragonite')!);
     expect(dragonite.candidates[0]!.gimmicks).toEqual([]);
   });
+
+  it('derives a Z-Move gimmick from a Z-crystal item (gen7)', () => {
+    // gen7 carries both Mega and Z-move; a crystal item (ends in " Z") is the Z signal.
+    const gen7Feed = {
+      Aerodactyl: {
+        level: 79,
+        abilities: ['Unnerve'],
+        items: ['Flyinium Z'],
+        roles: {
+          'Z-Move user': {abilities: ['Unnerve'], items: ['Flyinium Z'], moves: ['Sky Attack', 'Stone Edge']},
+        },
+      },
+    } as unknown as RandbatsData;
+    const k = inferSets(facts({speciesForme: 'Aerodactyl'}), pickEntry(gen7Feed, 'Aerodactyl')!);
+    expect(k.candidates[0]!.gimmicks).toEqual([{kind: 'zmove', crystal: {name: 'Flyinium Z', known: false}}]);
+  });
 });

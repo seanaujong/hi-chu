@@ -101,7 +101,8 @@ export interface KnownOption {
  */
 export type Gimmick =
   | {readonly kind: 'tera'; readonly types: readonly KnownOption[]}
-  | {readonly kind: 'mega'; readonly stone: KnownOption; readonly forme: string};
+  | {readonly kind: 'mega'; readonly stone: KnownOption; readonly forme: string}
+  | {readonly kind: 'zmove'; readonly crystal: KnownOption};
 
 /** One candidate set, kept whole: its name and every dimension, reveals marked. */
 export interface CandidateSet {

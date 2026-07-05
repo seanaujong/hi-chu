@@ -167,10 +167,15 @@ function exclusiveOptions(pool: readonly string[], confirmed: readonly string[])
 /**
  * A held item is a Mega stone if it ends in "-ite" (optionally with an " X"/" Y"
  * variant). Eviolite is the one -ite item that isn't a stone, so it's excluded.
- * (Z-crystals — gen7 — would be a sibling test for a future `zmove` gimmick.)
  */
 function isMegaStone(item: string): boolean {
   return item !== 'Eviolite' && /ite( [XY])?$/.test(item);
+}
+
+/** A held item is a Z-crystal (gen7) if it ends in " Z" — "Firium Z",
+ *  "Ultranecrozium Z". No non-crystal item ends that way, so the rule is exact. */
+function isZCrystal(item: string): boolean {
+  return / Z$/.test(item);
 }
 
 /** "Charizard" + "Charizardite Y" → "Charizard-Mega-Y". Species names the base; the
@@ -192,6 +197,7 @@ function deriveGimmicks(items: readonly KnownOption[], teraTypes: readonly Known
   if (teraTypes.length > 0) gimmicks.push({kind: 'tera', types: teraTypes});
   for (const item of items) {
     if (isMegaStone(item.name)) gimmicks.push({kind: 'mega', stone: item, forme: megaForme(baseSpecies, item.name)});
+    else if (isZCrystal(item.name)) gimmicks.push({kind: 'zmove', crystal: item});
   }
   return gimmicks;
 }

@@ -125,6 +125,16 @@ describe('renderSetsSection', () => {
     expect(html).not.toContain('Tera Types'); // a Mega-only set shows no Tera line
   });
 
+  it('renders a Z-Move gimmick as its own line (gen7)', () => {
+    const zUser = {
+      ...bulkySupport,
+      name: 'Z-Move user',
+      gimmicks: [{kind: 'zmove' as const, crystal: {name: 'Firium Z', known: false}}],
+    };
+    const html = renderSetsSection(model({candidates: [zUser]}));
+    expect(html).toContain('<small>Z-Move:</small> Firium Z');
+  });
+
   it('gives each set its own grey-panelled divider block', () => {
     const twoSets = renderSetsSection(model({candidates: [bulkySupport, {...bulkySupport, name: 'Fast Attacker'}]}));
     expect(twoSets.match(/<div class="hichu-block">/g)).toHaveLength(2);

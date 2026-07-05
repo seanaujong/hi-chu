@@ -126,6 +126,32 @@ JSON, which is not user data. Then check all three certifications:
 https://github.com/seanaujong/hi-chu/blob/main/PRIVACY.md
 ```
 
+## Instructions for reviewers (test instructions)
+
+hi-chu only shows anything once you are **inside a Random Battle and hovering** —
+so give the reviewer the trigger explicitly. No account, login, or payment is
+needed. Paste into the reviewer-notes / test-instructions field if the dashboard
+offers one; otherwise keep it ready in case the review team asks.
+
+```
+hi-chu adds extra lines to Pokémon Showdown's Random Battle tooltips. It does
+nothing outside a Random Battle, so to see it work:
+
+1. Install the extension, then open https://play.pokemonshowdown.com
+2. Click "Choose name" (top right) and pick any name — no account or password
+   is required.
+3. Start a Random Battle: pick format "[Gen 9] Random Battle" and click
+   "Battle!". (Alternatively, no play needed: Menu > "Watch a battle" and open
+   any live Random Battle to spectate.)
+4. In the battle, HOVER over a Pokémon — hi-chu adds its still-possible sets and
+   the damage it takes/deals versus the active Pokémon. HOVER one of your move
+   buttons — it adds that move's damage and KO% into the opposing Pokémon.
+
+Everything runs locally in the page. The only network request is an anonymous
+download of public Random Battle set data from https://pkmn.github.io — no user
+data is collected or sent anywhere.
+```
+
 ## Assets checklist
 
 - [x] Package zip — `npm run package` → `hi-chu-<version>.zip`

@@ -57,39 +57,70 @@ associated with Nintendo, Game Freak, The Pokémon Company, or Pokémon Showdown
 Source & issues: https://github.com/seanaujong/hi-chu
 ```
 
-## Privacy
+## Privacy practices
 
-**Single purpose**
+These map 1:1 onto the **Privacy practices** tab in the Developer Dashboard. The
+extension requests **no API permissions** (no `storage`, `tabs`, `scripting`,
+`activeTab`) — it caches with the page's own `localStorage`, not `chrome.storage`
+— so the only justification the dashboard asks for is the single host-permission
+box. Fill the fields in order.
+
+### Single purpose
 
 ```
-Augment Pokémon Showdown Random Battle tooltips with damage calculations and
-possible-set information derived from the public battle state.
+hi-chu adds two informational lines to Pokémon Showdown's Random Battle tooltips:
+a move's damage into the active Pokémon, and which Random Battle sets an opponent
+could still be running. Both are computed in the browser from the battle's
+already-public state — the same information Showdown itself displays.
 ```
 
-**Permission justifications**
+### Host permission justification
 
-- `host_permissions: https://pkmn.github.io/*`
-  ```
-  Used to download the public Random Battle set data (a JSON file) that the
-  extension displays. The request is an anonymous GET; no user data is sent.
-  ```
-- Content script on `https://play.pokemonshowdown.com/*`
-  ```
-  Used to read the already-visible battle state on the Showdown battle page and
-  inject the extra tooltip lines. Everything stays in the page; nothing is sent
-  anywhere.
-  ```
-- Remote code: **No** — all code is bundled in the package; nothing is fetched
-  and executed. Only static JSON data is fetched.
+The dashboard shows **one** box covering all host access — both the declared
+`host_permissions` and the content-script `matches`. Paste this:
 
-**Data usage** — check *No* for every category (name, location, financial,
-health, authentication, personal communications, web history, user activity,
-etc.). The extension collects none of it. Certify:
-- Not being sold to third parties. ✅
-- Not used/transferred for purposes unrelated to the item's core function. ✅
-- Not used/transferred to determine creditworthiness / for lending. ✅
+```
+hi-chu needs two hosts, each required for its single purpose:
 
-**Privacy policy URL**
+• play.pokemonshowdown.com — a content script reads the already-visible battle
+  state on the page (the same public info shown in Showdown's own tooltips) and
+  injects the extra damage / possible-set lines. This is the page the feature
+  augments; without access there is nothing to read or enhance. All processing
+  stays in the page and nothing is transmitted.
+
+• pkmn.github.io — the extension downloads the public Random Battle set data (a
+  static JSON file) that it displays and narrows against the battle. The request
+  is an anonymous GET for a public file and includes no user information.
+
+No other hosts are accessed, and no data leaves the browser.
+```
+
+If a future dashboard version splits this into per-host boxes, paste the matching
+bullet into each.
+
+### Remote code
+
+Answer **No** — *"I am not using remote code."* Everything, including the
+`@smogon/calc` engine, is bundled into `content.js` at build time (esbuild). The
+content script runs in the MAIN world to wrap Showdown's own tooltip renderers,
+but it executes only bundled code; the sole network fetch is the static JSON data
+above, which is data, not code.
+
+### Data usage
+
+Disclose **no** data collection — leave every category unchecked (personally
+identifiable info, health, financial, authentication, personal communications,
+location, web history, user activity, website content). hi-chu collects, stores,
+and transmits none of it; the `localStorage` cache holds only the public set-data
+JSON, which is not user data. Then check all three certifications:
+
+- I do not sell or transfer user data to third parties, outside the approved use cases. ✅
+- I do not use or transfer user data for purposes unrelated to my item's single purpose. ✅
+- I do not use or transfer user data to determine creditworthiness or for lending. ✅
+
+…and the final *"I certify that the above disclosures are accurate"* box.
+
+### Privacy policy URL
 
 ```
 https://github.com/seanaujong/hi-chu/blob/main/PRIVACY.md

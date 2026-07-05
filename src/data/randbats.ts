@@ -5,7 +5,7 @@
 // memory for the session and in localStorage with a TTL so repeat visits are
 // instant and resilient to the feed being briefly unreachable.
 
-import type {RandbatsData, RandbatsEntry} from '../core/types.js';
+import type {RandbatsData, RandbatsEntry, RandbatsRole, StatsTable} from '../core/types.js';
 
 const BASE_URL = 'https://pkmn.github.io/randbats/data';
 const TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
@@ -69,17 +69,70 @@ export async function fetchRandbats(formatId: string): Promise<RandbatsData | nu
   return promise;
 }
 
+// The raw feed omits any array dimension that would be empty. The
+// gen9championsrandombattle feed ships NO `teraTypes` on any role and NO `items`
+// on item-less roles (Charizard, Emolga); older gens omit others. So a straight
+// `as RandbatsData` cast lies about the shape. These loose views name that truth
+// at the boundary; `normalizeEntry` totalizes so the core reads clean arrays and
+// never has to branch on which format's feed it was handed.
+interface RawRole {
+  readonly abilities?: readonly string[];
+  readonly items?: readonly string[];
+  readonly teraTypes?: readonly string[];
+  readonly moves?: readonly string[];
+  readonly evs?: StatsTable;
+  readonly ivs?: StatsTable;
+}
+interface RawEntry {
+  readonly level: number;
+  readonly abilities?: readonly string[];
+  readonly items?: readonly string[];
+  readonly teraTypes?: readonly string[];
+  readonly moves?: readonly string[];
+  readonly roles?: Readonly<Record<string, RawRole>>;
+  readonly evs?: StatsTable;
+  readonly ivs?: StatsTable;
+}
+
+function normalizeRole(r: RawRole): RandbatsRole {
+  return {
+    abilities: r.abilities ?? [],
+    items: r.items ?? [],
+    teraTypes: r.teraTypes ?? [],
+    moves: r.moves ?? [],
+    ...(r.evs !== undefined ? {evs: r.evs} : {}),
+    ...(r.ivs !== undefined ? {ivs: r.ivs} : {}),
+  };
+}
+
+/** Totalize one raw feed entry so every array the core reads is present (possibly empty). */
+function normalizeEntry(e: RawEntry): RandbatsEntry {
+  return {
+    level: e.level,
+    abilities: e.abilities ?? [],
+    items: e.items ?? [],
+    teraTypes: e.teraTypes ?? [],
+    moves: e.moves ?? [],
+    ...(e.roles ? {roles: Object.fromEntries(Object.entries(e.roles).map(([n, r]) => [n, normalizeRole(r)]))} : {}),
+    ...(e.evs !== undefined ? {evs: e.evs} : {}),
+    ...(e.ivs !== undefined ? {ivs: e.ivs} : {}),
+  };
+}
+
 /**
  * Find a species' entry, tolerating forme names the feed may not key exactly.
  * Tries the full forme, then progressively drops trailing "-suffix" segments
  * (e.g. "Greninja-Bond" → "Greninja"), so cosmetic/battle formes still resolve.
+ * The found entry is normalized — this is the single seam between the loose feed
+ * and the core, so every entry the core sees has total array dimensions.
  */
 export function pickEntry(data: RandbatsData, speciesForme: string): RandbatsEntry | undefined {
-  if (data[speciesForme]) return data[speciesForme];
+  const raw = data as unknown as Readonly<Record<string, RawEntry>>;
+  if (raw[speciesForme]) return normalizeEntry(raw[speciesForme]!);
   const parts = speciesForme.split('-');
   for (let n = parts.length - 1; n >= 1; n--) {
     const candidate = parts.slice(0, n).join('-');
-    if (data[candidate]) return data[candidate];
+    if (raw[candidate]) return normalizeEntry(raw[candidate]!);
   }
   return undefined;
 }

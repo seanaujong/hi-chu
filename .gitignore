@@ -9,3 +9,6 @@ hi-chu-*.zip
 # it reliably; intermediate/large recordings are not.
 demo/*.mp4
 demo/*-raw.gif
+
+# Chrome Web Store upload assets (generated; not repo content)
+store-screenshots/

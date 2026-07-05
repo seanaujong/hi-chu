@@ -12,7 +12,8 @@
 //     with damage numbers attached when the hovered mon is the opponent's.
 
 import {calcDamage, type DamageReport} from './core/damage.js';
-import {inferSets, resolveMon} from './core/resolve.js';
+import {inferSets, resolveByRole, resolveMon, resolveVariants} from './core/resolve.js';
+import {bucketByDamage, type DamageBucket} from './core/variants.js';
 import {
   renderMoveSection,
   renderSetsSection,
@@ -20,7 +21,7 @@ import {
   type MoveKnowledgeRow,
   type SetsRenderModel,
 } from './core/render.js';
-import type {LiveFacts, RandbatsData, RandbatsEntry, ResolvedMon, SetKnowledge} from './core/types.js';
+import type {LiveFacts, RandbatsData, RandbatsEntry, ResolvedMon, SetKnowledge, SetVariant} from './core/types.js';
 import {pickEntry} from './data/randbats.js';
 import {
   toLiveFacts,
@@ -71,9 +72,36 @@ function reportsByMove(
 }
 
 /**
+ * The distinct damage outcomes for `moveName` from `attacker` into the target, one
+ * per still-possible defending set, merged where they land on the same number. Status
+ * and unmodellable variants are dropped; an all-dropped move yields no buckets (→ '').
+ */
+function moveDamageBuckets(
+  attacker: ResolvedMon,
+  defenderVariants: readonly SetVariant[],
+  moveName: string,
+  gen: number,
+  field: ReturnType<typeof readFieldFacts>,
+): DamageBucket[] {
+  const scored: {variant: SetVariant; report: DamageReport}[] = [];
+  for (const variant of defenderVariants) {
+    try {
+      const report = calcDamage(attacker, variant.mon, moveName, {gen, field});
+      if (report.category !== 'Status') scored.push({variant, report});
+    } catch {
+      // A move outside the calc's world for this variant shouldn't drop the section.
+    }
+  }
+  return bucketByDamage(scored);
+}
+
+/**
  * The move-button tooltip section: `moveName` from our active `pokemon` into the
- * opposing active. Returns '' when there's nothing to show (not a Random Battle,
- * no target, untracked species, unmodellable move).
+ * opposing active. When the target's item is still unknown and it changes the number
+ * (an Assault Vest that may or may not be there), the distinct outcomes each get a
+ * labelled line; otherwise it's the plain "Damage:" line. Returns '' when there's
+ * nothing to show (not a Random Battle, no target, untracked species, no modellable
+ * outcome).
  */
 export function buildMoveSection(
   battle: ClientBattle,
@@ -93,38 +121,44 @@ export function buildMoveSection(
 
   const defenderFacts = toLiveFacts(defenderMon);
   const attacker = resolveMon(attackerFacts, attackerEntry);
-  const defender = resolveMon(defenderFacts, entryOrMinimal(pickEntry(data, defenderFacts.speciesForme), defenderFacts));
+  // The defender's hidden item/ability can each split the damage — enumerate the
+  // still-possible sets and let identical outcomes collapse back to one bucket.
+  const defenderVariants = resolveVariants(defenderFacts, entryOrMinimal(pickEntry(data, defenderFacts.speciesForme), defenderFacts));
   const field = readFieldFacts(battle, defenderMon.side);
 
-  let report: DamageReport | undefined;
-  try {
-    const r = calcDamage(attacker, defender, moveName, {gen: format.gen, field});
-    report = r.category === 'Status' ? undefined : r;
-  } catch {
-    return ''; // a move outside the calc's world (e.g. Struggle edge cases)
-  }
+  const buckets = moveDamageBuckets(attacker, defenderVariants, moveName, format.gen, field);
+  if (buckets.length === 0) return ''; // status / unmodellable move
 
+  // The live Tera is shared by every variant (it's a revealed fact, not a hidden set).
+  const defenderTera = defenderVariants[0]?.mon.teraType;
   return renderMoveSection({
     defenderHpPercent: defenderFacts.hpPercent,
     extraNotes: [],
-    ...(report ? {report} : {}),
+    buckets,
     ...(attacker.teraType ? {attackerTera: attacker.teraType} : {}),
-    ...(defender.teraType ? {defenderTera: defender.teraType} : {}),
+    ...(defenderTera ? {defenderTera} : {}),
   });
 }
 
-/** Attach damage reports (foe view) to each candidate set's move list. */
-function toBlocks(knowledge: SetKnowledge, damage: Map<string, DamageReport> | undefined): CandidateBlock[] {
-  return knowledge.candidates.map((c) => ({
-    name: c.name,
-    abilities: c.abilities,
-    items: c.items,
-    gimmicks: c.gimmicks,
-    moves: c.moves.map((m): MoveKnowledgeRow => {
-      const report = damage?.get(toId(m.name));
-      return {name: m.name, known: m.known, ...(report ? {report} : {})};
-    }),
-  }));
+/**
+ * Attach damage reports (foe view) to each candidate set's move list. `damagePerSet`
+ * is aligned 1:1 with `knowledge.candidates` — each block's numbers come from THAT
+ * set's own item/spread, not one set's figures shared across every block.
+ */
+function toBlocks(knowledge: SetKnowledge, damagePerSet: readonly (Map<string, DamageReport> | undefined)[]): CandidateBlock[] {
+  return knowledge.candidates.map((c, i) => {
+    const damage = damagePerSet[i];
+    return {
+      name: c.name,
+      abilities: c.abilities,
+      items: c.items,
+      gimmicks: c.gimmicks,
+      moves: c.moves.map((m): MoveKnowledgeRow => {
+        const report = damage?.get(toId(m.name));
+        return {name: m.name, known: m.known, ...(report ? {report} : {})};
+      }),
+    };
+  });
 }
 
 /**
@@ -149,19 +183,24 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
 
   // Foe view: attach each possible move's damage into OUR active (their move buttons
   // aren't hoverable for us, so threat numbers must live on their Pokémon tooltip).
-  // The own-side mirror carries no damage — it shows only what we've made public.
-  let damage: Map<string, DamageReport> | undefined;
+  // Each set block is calculated from ITS OWN set — a Choice Band set and a Life Orb
+  // set of the same species threaten different numbers. The own-side mirror carries no
+  // damage — it shows only what we've made public.
+  let damagePerSet: (Map<string, DamageReport> | undefined)[] = knowledge.candidates.map(() => undefined);
   if (isFoe(battle, pokemon)) {
     const ourMon = findOpposingActive(battle, pokemon);
     if (ourMon) {
       const ourFacts = toLiveFacts(ourMon);
-      const attacker = resolveMon(facts, entry);
       const defender = resolveMon(ourFacts, entryOrMinimal(pickEntry(data, ourFacts.speciesForme), ourFacts));
       const field = readFieldFacts(battle, ourMon.side);
-      const allMoves = [...new Set(knowledge.candidates.flatMap((c) => c.moves.map((m) => m.name)))];
-      damage = reportsByMove(attacker, defender, allMoves, format.gen, field);
+      const attackers = resolveByRole(facts, entry); // aligned 1:1 with knowledge.candidates
+      damagePerSet = knowledge.candidates.map((c, i) => {
+        const attacker = (attackers[i] ?? attackers[0])?.mon;
+        if (!attacker) return undefined;
+        return reportsByMove(attacker, defender, c.moves.map((m) => m.name), format.gen, field);
+      });
     }
   }
 
-  return renderSetsSection({candidates: toBlocks(knowledge, damage), extraNotes: notes});
+  return renderSetsSection({candidates: toBlocks(knowledge, damagePerSet), extraNotes: notes});
 }

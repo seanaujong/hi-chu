@@ -135,6 +135,19 @@ export interface SetKnowledge {
 
 // --- Resolved set fed to the calc ------------------------------------------
 
+/**
+ * One concrete way a Pokémon's still-hidden set could resolve, for uncertainty-aware
+ * damage. When the item or ability isn't revealed yet, the target could be running
+ * any of its surviving sets — each a different calc (Assault Vest halving special
+ * hits is the loud case). A variant pairs the calc-ready mon with the role it
+ * assumes, so a bucket of identical-damage variants can be named by what differs.
+ */
+export interface SetVariant {
+  readonly mon: ResolvedMon;
+  /** The role this variant assumes ('' for role-less older-gen entries). */
+  readonly role: string;
+}
+
 /** The single concrete set we calculate with: known facts win, the rest assumed. */
 export interface ResolvedMon {
   readonly speciesForme: string;

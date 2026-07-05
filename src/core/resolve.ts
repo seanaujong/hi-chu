@@ -15,6 +15,7 @@ import type {
   RandbatsRole,
   ResolvedMon,
   SetKnowledge,
+  SetVariant,
   StatsTable,
 } from './types.js';
 
@@ -124,38 +125,128 @@ function firstDefined<T>(...vals: (T | undefined)[]): T | undefined {
   return undefined;
 }
 
-export function resolveMon(facts: LiveFacts, entry: RandbatsEntry): ResolvedMon {
-  const {chosen, candidates, uncertain} = selectRoles(entry, facts);
-
-  const evsOverride = chosen?.evs ?? entry.evs;
-  const ivsOverride = chosen?.ivs ?? entry.ivs;
-
-  // Revealed moves are certainties; union with the chosen role's pool for the rest.
+/** Revealed moves (certainties) unioned over the candidate roles' pool for the rest. */
+function possibleMovesFor(facts: LiveFacts, candidates: readonly RandbatsRole[], entry: RandbatsEntry): string[] {
   const pool = unionMoves(candidates, entry);
   const poolIds = new Set(pool.map(toId));
-  const possibleMoves = [
-    ...facts.revealedMoves.filter((m) => !poolIds.has(toId(m))),
-    ...pool,
-  ];
+  return [...facts.revealedMoves.filter((m) => !poolIds.has(toId(m))), ...pool];
+}
 
-  const resolved: ResolvedMon = {
+/**
+ * Assemble one concrete calc-ready mon: known facts (status, boosts, HP, active Tera)
+ * always; the given role's spread and the given item/ability for the hidden rest.
+ * The single-pick `resolveMon` and the per-variant enumerators all funnel through
+ * here, so "known wins, randbats fills the gaps" is written exactly once.
+ */
+function buildResolved(
+  facts: LiveFacts,
+  role: RandbatsRole | undefined,
+  entry: RandbatsEntry,
+  item: string | undefined,
+  ability: string | undefined,
+  possibleMoves: readonly string[],
+  uncertain: string | undefined,
+): ResolvedMon {
+  return {
     speciesForme: facts.speciesForme,
     level: facts.level || entry.level,
     nature: RANDBATS_NATURE,
-    evs: fillStats(RANDBATS_BASE_EVS, evsOverride),
-    ivs: fillStats(RANDBATS_BASE_IVS, ivsOverride),
-    ability: firstDefined(facts.ability, chosen?.abilities[0], entry.abilities[0]),
-    item: firstDefined(facts.item, chosen?.items[0], entry.items[0]),
+    evs: fillStats(RANDBATS_BASE_EVS, role?.evs ?? entry.evs),
+    ivs: fillStats(RANDBATS_BASE_IVS, role?.ivs ?? entry.ivs),
+    ability,
+    item,
     status: facts.status,
     boosts: facts.boosts,
     hpPercent: facts.hpPercent,
     // We never speculate a Tera type — only an ACTIVE terastallization counts.
     teraType: facts.terastallized ? facts.teraType : undefined,
     terastallized: facts.terastallized,
-    possibleMoves,
+    possibleMoves: [...possibleMoves],
     ...(uncertain ? {assumptionsUncertainReason: uncertain} : {}),
   };
-  return resolved;
+}
+
+export function resolveMon(facts: LiveFacts, entry: RandbatsEntry): ResolvedMon {
+  const {chosen, candidates, uncertain} = selectRoles(entry, facts);
+  const possibleMoves = possibleMovesFor(facts, candidates, entry);
+  const item = firstDefined(facts.item, chosen?.items[0], entry.items[0]);
+  const ability = firstDefined(facts.ability, chosen?.abilities[0], entry.abilities[0]);
+  return buildResolved(facts, chosen, entry, item, ability, possibleMoves, uncertain);
+}
+
+/** The surviving roles as a walkable list, with a single unnamed pseudo-role for
+ *  role-less (older-gen) entries so both enumerators below share one shape. */
+function survivingRoles(facts: LiveFacts, entry: RandbatsEntry): {name: string; role: RandbatsRole | undefined}[] {
+  const {candidates, names} = selectRoles(entry, facts);
+  return candidates.length > 0
+    ? candidates.map((role, i) => ({name: names[i] ?? '', role: role as RandbatsRole | undefined}))
+    : [{name: '', role: undefined}];
+}
+
+/**
+ * Every DISTINCT set the target could still be running, for uncertainty-aware damage.
+ * A revealed item or ability pins that axis to one value; otherwise each surviving
+ * role is crossed with the item/ability pool it could roll. Variants identical in
+ * every calc-relevant field (spread, item, ability, live facts) collapse to one — so
+ * three roles that share a spread and item produce a single variant, not three. The
+ * caller runs the calc per variant and merges any that land on the same number.
+ */
+export function resolveVariants(facts: LiveFacts, entry: RandbatsEntry): SetVariant[] {
+  const {candidates, uncertain} = selectRoles(entry, facts);
+  const possibleMoves = possibleMovesFor(facts, candidates, entry);
+
+  const variants: SetVariant[] = [];
+  for (const {name, role} of survivingRoles(facts, entry)) {
+    const itemPool = role?.items?.length ? role.items : entry.items;
+    const abilityPool = role?.abilities?.length ? role.abilities : entry.abilities;
+    const items: (string | undefined)[] = facts.item !== undefined ? [facts.item] : itemPool.length ? [...itemPool] : [undefined];
+    const abilities: (string | undefined)[] =
+      facts.ability !== undefined ? [facts.ability] : abilityPool.length ? [...abilityPool] : [undefined];
+    for (const item of items) {
+      for (const ability of abilities) {
+        variants.push({mon: buildResolved(facts, role, entry, item, ability, possibleMoves, uncertain), role: name});
+      }
+    }
+  }
+  return dedupeVariants(variants);
+}
+
+/**
+ * One resolution per surviving role, each with that role's representative item/ability
+ * (or the revealed one). Aligns 1:1 with `inferSets`' candidates, so the sets view can
+ * attach each block's own damage instead of one set's numbers shared across all blocks.
+ */
+export function resolveByRole(facts: LiveFacts, entry: RandbatsEntry): SetVariant[] {
+  const {candidates, uncertain} = selectRoles(entry, facts);
+  const possibleMoves = possibleMovesFor(facts, candidates, entry);
+  return survivingRoles(facts, entry).map(({name, role}) => {
+    const item = firstDefined(facts.item, role?.items[0], entry.items[0]);
+    const ability = firstDefined(facts.ability, role?.abilities[0], entry.abilities[0]);
+    return {mon: buildResolved(facts, role, entry, item, ability, possibleMoves, uncertain), role: name};
+  });
+}
+
+/** A stable signature over the fields @smogon/calc actually reads, so variants that
+ *  compute identically (a shared spread, a defensively-inert item) collapse to one. */
+function variantSignature(m: ResolvedMon): string {
+  return JSON.stringify([
+    m.speciesForme, m.level, m.nature, m.evs, m.ivs,
+    m.ability ?? null, m.item ?? null, m.status ?? null, m.boosts, m.hpPercent,
+    m.teraType ?? null, m.terastallized,
+  ]);
+}
+
+function dedupeVariants(variants: readonly SetVariant[]): SetVariant[] {
+  const seen = new Set<string>();
+  const out: SetVariant[] = [];
+  for (const v of variants) {
+    const key = variantSignature(v.mon);
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(v);
+    }
+  }
+  return out;
 }
 
 /** Union a pool into options, confirmed names first; dedup by id, keep display names. */

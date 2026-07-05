@@ -2,23 +2,34 @@
 
 *(hi-chew × pikachu; formerly "Randbats Tooltip but Better")*
 
-A browser extension that augments Pokémon Showdown's in-battle tooltips for Random
-Battles. On top of the usual "what set could this Pokémon have", it adds a damage
-section that does two things the existing tooltips get wrong:
+Random Battle helpers, one hover away. hi-chu is a small browser extension that enriches
+Pokémon Showdown's in-battle tooltips — hover a Pokémon or one of your move buttons and it
+fills in what you'd otherwise tab out to a calculator or a set dump for:
 
+- **Which sets are still possible.** Hovering a Pokémon narrows the randbats sets it could
+  still be running, using *only* what the battle has made public — moves used, revealed item
+  (held, consumed, or knocked off), ability, and any active Terastallization. On the opponent
+  it answers "what could they still have?"; on your own it mirrors "what have they figured out
+  about me?".
 - **Granular multi-hit damage.** Some moves (Bullet Seed, Rock Blast) hit a *random* 2–5
   times, each hit rolling its own damage. The tooltip shows the per-hit damage range, the
   expected number of hits, and a *true* KO chance (probability of knocking the target out)
   that integrates over both the per-hit rolls and the random hit count.
 - **Reality-aware calcs.** It reads the live battle, so an *active* Terastallization, the
   current status, stat boosts, revealed ability/item, current HP, **weather, terrain, and
-  the defender's screens** all feed the calc. Because the math is delegated to `@smogon/calc`,
+  the defender's screens** all feed the calc. The math is delegated to `@smogon/calc`, so
   interactions resolve correctly — e.g. a *burn* normally halves a physical attacker's damage,
   but the ability **Guts** ignores that, and the calc gets it right.
 
-It is inspired by the closed-source [Randbats Tooltip][orig] and uses the same open data
-feed ([`pkmn.github.io/randbats`][feed]) and the de-facto standard Pokémon damage library,
-[`@smogon/calc`][calc] (maintained by the Smogon competitive community). New to competitive
+It works across most Random Battle formats — standard Gen 9, older gens, and variants like
+**[Gen 9] Champions** (with Mega / Z-Move sets surfaced where a format has them) — and it's
+built to keep growing to cover more.
+
+hi-chu grew out of the excellent, closed-source [Randbats Tooltip][orig] — a tool worth
+leaning on that had gone a while without updates and tripped on a few formats. This is a
+fresh, open take on the same convenience: same open data feed
+([`pkmn.github.io/randbats`][feed]) and the same community damage library
+([`@smogon/calc`][calc], maintained by Smogon), built to stay maintained. New to competitive
 Pokémon / Showdown? See the [Glossary](#glossary) at the bottom.
 
 ## How it's built
@@ -141,15 +152,21 @@ npm run build     # bundles to dist/ (content.js + manifest.json)
 npm run watch     # rebuild on save
 ```
 
-## Install in Chrome
+## Install
 
-1. `npm run build`
-2. Visit `chrome://extensions`, enable **Developer mode**.
-3. **Load unpacked** → select the `dist/` folder.
-4. Open a Random Battle on `play.pokemonshowdown.com` and hover a Pokémon. Its possible
-   moves' damage against the opposing active Pokémon appears at the bottom of the tooltip.
-   (Firefox: `about:debugging` → **This Firefox** → **Load Temporary Add-on** → pick
-   `dist/manifest.json`.)
+**From a release (no build needed):**
+
+1. Download `hi-chu-<version>.zip` from the [latest release][releases] and unzip it.
+2. Visit `chrome://extensions`, enable **Developer mode** (top-right).
+3. **Load unpacked** → select the unzipped folder.
+4. Open a Random Battle on `play.pokemonshowdown.com` and hover a Pokémon or one of your
+   move buttons — the extra lines appear at the bottom of the tooltip.
+
+*(Firefox: `about:debugging` → **This Firefox** → **Load Temporary Add-on** → pick the
+`manifest.json` inside the unzipped folder.)*
+
+**From source:** `npm install && npm run build`, then Load unpacked → `dist/`. Run
+`npm run package` to produce the release zip yourself.
 
 ## Known limitations (v1)
 
@@ -181,3 +198,4 @@ For readers new to competitive Pokémon / Showdown:
 [orig]: https://chromewebstore.google.com/detail/pok%C3%A9mon-showdown-randbats/ipfdjoljmkcfabfppnclebjgbehjemch
 [feed]: https://github.com/pkmn/randbats
 [calc]: https://github.com/smogon/damage-calc
+[releases]: https://github.com/seanaujong/hi-chu/releases/latest

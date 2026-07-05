@@ -119,7 +119,7 @@ function toBlocks(knowledge: SetKnowledge, damage: Map<string, DamageReport> | u
     name: c.name,
     abilities: c.abilities,
     items: c.items,
-    teraTypes: c.teraTypes,
+    gimmicks: c.gimmicks,
     moves: c.moves.map((m): MoveKnowledgeRow => {
       const report = damage?.get(toId(m.name));
       return {name: m.name, known: m.known, ...(report ? {report} : {})};

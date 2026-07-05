@@ -13,7 +13,7 @@
 // snapshot it. No DOM, no @smogon/calc here.
 
 import type {DamageReport} from './damage.js';
-import type {KnownOption} from './types.js';
+import type {Gimmick, KnownOption} from './types.js';
 
 /** Escape the few characters that matter when injecting into innerHTML. */
 function esc(s: string): string {
@@ -157,8 +157,8 @@ export interface CandidateBlock {
   readonly name: string;
   readonly abilities: readonly KnownOption[];
   readonly items: readonly KnownOption[];
-  readonly teraTypes: readonly KnownOption[];
   readonly moves: readonly MoveKnowledgeRow[];
+  readonly gimmicks: readonly Gimmick[];
 }
 
 export interface SetsRenderModel {
@@ -183,6 +183,19 @@ function moveText(row: MoveKnowledgeRow): string {
   return row.report ? `${name} (${rangeText(row.report)})` : name;
 }
 
+/** One gimmick's labelled line. The exhaustive switch is the whole point of the
+ *  variant: a new gimmick (a `zmove` case) won't compile until it's rendered. */
+function gimmickLine(g: Gimmick): string {
+  switch (g.kind) {
+    case 'tera':
+      return optionLine('Tera Types', g.types);
+    case 'mega':
+      return `<small>Mega:</small> ${optionText(g.stone)} → ${esc(g.forme)}`;
+    default:
+      return ((_: never) => '')(g); // exhaustiveness guard — unreachable
+  }
+}
+
 /** One candidate set's lines: underlined name (native weight), then labelled lines. */
 function setLines(c: CandidateBlock): string[] {
   const name = c.name ? `<span style="text-decoration: underline;">${esc(c.name)}</span>` : '';
@@ -190,7 +203,7 @@ function setLines(c: CandidateBlock): string[] {
     name,
     optionLine('Abilities', c.abilities),
     optionLine('Items', c.items),
-    optionLine('Tera Types', c.teraTypes),
+    ...c.gimmicks.map(gimmickLine),
     `<small>Moves:</small> ${c.moves.map(moveText).join(', ')}`,
   ];
 }

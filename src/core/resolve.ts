@@ -8,6 +8,7 @@
 
 import type {
   FullStats,
+  Gimmick,
   KnownOption,
   LiveFacts,
   RandbatsEntry,
@@ -164,6 +165,44 @@ function exclusiveOptions(pool: readonly string[], confirmed: readonly string[])
 }
 
 /**
+ * A held item is a Mega stone if it ends in "-ite" (optionally with an " X"/" Y"
+ * variant). Eviolite is the one -ite item that isn't a stone, so it's excluded.
+ * (Z-crystals — gen7 — would be a sibling test for a future `zmove` gimmick.)
+ */
+function isMegaStone(item: string): boolean {
+  return item !== 'Eviolite' && /ite( [XY])?$/.test(item);
+}
+
+/** "Charizard" + "Charizardite Y" → "Charizard-Mega-Y". Species names the base; the
+ *  stone's X/Y suffix names the variant (stone→species is irregular, species→forme
+ *  is not, so we key off the hovered species, not the stone's prefix). */
+function megaForme(baseSpecies: string, stone: string): string {
+  const variant = / X$/.test(stone) ? '-X' : / Y$/.test(stone) ? '-Y' : '';
+  return `${baseSpecies}-Mega${variant}`;
+}
+
+/**
+ * Derive the transformations a candidate can perform from its already-resolved
+ * dimensions. Tera is a genuine feed dimension; Mega is read out of the item
+ * options (a stone implies the Mega). Dynamax has no set-data trigger, so it never
+ * appears here — honest silence beats an invented line.
+ */
+function deriveGimmicks(items: readonly KnownOption[], teraTypes: readonly KnownOption[], baseSpecies: string): Gimmick[] {
+  const gimmicks: Gimmick[] = [];
+  if (teraTypes.length > 0) gimmicks.push({kind: 'tera', types: teraTypes});
+  for (const item of items) {
+    if (isMegaStone(item.name)) gimmicks.push({kind: 'mega', stone: item, forme: megaForme(baseSpecies, item.name)});
+  }
+  return gimmicks;
+}
+
+/** The hovered species with any live Mega/Tera forme suffix stripped, so a set's
+ *  DERIVED Mega forme reads from the base ("Charizard-Mega-Y" → base "Charizard"). */
+function baseSpecies(speciesForme: string): string {
+  return speciesForme.replace(/-Mega(-[XY])?$/, '');
+}
+
+/**
  * Everything deducible about a Pokémon's set from public reveals: narrow the roles
  * with the same evidence rule the calc uses, and keep each surviving candidate
  * WHOLE (which item goes with which moves is the information), reveals marked.
@@ -175,14 +214,19 @@ export function inferSets(facts: LiveFacts, entry: RandbatsEntry): SetKnowledge 
 
   const revealedItem = facts.item ?? facts.prevItem;
   const activeTera = facts.terastallized && facts.teraType ? [facts.teraType] : [];
+  const species = baseSpecies(facts.speciesForme);
 
-  const toCandidate = (name: string, role: RandbatsRole): SetKnowledge['candidates'][number] => ({
-    name,
-    abilities: exclusiveOptions(role.abilities, facts.ability ? [facts.ability] : []),
-    items: exclusiveOptions(role.items, revealedItem ? [revealedItem] : []),
-    teraTypes: exclusiveOptions(role.teraTypes, activeTera),
-    moves: unionOptions(role.moves, facts.revealedMoves),
-  });
+  const toCandidate = (name: string, role: RandbatsRole): SetKnowledge['candidates'][number] => {
+    const items = exclusiveOptions(role.items, revealedItem ? [revealedItem] : []);
+    const teraTypes = exclusiveOptions(role.teraTypes, activeTera);
+    return {
+      name,
+      abilities: exclusiveOptions(role.abilities, facts.ability ? [facts.ability] : []),
+      items,
+      moves: unionOptions(role.moves, facts.revealedMoves),
+      gimmicks: deriveGimmicks(items, teraTypes, species),
+    };
+  };
 
   const sets =
     candidates.length > 0

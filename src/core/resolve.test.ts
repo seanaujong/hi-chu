@@ -172,7 +172,7 @@ describe('inferSets', () => {
     const k = inferSets(noivernFacts({item: 'Choice Specs'}), NOIVERN);
     expect(names(k)).toEqual(['Fast Attacker']);
     expect(k.candidates[0]!.items).toEqual([{name: 'Choice Specs', known: true}]);
-    expect(k.candidates[0]!.teraTypes).toEqual([{name: 'Normal', known: false}]);
+    expect(k.candidates[0]!.gimmicks).toEqual([{kind: 'tera', types: [{name: 'Normal', known: false}]}]);
   });
 
   it('narrowing one dimension narrows the others through the set', () => {
@@ -185,7 +185,7 @@ describe('inferSets', () => {
   it('an active Tera narrows the sets AND settles the Tera line', () => {
     const k = inferSets(noivernFacts({terastallized: true, teraType: 'Fire'}), NOIVERN);
     expect(names(k)).toEqual(['Fast Support']);
-    expect(k.candidates[0]!.teraTypes).toEqual([{name: 'Fire', known: true}]);
+    expect(k.candidates[0]!.gimmicks).toEqual([{kind: 'tera', types: [{name: 'Fire', known: true}]}]);
   });
 
   it('keeps every set and flags uncertainty when evidence matches nothing', () => {

@@ -86,15 +86,32 @@ export interface KnownOption {
   readonly known: boolean;
 }
 
+/**
+ * A once-per-battle transformation a set can perform, as a discriminated union
+ * rather than a fixed column per gimmick. Formats carry DIFFERENT ones — gen9 has
+ * Tera, Champions has Mega, gen7 had Z-moves — and most sets have none. Modeling it
+ * as a variant keeps "none / one / both" honest: a set simply lists the gimmicks it
+ * actually has, and the renderer dispatches on `kind` (exhaustively). Only Tera is a
+ * distinct feed dimension; Mega is DERIVED from a stone item — so this lives on the
+ * derived SetKnowledge, never on the raw feed. Mirrors pokemon-battle's `GimmickKind`:
+ * identity here, mechanics/legality in the layer that knows the format.
+ *
+ * A speculative gimmick is display only — it must never reach the damage calc (the
+ * calc already sees the live forme/Tera through LiveFacts once it actually happens).
+ */
+export type Gimmick =
+  | {readonly kind: 'tera'; readonly types: readonly KnownOption[]}
+  | {readonly kind: 'mega'; readonly stone: KnownOption; readonly forme: string};
+
 /** One candidate set, kept whole: its name and every dimension, reveals marked. */
 export interface CandidateSet {
   /** The feed's role name ("Bulky Setup"); '' for role-less (older-gen) entries. */
   readonly name: string;
   readonly abilities: readonly KnownOption[];
   readonly items: readonly KnownOption[];
-  /** Display only — a speculative Tera type must never reach the damage calc. */
-  readonly teraTypes: readonly KnownOption[];
   readonly moves: readonly KnownOption[];
+  /** The transformations this set can perform in this format — often empty. */
+  readonly gimmicks: readonly Gimmick[];
 }
 
 /**

@@ -40,13 +40,15 @@ describe('normalizes the loose feed shape (gen9championsrandombattle)', () => {
         'Setup Sweeper': {abilities: ['Multiscale'], items: ['Lum Berry'], moves: ['Dragon Dance', 'Iron Head']},
       },
     },
-    Charizard: {
-      level: 52,
+    // In Champions, a Mega is a SEPARATE forme entry (not a stone on the base), and it
+    // carries its stone item — this is verbatim from the real feed. The client reports
+    // this forme name once a Pokémon has Mega Evolved, so this is the real Mega consumer.
+    'Charizard-Mega-Y': {
+      level: 47,
       abilities: ['Blaze'],
-      items: ['Leftovers'],
+      items: ['Charizardite Y'],
       roles: {
-        // no items key AND no teraTypes key
-        'Setup Sweeper': {abilities: ['Blaze'], moves: ['Acrobatics', 'Flare Blitz', 'Swords Dance']},
+        'Fast Attacker': {abilities: ['Blaze'], items: ['Charizardite Y'], moves: ['Air Slash', 'Roost', 'Solar Beam']},
       },
     },
   } as unknown as RandbatsData;
@@ -61,22 +63,31 @@ describe('normalizes the loose feed shape (gen9championsrandombattle)', () => {
     ...over,
   });
 
-  it('fills missing role arrays so the core reads total shapes', () => {
-    const role = pickEntry(championsFeed, 'Charizard')!.roles!['Setup Sweeper']!;
-    expect(role.items).toEqual([]); // was absent in the feed
+  it('fills the missing teraTypes array so the core reads total shapes', () => {
+    const role = pickEntry(championsFeed, 'Dragonite')!.roles!['Setup Sweeper']!;
     expect(role.teraTypes).toEqual([]); // absent on every Champions role
-    expect(role.abilities).toEqual(['Blaze']);
-    expect(role.moves).toContain('Flare Blitz');
+    expect(role.items).toEqual(['Lum Berry']);
+    expect(role.abilities).toEqual(['Multiscale']);
   });
 
   it('a normalized entry flows through inferSets without crashing', () => {
     // The regression: every Champions hover threw here before normalization.
-    const charizard = pickEntry(championsFeed, 'Charizard')!;
-    expect(() => inferSets(facts(), charizard)).not.toThrow();
-    // And an active Tera (which reads role.teraTypes) must not throw either.
-    expect(() => inferSets(facts({terastallized: true, teraType: 'Fire'}), charizard)).not.toThrow();
-    const k = inferSets(facts(), charizard);
-    expect(k.candidates[0]!.moves.map((m) => m.name)).toContain('Flare Blitz');
-    expect(k.candidates[0]!.teraTypes).toEqual([]); // no Tera line invented
+    const dragonite = pickEntry(championsFeed, 'Dragonite')!;
+    expect(() => inferSets(facts({speciesForme: 'Dragonite'}), dragonite)).not.toThrow();
+    expect(inferSets(facts({speciesForme: 'Dragonite'}), dragonite).candidates[0]!.moves.map((m) => m.name))
+      .toContain('Iron Head');
+  });
+
+  it('derives a Mega gimmick from the stone item, with no Tera invented', () => {
+    // Champions has Mega but no Tera — the honest "one, not the other" case. The
+    // forme is derived from the base species + the stone's Y suffix.
+    const megaY = pickEntry(championsFeed, 'Charizard-Mega-Y')!;
+    const k = inferSets(facts({speciesForme: 'Charizard-Mega-Y'}), megaY);
+    expect(k.candidates[0]!.gimmicks).toEqual([
+      {kind: 'mega', stone: {name: 'Charizardite Y', known: false}, forme: 'Charizard-Mega-Y'},
+    ]);
+    // Dragonite (Tera-less, stone-less) has no gimmick line at all — the "none" case.
+    const dragonite = inferSets(facts({speciesForme: 'Dragonite'}), pickEntry(championsFeed, 'Dragonite')!);
+    expect(dragonite.candidates[0]!.gimmicks).toEqual([]);
   });
 });

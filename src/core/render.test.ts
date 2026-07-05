@@ -96,7 +96,7 @@ describe('renderSetsSection', () => {
     name: 'Bulky Support',
     abilities: [{name: 'Clear Body', known: false}, {name: 'Liquid Ooze', known: false}],
     items: [{name: 'Leftovers', known: true}],
-    teraTypes: [{name: 'Flying', known: false}, {name: 'Grass', known: false}],
+    gimmicks: [{kind: 'tera' as const, types: [{name: 'Flying', known: false}, {name: 'Grass', known: false}]}],
     moves: [
       {name: 'Surf', known: true, report: report({move: 'Surf', percent: {min: 30, max: 36, mean: 33}})},
       {name: 'Haze', known: false},
@@ -112,6 +112,17 @@ describe('renderSetsSection', () => {
     expect(html).toContain('<small>Abilities:</small> Clear Body, Liquid Ooze');
     expect(html).toContain('<small>Tera Types:</small> Flying, Grass');
     expect(html).toContain('<small>Moves:</small>');
+  });
+
+  it('renders a Mega gimmick as its own line (Champions format)', () => {
+    const charizard = {
+      ...bulkySupport,
+      name: 'Setup Sweeper',
+      gimmicks: [{kind: 'mega' as const, stone: {name: 'Charizardite Y', known: true}, forme: 'Charizard-Mega-Y'}],
+    };
+    const html = renderSetsSection(model({candidates: [charizard]}));
+    expect(html).toContain('<small>Mega:</small> <b>✓ Charizardite Y</b> → Charizard-Mega-Y');
+    expect(html).not.toContain('Tera Types'); // a Mega-only set shows no Tera line
   });
 
   it('gives each set its own grey-panelled divider block', () => {

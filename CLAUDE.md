@@ -34,12 +34,23 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
 - `src/core/` — pure: no DOM, no network, unit-tested. All the interesting logic lives here.
   - `multihit.ts` — the probability law (hit-count PMFs + convolution → KO%/expected).
   - `damage.ts` — wraps `@smogon/calc`; builds the calc `Field` from `FieldFacts`.
-  - `resolve.ts` — the evidence law: `resolveMon` merges live facts over randbats
-    possibilities into the one set we calculate with; `resolveVariants` enumerates EVERY
-    still-possible set (when the item/ability is hidden) for uncertainty-aware damage,
-    and `resolveByRole` gives one resolution per surviving set (for the sets view's
-    per-block numbers); `inferSets` narrows the candidate roles by ALL public evidence
-    (moves, item incl. `prevItem`, ability) into a `SetKnowledge` for display.
+  - **The set-inference pipeline, split by concern** (was one `resolve.ts`):
+    - `facts.ts` — tiny shared readings of `LiveFacts` (`toId`, `innateAbility`,
+      `isMegaForme`); a leaf so the layers below needn't depend on each other for them.
+    - `deductions.ts` — the behavioural deduction layer: SILENT items (Life Orb, Heavy-Duty
+      Boots) deduced ABSENT from public behaviour. `ruledOutItems`/`survivingItems`; adding
+      a deduction = one predicate + one line. Keeps the matcher general (it filters a pool,
+      it doesn't know mechanics).
+    - `narrow.ts` — the evidence law: `roleMatches` + `selectRoles` narrow roles by ALL
+      public evidence (moves, item incl. `prevItem`, innate ability, active Tera) plus the
+      deduction rule-outs. The one place the "which roles survive" rule lives.
+    - `resolve.ts` — the resolution law: `resolveMon` merges live facts over randbats into
+      the one set we calculate with; `resolveVariants` enumerates EVERY still-possible set
+      (hidden item/ability) for uncertainty-aware damage; `resolveByRole` gives one
+      resolution per surviving set (the sets view's per-block numbers). All funnel through
+      `buildResolved` so "known wins" is written once.
+    - `knowledge.ts` — the information game: `inferSets` renders each surviving role's
+      options into a `SetKnowledge` for display (speculative values never reach the calc).
   - `variants.ts` — the distinct-outcome law: run the calc per `resolveVariants` result,
     then `bucketByDamage` collapses identical rolls into the few DISTINCT outcomes and
     names each bucket by the axis that differs (an Assault Vest that changes the number).
@@ -111,8 +122,8 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   protocol log (`battle.stepQueue`) and attributes a `-damage` on a foe to this mon's move —
   excluding anything `[from]` an item/hazard/status/recoil, and matching the mon by `ident`
   (side+name) so a mid-battle switch doesn't misattribute a slot. That yields
-  `LiveFacts.landedDamagingHit`; the evidence law in `resolve.ts` (`recoilRevealTrusted` /
-  `survivingItems`) then filters Life Orb from a role's item pool, dropping a role whose only
+  `LiveFacts.landedDamagingHit`; the deduction layer (`deductions.ts`, via `survivingItems`)
+  then filters Life Orb from a role's item pool, dropping a role whose only
   item it was. **Never lie:** the rule is suppressed for any role that could be running Sheer
   Force or Magic Guard (both cancel the recoil) unless the revealed innate ability rules that
   out — so a hidden-ability set keeps Life Orb possible. Checked by `resolve.test.ts` ("a landed
@@ -125,6 +136,20 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   ambiguous (an unknown ident, empty log) resolves to "no hit seen" — we miss a rule-out rather
   than make a false one. `stepQueue`/`ident` are new client fields → covered by
   `npm run drift-check`.
+- ✅ **Taking entry-hazard damage rules Heavy-Duty Boots out.** Boots negates Stealth
+  Rock/Spikes damage, so a mon that took it can't be holding them — the mirror of the Life
+  Orb rule (the effect FIRING is the proof, not its absence) and the second member of the
+  deduction layer. `readState.tookEntryHazardDamage` scans `stepQueue` for a `-damage` on the
+  mon tagged `[from] Stealth Rock` / `Spikes`; `deductions.ts` rules `heavydutyboots` out. No
+  ability guard: taking the damage also rules out Magic Guard, the only other thing that
+  blocks it. Checked by `resolve.test.ts` ("taking entry-hazard damage rules out the
+  Heavy-Duty Boots set") and `readState.test.ts` (`tookEntryHazardDamage`).
+- ✅ **A Mega forme matches on forme + stone, never its ability.** A Mega's ability is
+  forme-locked (no set-discriminating value) and the live client and feed can name it
+  differently (Champions Meganium-Mega: client "Mega Sol" vs feed "Leaf Guard"), so
+  `narrow.roleMatches` skips the ability check when `isMegaForme(speciesForme)` — else every
+  role is rejected ("matched no known set"). Checked by `resolve.test.ts` ("a Mega forme
+  matches on forme + stone").
 - ✅ **Set inference keys on the INNATE ability (`baseAbility`), not the live one.** Trace,
   Skill Swap, Worry Seed, Entrainment, Simple Beam, Gastro Acid, and Mummy/Wandering Spirit
   all change or suppress the current `ability`; the randbats set is keyed to what the mon was

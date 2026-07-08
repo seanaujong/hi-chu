@@ -1,6 +1,7 @@
 import {describe, it, expect} from 'vitest';
 import {
   toLiveFacts,
+  hasLandedDamagingHit,
   detectFormat,
   findOpposingActive,
   readFieldFacts,
@@ -46,6 +47,12 @@ describe('toLiveFacts', () => {
   it('strips the "*" transform marker and drops empty move names', () => {
     const f = toLiveFacts(clientMon({moveTrack: [['*Outrage', 5], ['Roost', 10]]}));
     expect(f.revealedMoves).toEqual(['Outrage', 'Roost']);
+  });
+
+  it('carries the landedDamagingHit flag through, defaulting to false', () => {
+    expect(toLiveFacts(clientMon({}), true).landedDamagingHit).toBe(true);
+    expect(toLiveFacts(clientMon({}), false).landedDamagingHit).toBe(false);
+    expect(toLiveFacts(clientMon({})).landedDamagingHit).toBe(false); // safe default
   });
 
   it('keeps only non-zero stat boosts', () => {
@@ -146,6 +153,73 @@ describe('readFieldFacts', () => {
       lightScreen: false,
       auroraVeil: false,
     });
+  });
+});
+
+describe('hasLandedDamagingHit', () => {
+  // A minimal battle carrying only the protocol log the scan reads. Real log lines below
+  // are taken verbatim from captured gen9randombattle replays.
+  const withLog = (stepQueue: string[], gen = 9): ClientBattle => ({gen, tier: '[Gen 9] Random Battle', sides: [], stepQueue});
+  const noivern = clientMon({ident: 'p1: Noivern'});
+
+  it('is true when the log shows the mon dealing move damage to a foe', () => {
+    const log = ['|move|p1a: Noivern|Flamethrower|p2a: Corviknight', '|-damage|p2a: Corviknight|180/298'];
+    expect(hasLandedDamagingHit(withLog(log), noivern)).toBe(true);
+  });
+
+  it('is false when the damaging move missed (no -damage line follows)', () => {
+    const log = ['|move|p1a: Noivern|Hurricane|p2a: Corviknight', '|-miss|p1a: Noivern|p2a: Corviknight'];
+    expect(hasLandedDamagingHit(withLog(log), noivern)).toBe(false);
+  });
+
+  it('is false when the target was immune (attacked, but dealt no damage)', () => {
+    const log = ['|move|p1a: Noivern|Earthquake|p2a: Corviknight', '|-immune|p2a: Corviknight'];
+    expect(hasLandedDamagingHit(withLog(log), noivern)).toBe(false);
+  });
+
+  it('ignores indirect damage — hazards, status, and Life Orb recoil carry [from]', () => {
+    const log = [
+      '|move|p1a: Noivern|Flamethrower|p2a: Corviknight',
+      '|-damage|p1a: Noivern|90/100|[from] item: Life Orb', // recoil on SELF, not a hit
+      '|-damage|p2a: Corviknight|270/298|[from] Stealth Rock', // switch-in chip, not our move
+    ];
+    expect(hasLandedDamagingHit(withLog(log), noivern)).toBe(false);
+  });
+
+  it('does not attribute a foe’s damage to us (mover resets on the next move)', () => {
+    const log = ['|move|p2a: Corviknight|Brave Bird|p1a: Noivern', '|-damage|p1a: Noivern|140/298'];
+    expect(hasLandedDamagingHit(withLog(log), noivern)).toBe(false);
+  });
+
+  it('matches by side+name across a switch, not by slot letter', () => {
+    // Noivern hits from a later turn after re-entering; slot tags differ, name matches.
+    const log = ['|move|p1a: Noivern|Boomburst|p2a: Skarmory', '|-damage|p2a: Skarmory|10/271'];
+    expect(hasLandedDamagingHit(withLog(log), noivern)).toBe(true);
+  });
+
+  it('counts breaking a foe’s substitute — the sub took the damage, the HP bar did not', () => {
+    const log = ['|move|p1a: Noivern|Boomburst|p2a: Keldeo', '|-end|p2a: Keldeo|Substitute'];
+    expect(hasLandedDamagingHit(withLog(log), noivern)).toBe(true);
+  });
+
+  it('counts denting a foe’s substitute (the [damage] tag marks a real hit)', () => {
+    const log = ['|move|p1a: Noivern|Flamethrower|p2a: Keldeo', '|-activate|p2a: Keldeo|move: Substitute|[damage]'];
+    expect(hasLandedDamagingHit(withLog(log), noivern)).toBe(true);
+  });
+
+  it('does NOT count a status move a substitute merely blocked (no [damage] tag)', () => {
+    const log = ['|move|p1a: Noivern|Thunder Wave|p2a: Keldeo', '|-activate|p2a: Keldeo|move: Substitute'];
+    expect(hasLandedDamagingHit(withLog(log), noivern)).toBe(false);
+  });
+
+  it('does NOT count a substitute hit in Gen 4, which took no Life Orb recoil against one', () => {
+    const log = ['|move|p1a: Noivern|Boomburst|p2a: Keldeo', '|-end|p2a: Keldeo|Substitute'];
+    expect(hasLandedDamagingHit(withLog(log, 4), noivern)).toBe(false);
+  });
+
+  it('is false with no log or no ident (conservative — never a false rule-out)', () => {
+    expect(hasLandedDamagingHit(withLog([]), noivern)).toBe(false);
+    expect(hasLandedDamagingHit(withLog(['|move|p1a: Noivern|Flamethrower|p2a: X', '|-damage|p2a: X|1/2']), clientMon({}))).toBe(false);
   });
 });
 

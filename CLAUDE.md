@@ -91,6 +91,28 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   `resolve.test.ts` ("evidence beyond moves narrows the role"). The own-side mirror view is
   honest only because client `Pokemon` objects carry public info exclusively (the private
   team lives in `battle.myPokemon`, which we never read).
+- ✅ **A LANDED damaging hit with no item revealed rules Life Orb out.** Life Orb takes 1/10
+  recoil when a damaging move connects and REVEALS itself doing so — so if a mon has landed a
+  hit and no item has surfaced, it isn't holding one. It must be a *landed* hit, not merely a
+  move used: a miss or an immunity triggers no recoil and proves nothing. A snapshot can't tell
+  the two apart (`moveTrack` records the attempt), so `readState.hasLandedDamagingHit` reads the
+  protocol log (`battle.stepQueue`) and attributes a `-damage` on a foe to this mon's move —
+  excluding anything `[from]` an item/hazard/status/recoil, and matching the mon by `ident`
+  (side+name) so a mid-battle switch doesn't misattribute a slot. That yields
+  `LiveFacts.landedDamagingHit`; the evidence law in `resolve.ts` (`recoilRevealTrusted` /
+  `survivingItems`) then filters Life Orb from a role's item pool, dropping a role whose only
+  item it was. **Never lie:** the rule is suppressed for any role that could be running Sheer
+  Force or Magic Guard (both cancel the recoil) unless the revealed innate ability rules that
+  out — so a hidden-ability set keeps Life Orb possible. Checked by `resolve.test.ts` ("a landed
+  damaging hit with no item revealed rules Life Orb out") and `readState.test.ts`
+  (`hasLandedDamagingHit`: miss, immunity, indirect damage, cross-switch matching, substitutes).
+  A substitute takes damage in the Pokémon's place — the foe's HP bar never moves — so the scan
+  also counts a sub BREAKING (`-end … Substitute`) or being DENTED (`-activate … Substitute`
+  with the `[damage]` tag, which separates a real hit from a status move the sub merely blocked);
+  this counts only Gen 5+, since Gen 4 took no Life Orb recoil against a sub. Anything genuinely
+  ambiguous (an unknown ident, empty log) resolves to "no hit seen" — we miss a rule-out rather
+  than make a false one. `stepQueue`/`ident` are new client fields → covered by
+  `npm run drift-check`.
 - ✅ **Set inference keys on the INNATE ability (`baseAbility`), not the live one.** Trace,
   Skill Swap, Worry Seed, Entrainment, Simple Beam, Gastro Acid, and Mummy/Wandering Spirit
   all change or suppress the current `ability`; the randbats set is keyed to what the mon was

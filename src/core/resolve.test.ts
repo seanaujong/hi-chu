@@ -30,6 +30,7 @@ function facts(over: Partial<LiveFacts> = {}): LiveFacts {
     boosts: {},
     terastallized: false,
     revealedMoves: [],
+    landedDamagingHit: false,
     ...over,
   };
 }
@@ -115,6 +116,7 @@ function noivernFacts(over: Partial<LiveFacts> = {}): LiveFacts {
     boosts: {},
     terastallized: false,
     revealedMoves: [],
+    landedDamagingHit: false,
     ...over,
   };
 }
@@ -162,7 +164,7 @@ const GARDEVOIR: RandbatsEntry = {
 };
 
 function gardevoirFacts(over: Partial<LiveFacts> = {}): LiveFacts {
-  return {speciesForme: 'Gardevoir', level: 83, hpPercent: 1, boosts: {}, terastallized: false, revealedMoves: [], ...over};
+  return {speciesForme: 'Gardevoir', level: 83, hpPercent: 1, boosts: {}, terastallized: false, revealedMoves: [], landedDamagingHit: false, ...over};
 }
 
 describe('set inference uses the INNATE ability, not the live one', () => {
@@ -268,6 +270,100 @@ describe('inferSets', () => {
   });
 });
 
+// Life Orb takes 1/10 recoil after a damaging move connects and reveals itself doing
+// so. So a mon that has LANDED a damaging hit with none of its item revealed can't be
+// holding it — UNLESS Sheer Force or Magic Guard would have suppressed the recoil. This
+// fixture has one Life-Orb-only role (drops when ruled out), one that pairs it with a
+// second item (survives, minus Life Orb), and one Sheer Force role (recoil suppressed).
+const ORB_MON: RandbatsEntry = {
+  level: 80,
+  abilities: ['Overgrow', 'Sheer Force'],
+  items: [],
+  roles: {
+    'Orb Sweeper': {abilities: ['Overgrow'], items: ['Life Orb'], teraTypes: ['Grass'], moves: ['Leaf Storm', 'Earthquake']},
+    'Mixed Attacker': {abilities: ['Overgrow'], items: ['Life Orb', 'Choice Band'], teraTypes: ['Grass'], moves: ['Leaf Storm', 'Earthquake']},
+    'Force Sweeper': {abilities: ['Sheer Force'], items: ['Life Orb'], teraTypes: ['Grass'], moves: ['Leaf Storm', 'Earthquake']},
+  },
+};
+
+function orbFacts(over: Partial<LiveFacts> = {}): LiveFacts {
+  return {
+    speciesForme: 'Orbmon',
+    level: 80,
+    hpPercent: 1,
+    boosts: {},
+    terastallized: false,
+    revealedMoves: ['Leaf Storm'], // in every role, so it narrows nothing by itself
+    landedDamagingHit: true,
+    ...over,
+  };
+}
+
+// A single role that can run EITHER a recoil-suppressing ability or a plain one, with
+// Life Orb plus an alternative. It isolates the ability guard: same behaviour, opposite
+// outcomes depending only on which ability the battle has revealed.
+const DUAL_ABILITY: RandbatsEntry = {
+  level: 80,
+  abilities: ['Overgrow', 'Sheer Force'],
+  items: [],
+  roles: {
+    Attacker: {abilities: ['Overgrow', 'Sheer Force'], items: ['Life Orb', 'Choice Band'], teraTypes: ['Grass'], moves: ['Leaf Storm']},
+  },
+};
+
+describe('a landed damaging hit with no item revealed rules Life Orb out', () => {
+  const names = (k: ReturnType<typeof inferSets>): string[] => k.candidates.map((c) => c.name);
+  const itemNames = (k: ReturnType<typeof inferSets>, i: number): string[] =>
+    k.candidates[i]!.items.map((o) => o.name);
+
+  it('drops a Life-Orb-only role and strips Life Orb from a role that has an alternative', () => {
+    const k = inferSets(orbFacts(), ORB_MON);
+    // 'Orb Sweeper' (Life Orb its only item) is gone; the Sheer Force role remains.
+    expect(names(k)).toEqual(['Mixed Attacker', 'Force Sweeper']);
+    expect(itemNames(k, 0)).toEqual(['Choice Band']); // Life Orb ruled out, Choice Band kept
+  });
+
+  it('keeps Life Orb on a Sheer Force set — the recoil it never took proves nothing', () => {
+    const k = inferSets(orbFacts(), ORB_MON);
+    expect(k.candidates[1]!.name).toBe('Force Sweeper');
+    expect(itemNames(k, 1)).toEqual(['Life Orb']);
+  });
+
+  it('never lies while the ability is hidden and the set COULD be Sheer Force', () => {
+    // Ability unrevealed, and this role can run Sheer Force → Life Orb stays possible.
+    const k = inferSets(orbFacts(), DUAL_ABILITY);
+    expect(itemNames(k, 0)).toEqual(['Life Orb', 'Choice Band']);
+  });
+
+  it('rules Life Orb out once a NON-suppressing innate ability is revealed', () => {
+    const k = inferSets(orbFacts({baseAbility: 'Overgrow'}), DUAL_ABILITY);
+    expect(itemNames(k, 0)).toEqual(['Choice Band']);
+  });
+
+  it('keeps Life Orb once the revealed innate ability IS a suppressor', () => {
+    const k = inferSets(orbFacts({baseAbility: 'Sheer Force'}), DUAL_ABILITY);
+    expect(itemNames(k, 0)).toEqual(['Life Orb', 'Choice Band']);
+  });
+
+  it('infers nothing until a damaging hit has actually landed', () => {
+    // No landed hit yet (moves whiffed, or only status used) → Life Orb intact. This is
+    // the honesty guard: a missed damaging move triggers no recoil and proves nothing.
+    const k = inferSets(orbFacts({landedDamagingHit: false}), DUAL_ABILITY);
+    expect(itemNames(k, 0)).toEqual(['Life Orb', 'Choice Band']);
+  });
+
+  it('stays inert once an item is revealed (the positive path already pins the set)', () => {
+    const k = inferSets(orbFacts({item: 'Life Orb'}), DUAL_ABILITY);
+    expect(itemNames(k, 0)).toEqual(['Life Orb']); // revealed as held — settled fact
+  });
+
+  it('keeps the calc off a ruled-out Life Orb when picking the assumed item', () => {
+    // Mixed Attacker lists Life Orb FIRST; without the rule the calc would assume it.
+    const r = resolveMon(orbFacts(), ORB_MON);
+    expect(r.item).toBe('Choice Band');
+  });
+});
+
 // One role whose hidden item could be Assault Vest OR Leftovers — the shape that makes
 // a single move deal two different amounts (AV halves the special hit).
 const TENTACRUEL: RandbatsEntry = {
@@ -285,7 +381,7 @@ const TENTACRUEL: RandbatsEntry = {
 };
 
 function tentacruelFacts(over: Partial<LiveFacts> = {}): LiveFacts {
-  return {speciesForme: 'Tentacruel', level: 82, hpPercent: 1, boosts: {}, terastallized: false, revealedMoves: [], ...over};
+  return {speciesForme: 'Tentacruel', level: 82, hpPercent: 1, boosts: {}, terastallized: false, revealedMoves: [], landedDamagingHit: false, ...over};
 }
 
 describe('resolveVariants — the still-possible sets to calc over', () => {
@@ -300,6 +396,15 @@ describe('resolveVariants — the still-possible sets to calc over', () => {
     const vs = resolveVariants(tentacruelFacts({item: 'Leftovers'}), TENTACRUEL);
     expect(vs).toHaveLength(1);
     expect(vs[0]!.mon.item).toBe('Leftovers');
+  });
+
+  it('drops the Life Orb variant once a landed hit has ruled it out', () => {
+    // The seam between the two features: a landed hit with no item revealed removes Life
+    // Orb from the enumerated variants, so no phantom Life Orb damage bucket is produced.
+    // Ability hidden but the set could be Sheer Force → Life Orb stays possible (never lie).
+    expect(items(resolveVariants(orbFacts(), DUAL_ABILITY))).toContain('Life Orb');
+    // Innate ability revealed as non-suppressing → the landed hit rules Life Orb out.
+    expect(items(resolveVariants(orbFacts({baseAbility: 'Overgrow'}), DUAL_ABILITY))).toEqual(['Choice Band']);
   });
 
   it('dedupes roles that resolve identically — no fan-out from redundant sets', () => {

@@ -51,6 +51,45 @@ function innateAbility(facts: LiveFacts): string | undefined {
   return facts.baseAbility ?? facts.ability;
 }
 
+// Items that reveal themselves by damaging their own holder after a damaging move.
+// Life Orb (1/10 recoil) is the only one in the covered gens; kept a set so the
+// rule reads as "recoil-on-attack items" rather than a single hard-coded string.
+const RECOIL_ON_ATTACK_ITEMS = new Set(['lifeorb']);
+
+// Abilities that suppress that recoil, so its absence proves nothing: Magic Guard
+// negates all indirect damage; Sheer Force cancels Life Orb recoil on any move it
+// boosts. A set that could be running either keeps Life Orb as a live possibility.
+const RECOIL_SUPPRESSORS = new Set(['sheerforce', 'magicguard']);
+
+/**
+ * Can we trust "landed a damaging hit, saw no item ⇒ no recoil-on-attack item" for
+ * THIS role? Only when a damaging hit actually landed, no item has been revealed
+ * (a revealed item is already the stronger, positive evidence), and no
+ * recoil-suppressing ability is in play — judged against the KNOWN innate ability
+ * when we have it, otherwise against everything this role could still be running.
+ * The "never lie" rule: if the role could be a Sheer Force / Magic Guard set whose
+ * ability we haven't seen, we don't rule Life Orb out.
+ */
+function recoilRevealTrusted(abilities: readonly string[], facts: LiveFacts): boolean {
+  if (!facts.landedDamagingHit) return false;
+  if (facts.item !== undefined || facts.prevItem !== undefined) return false;
+  const known = innateAbility(facts);
+  if (known !== undefined) return !RECOIL_SUPPRESSORS.has(toId(known));
+  return !abilities.some((a) => RECOIL_SUPPRESSORS.has(toId(a)));
+}
+
+/** An item pool minus any recoil-on-attack item ruled out by the mon having
+ *  attacked without one revealing itself — judged against `abilities`, the pool the
+ *  ability could still be drawn from. Unchanged unless the reveal is trusted. */
+function survivingItems(
+  abilities: readonly string[],
+  items: readonly string[],
+  facts: LiveFacts,
+): readonly string[] {
+  if (!recoilRevealTrusted(abilities, facts)) return items;
+  return items.filter((i) => !RECOIL_ON_ATTACK_ITEMS.has(toId(i)));
+}
+
 function roleMatches(role: RandbatsRole, facts: LiveFacts): boolean {
   const have = new Set(role.moves.map(toId));
   for (const m of facts.revealedMoves) if (!have.has(toId(m))) return false;
@@ -60,6 +99,9 @@ function roleMatches(role: RandbatsRole, facts: LiveFacts): boolean {
   if (revealedItem && role.items.length > 0 && !role.items.some((i) => toId(i) === toId(revealedItem))) {
     return false;
   }
+  // A role whose only items are recoil-on-attack items the mon has just shown it
+  // ISN'T holding (landed a hit, none revealed) can no longer be that role.
+  if (role.items.length > 0 && survivingItems(role.abilities, role.items, facts).length === 0) return false;
   const ability = innateAbility(facts);
   if (ability && role.abilities.length > 0 && !role.abilities.some((a) => toId(a) === toId(ability))) {
     return false;
@@ -169,7 +211,13 @@ function buildResolved(
 export function resolveMon(facts: LiveFacts, entry: RandbatsEntry): ResolvedMon {
   const {chosen, candidates, uncertain} = selectRoles(entry, facts);
   const possibleMoves = possibleMovesFor(facts, candidates, entry);
-  const item = firstDefined(facts.item, chosen?.items[0], entry.items[0]);
+  // Assume an item we haven't already ruled out by the recoil-reveal rule, so the calc
+  // doesn't hand a demonstrably item-less mon a Life Orb boost.
+  const item = firstDefined(
+    facts.item,
+    chosen ? survivingItems(chosen.abilities, chosen.items, facts)[0] : undefined,
+    survivingItems(entry.abilities, entry.items, facts)[0],
+  );
   const ability = firstDefined(facts.ability, chosen?.abilities[0], entry.abilities[0]);
   return buildResolved(facts, chosen, entry, item, ability, possibleMoves, uncertain);
 }
@@ -197,8 +245,10 @@ export function resolveVariants(facts: LiveFacts, entry: RandbatsEntry): SetVari
 
   const variants: SetVariant[] = [];
   for (const {name, role} of survivingRoles(facts, entry)) {
-    const itemPool = role?.items?.length ? role.items : entry.items;
     const abilityPool = role?.abilities?.length ? role.abilities : entry.abilities;
+    // Drop any item the recoil-reveal rule ruled out, so a landed-hit mon never gets a
+    // phantom Life Orb damage bucket alongside the item it's actually still allowed.
+    const itemPool = survivingItems(abilityPool, role?.items?.length ? role.items : entry.items, facts);
     const items: (string | undefined)[] = facts.item !== undefined ? [facts.item] : itemPool.length ? [...itemPool] : [undefined];
     const abilities: (string | undefined)[] =
       facts.ability !== undefined ? [facts.ability] : abilityPool.length ? [...abilityPool] : [undefined];
@@ -220,7 +270,11 @@ export function resolveByRole(facts: LiveFacts, entry: RandbatsEntry): SetVarian
   const {candidates, uncertain} = selectRoles(entry, facts);
   const possibleMoves = possibleMovesFor(facts, candidates, entry);
   return survivingRoles(facts, entry).map(({name, role}) => {
-    const item = firstDefined(facts.item, role?.items[0], entry.items[0]);
+    const item = firstDefined(
+      facts.item,
+      role ? survivingItems(role.abilities, role.items, facts)[0] : undefined,
+      survivingItems(entry.abilities, entry.items, facts)[0],
+    );
     const ability = firstDefined(facts.ability, role?.abilities[0], entry.abilities[0]);
     return {mon: buildResolved(facts, role, entry, item, ability, possibleMoves, uncertain), role: name};
   });
@@ -327,7 +381,7 @@ export function inferSets(facts: LiveFacts, entry: RandbatsEntry): SetKnowledge 
   const species = baseSpecies(facts.speciesForme);
 
   const toCandidate = (name: string, role: RandbatsRole): SetKnowledge['candidates'][number] => {
-    const items = exclusiveOptions(role.items, revealedItem ? [revealedItem] : []);
+    const items = exclusiveOptions(survivingItems(role.abilities, role.items, facts), revealedItem ? [revealedItem] : []);
     const teraTypes = exclusiveOptions(role.teraTypes, activeTera);
     return {
       name,

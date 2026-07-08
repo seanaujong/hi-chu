@@ -69,8 +69,17 @@ function probeLiveClient() {
   const actives = b.sides.flatMap((s) => (s.active || []).filter(Boolean));
   if (actives.length < 2) problems.push(`expected an active on both sides, saw ${actives.length}`);
 
+  // The Life Orb recoil inference reads the protocol log; guard its shape too.
+  if (!Array.isArray(b.stepQueue)) problems.push(`battle.stepQueue is ${typeof b.stepQueue}, expected an array`);
+
   for (const mon of actives) {
     const f = R.toLiveFacts(mon);
+    if (typeof mon.ident !== 'string' || !mon.ident.includes(':')) {
+      problems.push(`${mon.speciesForme || '?'}.ident = ${JSON.stringify(mon.ident)} (expected "pN: Name")`);
+    }
+    if (typeof R.hasLandedDamagingHit(b, mon) !== 'boolean') {
+      problems.push(`hasLandedDamagingHit(${mon.speciesForme || '?'}) did not return a boolean`);
+    }
     const ok = {
       speciesForme: typeof f.speciesForme === 'string' && f.speciesForme.length > 0,
       level: typeof f.level === 'number' && f.level > 0,

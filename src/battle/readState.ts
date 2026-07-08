@@ -24,6 +24,9 @@ export interface ClientPokemon {
   readonly moveTrack?: ReadonlyArray<readonly [string, unknown]>;
   readonly gender?: string;
   readonly side?: ClientSide;
+  /** Side+name identity, e.g. "p1: Noivern" — matches the protocol log's actor tags
+   *  (slot-independent, so a mid-battle switch doesn't misattribute a slot). */
+  readonly ident?: string;
 }
 
 export interface ClientSide {
@@ -42,6 +45,8 @@ export interface ClientBattle {
   readonly weather?: string;
   /** Field conditions including terrains; each entry is [displayName, …]. */
   readonly pseudoWeather?: ReadonlyArray<readonly [string, ...unknown[]]>;
+  /** The raw `|`-delimited protocol log, one line per entry ("|move|…", "|-damage|…"). */
+  readonly stepQueue?: ReadonlyArray<string>;
 }
 
 const BATTLE_STATUSES = new Set<StatusName>(['brn', 'par', 'psn', 'tox', 'slp', 'frz']);
@@ -55,7 +60,7 @@ function asGender(raw: string | undefined): 'M' | 'F' | 'N' | undefined {
   return raw === 'M' || raw === 'F' || raw === 'N' ? raw : undefined;
 }
 
-export function toLiveFacts(p: ClientPokemon): LiveFacts {
+export function toLiveFacts(p: ClientPokemon, landedDamagingHit = false): LiveFacts {
   // moveTrack entries are [name, pp]; a leading "*" marks a transformed/mimicked move.
   const revealedMoves = (p.moveTrack ?? [])
     .map(([name]) => name.replace(/^\*/, ''))
@@ -83,6 +88,7 @@ export function toLiveFacts(p: ClientPokemon): LiveFacts {
     boosts,
     terastallized: Boolean(p.terastallized),
     revealedMoves,
+    landedDamagingHit,
     ...(asStatus(p.status) ? {status: asStatus(p.status)!} : {}),
     ...(p.terastallized ? {teraType: p.terastallized} : {}),
     ...(ability ? {ability} : {}),
@@ -92,6 +98,71 @@ export function toLiveFacts(p: ClientPokemon): LiveFacts {
     ...(gender ? {gender} : {}),
   };
   return facts;
+}
+
+/** A protocol/client ident ("p1a: Noivern", "p1: Noivern") reduced to a slot-independent
+ *  "side|name" key, so a log line's actor matches a client Pokémon across switches. */
+function identKey(ident: string | undefined): string | undefined {
+  if (!ident) return undefined;
+  const colon = ident.indexOf(':');
+  if (colon < 0) return undefined;
+  const side = ident.slice(0, colon).trim().slice(0, 2); // "p1a" | "p1" → "p1"
+  const name = ident.slice(colon + 1).trim().toLowerCase();
+  return side && name ? `${side}|${name}` : undefined;
+}
+
+/**
+ * Does this log line show the current mover dealing damage to someone OTHER than
+ * itself — the event that reveals a held Life Orb via recoil? Three shapes count:
+ *   - `-damage` on the target with no `[from]` tag (a bare `[from]` marks
+ *     item/hazard/status/recoil damage, not the move's own — Life Orb's own recoil,
+ *     `[from] item: Life Orb` on the user, is excluded on both the tag and the "not
+ *     me" test, since it's handled by the positive item-reveal path instead);
+ *   - a Substitute BREAKING (`-end … Substitute`); or
+ *   - a Substitute ABSORBING the hit (`-activate … move: Substitute|[damage]`).
+ * The Substitute cases matter because the sub takes the damage in the Pokémon's place,
+ * so the foe's own HP bar never moves — yet the move still dealt damage. The `[damage]`
+ * tag is what separates a dented sub from a status move the sub merely BLOCKED (no
+ * damage, no tag). Sub hits count only in Gen 5+, as Gen 4 took no Life Orb recoil
+ * against a substitute.
+ */
+function dealtDamageToFoe(line: string, me: string, subCountsAsHit: boolean): boolean {
+  const parts = line.split('|'); // ['', TAG, 'p2a: Foo', …]
+  const target = identKey(parts[2]);
+  if (!target || target === me) return false;
+  if (parts[1] === '-damage') return !parts.slice(4).some((p) => p.startsWith('[from]'));
+  if (!subCountsAsHit) return false;
+  const isSub = parts.some((p) => p === 'Substitute' || p === 'move: Substitute');
+  if (parts[1] === '-end') return isSub; // a substitute only ends by being broken with damage
+  if (parts[1] === '-activate') return isSub && parts.includes('[damage]');
+  return false;
+}
+
+/**
+ * Has `mon` landed a damaging hit — a move it used dealing damage to another Pokémon?
+ * That hit is exactly the event that reveals a held Life Orb (1/10 recoil), so its
+ * ABSENCE, with the item still unrevealed, is what rules Life Orb out. We can't see it
+ * in a snapshot (`moveTrack` records that a move was USED, not that it landed — a miss
+ * or an immunity leaves no trace there), so we read the protocol log, tracking the
+ * current mover and asking `dealtDamageToFoe` of each following line. An unknown ident
+ * or an empty log resolves to "no hit seen" — we would rather miss a rule-out than make
+ * a false one.
+ */
+export function hasLandedDamagingHit(battle: ClientBattle, mon: ClientPokemon): boolean {
+  const me = identKey(mon.ident);
+  if (!me) return false;
+  const subCountsAsHit = (battle.gen || 9) >= 5;
+  let moverIsMe = false;
+  for (const line of battle.stepQueue ?? []) {
+    if (line.startsWith('|move|')) {
+      moverIsMe = identKey(line.split('|')[2]) === me;
+    } else if (line.startsWith('|switch|') || line.startsWith('|drag|') || line.startsWith('|turn|')) {
+      moverIsMe = false; // a new actor context — don't let a later line borrow our move
+    } else if (moverIsMe && dealtDamageToFoe(line, me, subCountsAsHit)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** The first active Pokémon on a side other than the hovered Pokémon's own side. */

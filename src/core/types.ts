@@ -78,6 +78,15 @@ export interface LiveFacts {
   readonly prevItem?: string;
   /** Moves actually seen this battle — used to narrow which role they are running. */
   readonly revealedMoves: readonly string[];
+  /**
+   * True once the battle log shows this Pokémon LANDING a damaging hit (a move it used
+   * dealing damage to a foe). Life Orb takes 1/10 recoil on that hit and REVEALS itself
+   * doing so — so a landed hit with no item yet revealed rules Life Orb out. It must be
+   * a landed hit, not merely a move used: a miss or an immunity triggers no recoil and
+   * proves nothing. The recoil-suppressor exceptions (Sheer Force, Magic Guard) are
+   * applied downstream against each role's ability pool, so this stays a raw fact.
+   */
+  readonly landedDamagingHit: boolean;
   readonly gender?: 'M' | 'F' | 'N';
 }
 

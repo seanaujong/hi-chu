@@ -25,6 +25,7 @@ import type {LiveFacts, RandbatsData, RandbatsEntry, ResolvedMon, SetKnowledge, 
 import {pickEntry} from './data/randbats.js';
 import {
   toLiveFacts,
+  hasLandedDamagingHit,
   findOpposingActive,
   detectFormat,
   readFieldFacts,
@@ -115,11 +116,11 @@ export function buildMoveSection(
   const defenderMon = findOpposingActive(battle, pokemon);
   if (!defenderMon) return '';
 
-  const attackerFacts = toLiveFacts(pokemon);
+  const attackerFacts = toLiveFacts(pokemon, hasLandedDamagingHit(battle, pokemon));
   const attackerEntry = pickEntry(data, attackerFacts.speciesForme);
   if (!attackerEntry) return '';
 
-  const defenderFacts = toLiveFacts(defenderMon);
+  const defenderFacts = toLiveFacts(defenderMon, hasLandedDamagingHit(battle, defenderMon));
   const attacker = resolveMon(attackerFacts, attackerEntry);
   // The defender's hidden item/ability can each split the damage — enumerate the
   // still-possible sets and let identical outcomes collapse back to one bucket.
@@ -172,7 +173,7 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
   const format = detectFormat(battle);
   if (!format) return '';
 
-  const facts = toLiveFacts(pokemon);
+  const facts = toLiveFacts(pokemon, hasLandedDamagingHit(battle, pokemon));
   const entry = pickEntry(data, facts.speciesForme);
   if (!entry) return ''; // not a tracked randbats Pokémon
 
@@ -190,7 +191,7 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
   if (isFoe(battle, pokemon)) {
     const ourMon = findOpposingActive(battle, pokemon);
     if (ourMon) {
-      const ourFacts = toLiveFacts(ourMon);
+      const ourFacts = toLiveFacts(ourMon, hasLandedDamagingHit(battle, ourMon));
       const defender = resolveMon(ourFacts, entryOrMinimal(pickEntry(data, ourFacts.speciesForme), ourFacts));
       const field = readFieldFacts(battle, ourMon.side);
       const attackers = resolveByRole(facts, entry); // aligned 1:1 with knowledge.candidates

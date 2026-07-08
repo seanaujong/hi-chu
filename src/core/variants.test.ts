@@ -3,10 +3,10 @@ import {bucketByDamage, labelBuckets} from './variants.js';
 import type {DamageReport} from './damage.js';
 import type {ResolvedMon, SetVariant} from './types.js';
 
-/** A minimal calc-ready mon; only item/ability/role matter for bucket labelling. */
-function variant(over: {item?: string; ability?: string; role?: string} = {}): SetVariant {
+/** A minimal calc-ready mon; only species/item/ability/role matter for bucket labelling. */
+function variant(over: {species?: string; item?: string; ability?: string; role?: string} = {}): SetVariant {
   const mon: ResolvedMon = {
-    speciesForme: 'Tentacruel',
+    speciesForme: over.species ?? 'Tentacruel',
     level: 82,
     nature: 'Serious',
     evs: {hp: 85, atk: 85, def: 85, spa: 85, spd: 85, spe: 85},
@@ -44,6 +44,16 @@ function report(percentMax: number, koChance = 0, desc = ''): DamageReport {
 describe('labelBuckets', () => {
   it('leaves a sole bucket unlabelled — nothing to distinguish', () => {
     expect(labelBuckets([[variant({item: 'Leftovers'})]])).toEqual(['']);
+  });
+
+  it('labels by SPECIES first — a disguised Zoroark reads as its own Pokémon', () => {
+    // The Illusion case: the shown species and the suspected Zoroark are different mons,
+    // so the buckets name themselves by species, not by item.
+    const labels = labelBuckets([
+      [variant({species: 'Dudunsparce', item: 'Leftovers'})],
+      [variant({species: 'Zoroark-Hisui', item: 'Life Orb'})],
+    ]);
+    expect(labels).toEqual(['Dudunsparce', 'Zoroark-Hisui']);
   });
 
   it('names two item buckets each by its own single item', () => {

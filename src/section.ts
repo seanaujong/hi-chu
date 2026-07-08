@@ -15,6 +15,7 @@ import {calcDamage, type DamageReport} from './core/damage.js';
 import {resolveByRole, resolveMon, resolveVariants} from './core/resolve.js';
 import {inferSets} from './core/knowledge.js';
 import {bucketByDamage, type DamageBucket} from './core/variants.js';
+import {illusionSuspects, ILLUSION_SPECIES, type IllusionSuspect} from './core/illusion.js';
 import {
   renderMoveSection,
   renderSetsSection,
@@ -60,6 +61,26 @@ function ownItemName(battle: ClientBattle, pokemon: ClientPokemon, entry: Randba
   const roleItems = entry.roles ? Object.values(entry.roles).flatMap((r) => r.items) : [];
   const pool = [...roleItems, ...(entry.items ?? [])];
   return pool.find((i) => toId(i) === toId(raw));
+}
+
+/**
+ * If a revealed move betrays that the defender might be a disguised Zoroark (see
+ * illusion.ts), a resolution of that Zoroark as an extra defender — so the move tooltip
+ * shows a second "vs Zoroark-Hisui" damage line rather than one confidently-wrong number.
+ * One representative set per suspect (not the full item fan-out) keeps the extra line to
+ * a single, clearly-labelled bucket. Its own species/level drive the calc.
+ */
+function illusionVariants(defenderFacts: LiveFacts, defenderEntry: RandbatsEntry | undefined, data: RandbatsData): SetVariant[] {
+  const impostors = ILLUSION_SPECIES
+    .map((species): IllusionSuspect | null => {
+      const entry = pickEntry(data, species);
+      return entry ? {species, entry} : null;
+    })
+    .filter((x): x is IllusionSuspect => x !== null);
+  return illusionSuspects(defenderFacts, defenderEntry, impostors).map(({species, entry}) => ({
+    mon: resolveMon({...defenderFacts, speciesForme: species, level: entry.level}, entry),
+    role: species,
+  }));
 }
 
 /** True when the hovered Pokémon belongs to the opponent (the far side, from our seat). */
@@ -149,7 +170,11 @@ export function buildMoveSection(
   const attacker = resolveMon(attackerFacts, attackerEntry);
   // The defender's hidden item/ability can each split the damage — enumerate the
   // still-possible sets and let identical outcomes collapse back to one bucket.
-  const defenderVariants = resolveVariants(defenderFacts, entryOrMinimal(pickEntry(data, defenderFacts.speciesForme), defenderFacts));
+  const defenderEntry = pickEntry(data, defenderFacts.speciesForme);
+  const defenderVariants = [
+    ...resolveVariants(defenderFacts, entryOrMinimal(defenderEntry, defenderFacts)),
+    ...illusionVariants(defenderFacts, defenderEntry, data),
+  ];
   const field = readFieldFacts(battle, defenderMon.side);
 
   const buckets = moveDamageBuckets(attacker, defenderVariants, moveName, format.gen, field);

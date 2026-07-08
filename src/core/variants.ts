@@ -30,6 +30,7 @@ function uniqueStrings(values: readonly string[]): string[] {
 
 const NO_ITEM = 'no item';
 
+const speciesOf = (bucket: readonly SetVariant[]): string[] => uniqueStrings(bucket.map((v) => v.mon.speciesForme));
 const itemsOf = (bucket: readonly SetVariant[]): string[] => uniqueStrings(bucket.map((v) => v.mon.item ?? NO_ITEM));
 const abilitiesOf = (bucket: readonly SetVariant[]): string[] => uniqueStrings(bucket.map((v) => v.mon.ability ?? ''));
 
@@ -51,10 +52,13 @@ function labelByAxis(valueSets: readonly (readonly string[])[]): string[] | null
   });
 }
 
-/** Short labels distinguishing the buckets: item axis, else ability, else role name. */
+/** Short labels distinguishing the buckets: species axis (a disguised Zoroark is a
+ *  DIFFERENT Pokémon — the loudest distinction), else item, else ability, else role name.
+ *  Species is null for the usual same-species case, so behaviour is unchanged there. */
 export function labelBuckets(buckets: readonly (readonly SetVariant[])[]): string[] {
   if (buckets.length <= 1) return buckets.map(() => '');
   return (
+    labelByAxis(buckets.map(speciesOf)) ??
     labelByAxis(buckets.map(itemsOf)) ??
     labelByAxis(buckets.map(abilitiesOf)) ??
     buckets.map((b, i) => b[0]?.role || `set ${i + 1}`)

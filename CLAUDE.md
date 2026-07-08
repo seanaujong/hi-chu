@@ -230,6 +230,25 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   ×1.5, Leftovers keeps "healing"). Checked by `resolve.test.ts` ("resolves to NO item once it
   has been knocked off / consumed"). Knock Off's own ×1.5-on-item boost is `@smogon/calc`'s job
   and works once the resolved item is right.
+- ✅ **A held Mega stone resolves to the Mega set, not the base forme.** A mon holding a stone
+  is running the Mega set even pre-evolution, but its live forme is still the base one, so
+  `entryFor` (via `data.megaEntryForItem`) redirects the lookup to the Mega entry — found by
+  the STONE in its item pool, because Champions keys Mega sets irregularly ("Floette-Mega" for
+  a Floette-Eternal holding Floettite). Checked by `randbats.test.ts` ("finds the Mega set by
+  its stone").
+- ✅ **Four revealed moves = the full moveset; stop speculating.** A Pokémon has four move
+  slots, so once `revealedMoves.length >= 4`, `inferSets` drops the role's remaining pool from
+  the display (every shown move is a confirmed ✓). Checked by `knowledge.test.ts` ("stops
+  speculating once all four move slots are revealed").
+- ◐ **Doubles: the calc's game type is set and both foes are shown.** `detectFormat.doubles`
+  (feed id contains "doubles") flows to `damage.buildField` as `gameType: 'Doubles'` so
+  `@smogon/calc` applies the spread-move 0.75× (single-target moves unchanged); and
+  `buildMoveSection` folds over `findOpposingActives` (both foes), a `renderMoveSection` per
+  target with a "vs <name>" header. Checked by `damage.test.ts` ("spread moves take their
+  0.75×"), `readState.test.ts` (the `doubles` flag), `render.test.ts` (the target header), and
+  `section.test.ts` ("a labelled damage section for EACH foe"). Still ◐ — the sets-view *threat*
+  calc uses only our first active (`findOpposingActive`), and doubles-only field effects (Friend
+  Guard, Follow Me) aren't modelled; set inference itself is format-agnostic and correct.
 - 👁 **Hazards are deliberately not modelled** — they change switch-in HP, not a move's
   damage, and live HP is already read. Only weather/terrain/screens feed the calc. (Scope
   decision; no check — don't "add" hazards to the damage Field.)

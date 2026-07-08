@@ -1,5 +1,6 @@
 import {describe, it, expect} from 'vitest';
-import {inferSets, resolveByRole, resolveMon, resolveVariants} from './resolve.js';
+import {resolveByRole, resolveMon, resolveVariants} from './resolve.js';
+import {inferSets} from './knowledge.js';
 import type {LiveFacts, RandbatsEntry} from './types.js';
 
 const DRAGONITE: RandbatsEntry = {

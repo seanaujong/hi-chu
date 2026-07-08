@@ -1,6 +1,6 @@
 import {describe, it, expect} from 'vitest';
 import {pickEntry} from './randbats.js';
-import {inferSets} from '../core/resolve.js';
+import {inferSets} from '../core/knowledge.js';
 import type {LiveFacts, RandbatsData, RandbatsEntry} from '../core/types.js';
 
 const entry = (level: number): RandbatsEntry => ({level, abilities: [], items: []});

@@ -12,7 +12,8 @@
 //     with damage numbers attached when the hovered mon is the opponent's.
 
 import {calcDamage, type DamageReport} from './core/damage.js';
-import {inferSets, resolveByRole, resolveMon, resolveVariants} from './core/resolve.js';
+import {resolveByRole, resolveMon, resolveVariants} from './core/resolve.js';
+import {inferSets} from './core/knowledge.js';
 import {bucketByDamage, type DamageBucket} from './core/variants.js';
 import {
   renderMoveSection,

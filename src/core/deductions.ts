@@ -8,11 +8,7 @@
 // Pure: no DOM, no network, no @smogon/calc.
 
 import type {LiveFacts} from './types.js';
-
-/** Showdown id form: lowercase, alphanumerics only ("Life Orb" → "lifeorb"). */
-function toId(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
-}
+import {toId} from './facts.js';
 
 // Abilities that mask Life Orb's recoil, so its ABSENCE proves nothing about the item.
 const RECOIL_SUPPRESSORS = new Set(['sheerforce', 'magicguard']);

@@ -92,11 +92,12 @@ describe('toLiveFacts', () => {
 describe('detectFormat', () => {
   const battle = (tier: string, gen = 9): ClientBattle => ({gen, tier, sides: []});
 
-  it('builds the feed id for standard random battles', () => {
-    expect(detectFormat(battle('[Gen 9] Random Battle'))).toEqual({gen: 9, formatId: 'gen9randombattle'});
+  it('builds the feed id for standard random battles, flagging doubles', () => {
+    expect(detectFormat(battle('[Gen 9] Random Battle'))).toEqual({gen: 9, formatId: 'gen9randombattle', doubles: false});
     expect(detectFormat(battle('[Gen 8] Random Doubles Battle', 8))).toEqual({
       gen: 8,
       formatId: 'gen8randomdoublesbattle',
+      doubles: true,
     });
   });
 
@@ -110,6 +111,7 @@ describe('detectFormat', () => {
     expect(detectFormat(battle('[Gen 9 Champions] Random Battle'))).toEqual({
       gen: 9,
       formatId: 'gen9championsrandombattle',
+      doubles: false,
     });
   });
 

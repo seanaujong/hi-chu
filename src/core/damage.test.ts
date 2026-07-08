@@ -188,3 +188,17 @@ describe('painSplit (HP redistribution the calc does not model)', () => {
     expect(r.user.after).toBe(100);
   });
 });
+
+describe('doubles game type (spread moves take their 0.75×)', () => {
+  const atk = mon({speciesForme: 'Flutter Mane', nature: 'Timid'});
+  const def = mon({speciesForme: 'Garchomp'});
+  it('reduces a spread move in doubles but leaves a single-target move alone', () => {
+    const spreadSingles = calcDamage(atk, def, 'Dazzling Gleam', {field: noField, doubles: false});
+    const spreadDoubles = calcDamage(atk, def, 'Dazzling Gleam', {field: noField, doubles: true});
+    expect(spreadDoubles.total.mean).toBeLessThan(spreadSingles.total.mean);
+    expect(spreadDoubles.total.mean / spreadSingles.total.mean).toBeCloseTo(0.75, 1);
+
+    const single = (doubles: boolean) => calcDamage(atk, def, 'Moonblast', {field: noField, doubles}).total.mean;
+    expect(single(true)).toBe(single(false)); // single-target unaffected
+  });
+})

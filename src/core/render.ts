@@ -117,7 +117,15 @@ export interface MoveRenderModel {
   /** Whether the foe's Leftovers is 'certain' (revealed) or 'possible' (a still-open item),
    *  which decides how the nHKO ladder reflects between-turn recovery. Undefined = neither. */
   readonly leftovers?: 'certain' | 'possible';
+  /** The target's name — shown as a header only in doubles, where "which foe" is ambiguous;
+   *  singles omits it (native tooltips already name the sole target). */
+  readonly targetLabel?: string;
   readonly extraNotes: readonly string[];
+}
+
+/** A "vs Corviknight" header, or '' — used to tell doubles' two targets apart. */
+function targetHeader(label: string | undefined): string {
+  return label ? `<small>vs</small> <b>${esc(label)}</b>` : '';
 }
 
 /** "2HKO 96% · 3HKO 100%" from a cumulative KO-by-turn ladder, stopping at the first
@@ -186,6 +194,7 @@ export function renderMoveSection(model: MoveRenderModel): string {
     const multi = multiHitDetail(r);
     return (
       block([
+        targetHeader(model.targetLabel),
         `<small>Damage:</small> ${moveDamageText(r)}${tera}`,
         ko ? `<small>KO:</small> <span class="hichu-ko">${ko}</span>${koCtx}` : '',
         nhkoLine(r.nhko, model.leftovers),
@@ -195,7 +204,7 @@ export function renderMoveSection(model: MoveRenderModel): string {
   }
 
   const lines = model.buckets.map((b, i) => variantLine(b, model, i === 0 ? tera : ''));
-  return block(lines) + notesBlock(model.extraNotes);
+  return block([targetHeader(model.targetLabel), ...lines]) + notesBlock(model.extraNotes);
 }
 
 /** One side's HP swing: "28% → 61% (+33%)", the delta signed (negative when it loses). */
@@ -208,8 +217,8 @@ function hpSwing(side: {before: number; after: number}): string {
  * Pain Split's HP redistribution as its own block — the move deals no damage, so the
  * normal move section shows nothing; this replaces the blank with the swing on both sides.
  */
-export function renderPainSplit(r: PainSplitReport): string {
-  return block([`<small>Pain Split:</small> you ${hpSwing(r.user)} · foe ${hpSwing(r.foe)}`]);
+export function renderPainSplit(r: PainSplitReport, targetLabel?: string): string {
+  return block([targetHeader(targetLabel), `<small>Pain Split:</small> you ${hpSwing(r.user)} · foe ${hpSwing(r.foe)}`]);
 }
 
 // --- Pokémon hover: per-set blocks, the original's layout -------------------

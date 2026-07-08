@@ -109,6 +109,11 @@ describe('renderMoveSection', () => {
     expect(html).not.toContain('<small>Damage:</small>'); // the plain line only appears when there's one outcome
   });
 
+  it('shows a target header only when labelled (doubles names each foe; singles doesn’t)', () => {
+    expect(renderMoveSection(model({report: report({move: 'Surf'}), targetLabel: 'Corviknight'}))).toContain('<small>vs</small> <b>Corviknight</b>');
+    expect(renderMoveSection(model({report: report({move: 'Surf'})}))).not.toContain('<small>vs</small> <b>');
+  });
+
   it('shows the KO flip: the item that saves the KO simply omits its KO clause', () => {
     const html = renderMoveSection(
       model({

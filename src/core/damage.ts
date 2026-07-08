@@ -130,11 +130,15 @@ export interface CalcDamageOptions {
   readonly field?: FieldFacts;
   /** Compute the nHKO ladder up to this many turns (omit to skip — the sets view does). */
   readonly nhkoTurns?: number;
+  /** Doubles: sets the calc's game type so spread moves take their 0.75× reduction. */
+  readonly doubles?: boolean;
 }
 
-/** Map our plain FieldFacts onto a @smogon/calc Field. */
-function buildField(facts: FieldFacts): Field {
+/** Map our plain FieldFacts onto a @smogon/calc Field. `doubles` sets the game type so the
+ *  calc applies the spread-move 0.75× (it reads the move's target from the dex itself). */
+function buildField(facts: FieldFacts, doubles: boolean): Field {
   return new Field({
+    gameType: doubles ? 'Doubles' : 'Singles',
     ...(facts.weather ? {weather: facts.weather} : {}),
     ...(facts.terrain ? {terrain: facts.terrain} : {}),
     defenderSide: {
@@ -164,7 +168,7 @@ export function calcDamage(
   const profile = multiHitProfile(moveName);
   const notes: string[] = [];
   const category = new Move(gen, moveName).category;
-  const field = options.field ? buildField(options.field) : undefined;
+  const field = options.field ? buildField(options.field, options.doubles ?? false) : undefined;
 
   const run = (hits?: number) =>
     calculate(gen, atk, def, new Move(gen, moveName, hits !== undefined ? {hits} : {}), field);

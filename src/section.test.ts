@@ -87,6 +87,22 @@ describe('buildMoveSection on the real captured battle (our move buttons)', () =
     expect(html).toMatch(/foe [\d.]+% → [\d.]+%/);
   });
 
+  it('doubles: shows a labelled damage section for EACH foe', () => {
+    // Two foes on the far side → one "vs <name>" section apiece (singles shows one, unlabelled).
+    const clientMon = (speciesForme: string, side: unknown, slot: string): ClientPokemon =>
+      ({speciesForme, level: 80, hp: 100, maxhp: 100, status: '', boosts: {}, terastallized: '', moveTrack: [], ident: `${slot}: ${speciesForme}`, side} as unknown as ClientPokemon);
+    const near = {isFar: false, sideConditions: {}, active: [] as ClientPokemon[]};
+    const far = {isFar: true, sideConditions: {}, active: [] as ClientPokemon[]};
+    near.active = [clientMon('Noivern', near, 'p1a')];
+    far.active = [clientMon('Tentacruel', far, 'p2a'), clientMon('Noivern', far, 'p2b')];
+    const dbl = {gen: 9, tier: '[Gen 9] Random Doubles Battle', sides: [near, far]} as unknown as ClientBattle;
+
+    const html = buildMoveSection(dbl, near.active[0]!, 'Draco Meteor', data);
+    expect(html).toContain('<b>Tentacruel</b>');
+    expect(html).toContain('<b>Noivern</b>');
+    expect((html.match(/<small>vs<\/small>/g) ?? []).length).toBe(2); // a headed section per foe
+  });
+
   it('reflects the defensive Tera: Surf hits the Tera-Fire Noivern far harder', () => {
     // Terastallizing to Fire makes Noivern a pure-Fire DEFENDER — 2× weak to Water.
     // The same Surf into a non-terastallized (Flying/Dragon) Noivern is only neutral.

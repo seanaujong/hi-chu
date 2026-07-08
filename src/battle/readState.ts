@@ -280,20 +280,28 @@ export function readOwnItem(battle: ClientBattle, mon: ClientPokemon): string | 
   return entry?.item || undefined;
 }
 
-/** The first active Pokémon on a side other than the hovered Pokémon's own side. */
-export function findOpposingActive(battle: ClientBattle, hovered: ClientPokemon): ClientPokemon | null {
+/** Every active Pokémon on a side other than the hovered Pokémon's own — one in singles,
+ *  both foes in doubles. The move tooltip shows damage into each. */
+export function findOpposingActives(battle: ClientBattle, hovered: ClientPokemon): ClientPokemon[] {
+  const out: ClientPokemon[] = [];
   for (const side of battle.sides) {
     if (side === hovered.side) continue;
-    for (const mon of side.active) if (mon) return mon;
+    for (const mon of side.active) if (mon) out.push(mon);
   }
-  return null;
+  return out;
+}
+
+/** The first opposing active — the single defender for the sets-view threat calc. */
+export function findOpposingActive(battle: ClientBattle, hovered: ClientPokemon): ClientPokemon | null {
+  return findOpposingActives(battle, hovered)[0] ?? null;
 }
 
 /**
  * The randbats format id (e.g. "gen9randombattle") for this battle, or null if it
- * isn't a Random Battle format the feed covers.
+ * isn't a Random Battle format the feed covers. `doubles` drives the calc's game type
+ * (spread moves take a 0.75× hit) and showing damage into both foes.
  */
-export function detectFormat(battle: ClientBattle): {gen: number; formatId: string} | null {
+export function detectFormat(battle: ClientBattle): {gen: number; formatId: string; doubles: boolean} | null {
   const tier = battle.tier || '';
   if (!/random/i.test(tier)) return null;
   const gen = battle.gen || 9;
@@ -307,7 +315,8 @@ export function detectFormat(battle: ClientBattle): {gen: number; formatId: stri
     .replace(/[^a-z0-9]/gi, '')
     .toLowerCase();
   if (!name) return null;
-  return {gen, formatId: name.startsWith('gen') ? name : `gen${gen}${name}`};
+  const formatId = name.startsWith('gen') ? name : `gen${gen}${name}`;
+  return {gen, formatId, doubles: formatId.includes('doubles')};
 }
 
 function toId(s: string): string {

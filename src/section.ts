@@ -31,6 +31,7 @@ import {
   readBehaviors,
   readOwnItem,
   findOpposingActive,
+  findOpposingActives,
   detectFormat,
   readFieldFacts,
   type ClientBattle,
@@ -135,11 +136,12 @@ function moveDamageBuckets(
   moveName: string,
   gen: number,
   field: ReturnType<typeof readFieldFacts>,
+  doubles: boolean,
 ): DamageBucket[] {
   const scored: {variant: SetVariant; report: DamageReport}[] = [];
   for (const variant of defenderVariants) {
     try {
-      const report = calcDamage(attacker, variant.mon, moveName, {gen, field, nhkoTurns: 3});
+      const report = calcDamage(attacker, variant.mon, moveName, {gen, field, nhkoTurns: 3, doubles});
       if (report.category !== 'Status') scored.push({variant, report});
     } catch {
       // A move outside the calc's world for this variant shouldn't drop the section.
@@ -165,8 +167,9 @@ export function buildMoveSection(
   const format = detectFormat(battle);
   if (!format) return '';
 
-  const defenderMon = findOpposingActive(battle, pokemon);
-  if (!defenderMon) return '';
+  // Both foes in doubles, one in singles — a damage section per target.
+  const foes = findOpposingActives(battle, pokemon);
+  if (foes.length === 0) return '';
 
   const publicFacts = toLiveFacts(pokemon, readBehaviors(battle, pokemon));
   const attackerEntry = entryFor(data, publicFacts);
@@ -177,27 +180,44 @@ export function buildMoveSection(
   // fact for resolution — but only here, never in the opponent's-knowledge views.
   const realItem = ownItemName(battle, pokemon, attackerEntry);
   const attackerFacts = realItem ? {...publicFacts, item: realItem} : publicFacts;
-
-  const defenderFacts = toLiveFacts(defenderMon, readBehaviors(battle, defenderMon));
   const attacker = resolveMon(attackerFacts, attackerEntry);
-  // The defender's hidden item/ability can each split the damage — enumerate the
-  // still-possible sets and let identical outcomes collapse back to one bucket.
-  const defenderEntry = entryFor(data, defenderFacts);
 
-  // Pain Split deals no damage — it averages both mons' HP — so @smogon/calc has nothing
-  // to say and the normal damage path would insert a blank. Show the HP swing instead.
+  // Name each target only when there's more than one (doubles) — singles keeps native parity.
+  return foes.map((foe) => moveVsFoe(attacker, foe, moveName, format, data, battle, foes.length > 1)).join('');
+}
+
+/** One target's damage section: `attacker`'s `moveName` into `defenderMon`. `label` names the
+ *  target (doubles, where "which foe" is ambiguous). The doubles game type flows to the calc
+ *  so spread moves take their 0.75×. */
+function moveVsFoe(
+  attacker: ResolvedMon,
+  defenderMon: ClientPokemon,
+  moveName: string,
+  format: {gen: number; doubles: boolean},
+  data: RandbatsData,
+  battle: ClientBattle,
+  label: boolean,
+): string {
+  const defenderFacts = toLiveFacts(defenderMon, readBehaviors(battle, defenderMon));
+  const defenderEntry = entryFor(data, defenderFacts);
+  const targetLabel = label ? defenderFacts.speciesForme : undefined;
+
+  // Pain Split deals no damage — it averages both mons' HP — so @smogon/calc has nothing to
+  // say and the normal damage path would insert a blank. Show the HP swing instead.
   if (toId(moveName) === 'painsplit') {
     const defender = resolveMon(defenderFacts, entryOrMinimal(defenderEntry, defenderFacts));
-    return renderPainSplit(painSplit(attacker, defender, format.gen));
+    return renderPainSplit(painSplit(attacker, defender, format.gen), targetLabel);
   }
 
+  // The defender's hidden item/ability can each split the damage — enumerate the
+  // still-possible sets and let identical outcomes collapse back to one bucket.
   const defenderVariants = [
     ...resolveVariants(defenderFacts, entryOrMinimal(defenderEntry, defenderFacts)),
     ...illusionVariants(defenderFacts, defenderEntry, data),
   ];
   const field = readFieldFacts(battle, defenderMon.side);
 
-  const buckets = moveDamageBuckets(attacker, defenderVariants, moveName, format.gen, field);
+  const buckets = moveDamageBuckets(attacker, defenderVariants, moveName, format.gen, field, format.doubles);
   if (buckets.length === 0) return ''; // status / unmodellable move
 
   // The live Tera is shared by every variant (it's a revealed fact, not a hidden set).
@@ -213,6 +233,7 @@ export function buildMoveSection(
     defenderHpPercent: defenderFacts.hpPercent,
     extraNotes: [],
     buckets,
+    ...(targetLabel ? {targetLabel} : {}),
     ...(leftovers ? {leftovers} : {}),
     ...(attacker.teraType ? {attackerTera: attacker.teraType} : {}),
     ...(defenderTera ? {defenderTera} : {}),

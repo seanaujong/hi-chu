@@ -218,7 +218,18 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   `damage.test.ts`'s `isDamagingMove`-era note). NOT in this bucket: `variants.ts`/deductions
   (our information-game product — the calc computes each variant correctly) and the Illusion
   case (input correctness — the calc did its job; we fed it the wrong species). Keep the line
-  clear: calc *gaps* here; our *product* elsewhere.
+  clear: calc *gaps* here; our *product* elsewhere. Two more calc-gap readouts the calc can't
+  do: the **nHKO ladder** (`multihit.koLadder` — a turn-by-turn survival sim, Leftovers
+  recovery included; the move tooltip requests it via `CalcDamageOptions.nhkoTurns`, shows a
+  2/3HKO line, and an "if Leftovers" aside when the foe *might* hold them) and **Pain Split**
+  (`damage.painSplit` — averages both mons' raw HP, capped at each max; `buildMoveSection`
+  branches to it before the damage path, since it's a status move the calc returns nothing for).
+- ✅ **A knocked-off / consumed item resolves to NO item, not an assumed set item.** Once
+  `prevItem` is set with nothing held, `resolve.itemGone` makes `resolveMon`/`resolveVariants`/
+  `resolveByRole` drop the item — else the calc keeps applying a gone item (Knock Off stays
+  ×1.5, Leftovers keeps "healing"). Checked by `resolve.test.ts` ("resolves to NO item once it
+  has been knocked off / consumed"). Knock Off's own ×1.5-on-item boost is `@smogon/calc`'s job
+  and works once the resolved item is right.
 - 👁 **Hazards are deliberately not modelled** — they change switch-in HP, not a move's
   damage, and live HP is already read. Only weather/terrain/screens feed the calc. (Scope
   decision; no check — don't "add" hazards to the damage Field.)

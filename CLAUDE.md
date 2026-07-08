@@ -90,7 +90,19 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   used, revealed item (held or `prevItem`), and revealed ability — checked by
   `resolve.test.ts` ("evidence beyond moves narrows the role"). The own-side mirror view is
   honest only because client `Pokemon` objects carry public info exclusively (the private
-  team lives in `battle.myPokemon`, which we never read).
+  team lives in `battle.myPokemon`).
+- 👁 **`battle.myPokemon` is read in exactly ONE place: your own attacker's item on the move
+  tooltip.** Move buttons only exist for your own active, and you know your own item even when
+  it's *silent* to the opponent (Heavy-Duty Boots never reveals itself), so `buildMoveSection`
+  reads `readOwnItem` and maps it to the set's display name (the client stores an id like
+  `heavydutyboots`; `@smogon/calc` silently ignores the id form, so the id→name map is
+  load-bearing). This makes YOUR damage exact without assuming the set's first item (e.g. an
+  Iron Bundle read as Choice Specs, ~1.5× too high). It must never leak into the set/mirror
+  views, which stay strictly public — that separation is the whole reason the "their read on
+  you" mirror is honest. Checked by `section.test.ts` ("uses YOUR real item…") and
+  `readState.test.ts` (`readOwnItem`). 👁 not ✅ for drift: `myPokemon` only exists for a
+  player, so `drift-check` (a spectator replay) can't exercise it — verify by hand in a live
+  game after a client update.
 - ✅ **A LANDED damaging hit with no item revealed rules Life Orb out.** Life Orb takes 1/10
   recoil when a damaging move connects and REVEALS itself doing so — so if a mon has landed a
   hit and no item has surfaced, it isn't holding one. It must be a *landed* hit, not merely a

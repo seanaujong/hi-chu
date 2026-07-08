@@ -2,6 +2,7 @@ import {describe, it, expect} from 'vitest';
 import {
   toLiveFacts,
   hasLandedDamagingHit,
+  readOwnItem,
   detectFormat,
   findOpposingActive,
   readFieldFacts,
@@ -220,6 +221,25 @@ describe('hasLandedDamagingHit', () => {
   it('is false with no log or no ident (conservative — never a false rule-out)', () => {
     expect(hasLandedDamagingHit(withLog([]), noivern)).toBe(false);
     expect(hasLandedDamagingHit(withLog(['|move|p1a: Noivern|Flamethrower|p2a: X', '|-damage|p2a: X|1/2']), clientMon({}))).toBe(false);
+  });
+});
+
+describe('readOwnItem (your private item, for your own move damage only)', () => {
+  const battle = (myPokemon?: unknown): ClientBattle =>
+    ({gen: 9, tier: '[Gen 9] Random Battle', sides: [], myPokemon} as unknown as ClientBattle);
+  const mon = clientMon({ident: 'p1: Iron Bundle'});
+
+  it("reads the viewer's own held item by ident (id form)", () => {
+    expect(readOwnItem(battle([{ident: 'p1: Iron Bundle', item: 'heavydutyboots'}]), mon)).toBe('heavydutyboots');
+  });
+
+  it('is undefined when spectating (no myPokemon) or when nothing matches the ident', () => {
+    expect(readOwnItem(battle(undefined), mon)).toBeUndefined();
+    expect(readOwnItem(battle([{ident: 'p1: Cetitan', item: 'leftovers'}]), mon)).toBeUndefined();
+  });
+
+  it('treats an empty item string as no item', () => {
+    expect(readOwnItem(battle([{ident: 'p1: Iron Bundle', item: ''}]), mon)).toBeUndefined();
   });
 });
 

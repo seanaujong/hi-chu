@@ -26,6 +26,7 @@ import {pickEntry} from './data/randbats.js';
 import {
   toLiveFacts,
   hasLandedDamagingHit,
+  readOwnItem,
   findOpposingActive,
   detectFormat,
   readFieldFacts,
@@ -41,6 +42,23 @@ function toId(s: string): string {
 /** A defender entry when the feed doesn't cover it: facts only, default spread. */
 function entryOrMinimal(entry: RandbatsEntry | undefined, facts: LiveFacts): RandbatsEntry {
   return entry ?? {level: facts.level, abilities: [], items: []};
+}
+
+/**
+ * The viewer's OWN item for their active, as a display name the calc honours — read from
+ * the private team and matched to `entry`'s item pool by id. Move buttons are always your
+ * own Pokémon, and you know your item even when it's silent to the opponent (Heavy-Duty
+ * Boots), so this makes your own damage exact instead of assuming the set's first item.
+ * `undefined` when spectating, when nothing matches, or when the pool is unknown — in
+ * which case the caller keeps the public-info behaviour. Matching by id is what bridges
+ * the client's id form ("heavydutyboots") to the name @smogon/calc needs.
+ */
+function ownItemName(battle: ClientBattle, pokemon: ClientPokemon, entry: RandbatsEntry): string | undefined {
+  const raw = readOwnItem(battle, pokemon);
+  if (!raw) return undefined;
+  const roleItems = entry.roles ? Object.values(entry.roles).flatMap((r) => r.items) : [];
+  const pool = [...roleItems, ...(entry.items ?? [])];
+  return pool.find((i) => toId(i) === toId(raw));
 }
 
 /** True when the hovered Pokémon belongs to the opponent (the far side, from our seat). */
@@ -116,9 +134,15 @@ export function buildMoveSection(
   const defenderMon = findOpposingActive(battle, pokemon);
   if (!defenderMon) return '';
 
-  const attackerFacts = toLiveFacts(pokemon, hasLandedDamagingHit(battle, pokemon));
-  const attackerEntry = pickEntry(data, attackerFacts.speciesForme);
+  const publicFacts = toLiveFacts(pokemon, hasLandedDamagingHit(battle, pokemon));
+  const attackerEntry = pickEntry(data, publicFacts.speciesForme);
   if (!attackerEntry) return '';
+
+  // Your move, your damage: prefer your REAL item over the set's assumed first item, so a
+  // Heavy-Duty Boots Iron Bundle isn't calculated as Choice Specs. Treated like a revealed
+  // fact for resolution — but only here, never in the opponent's-knowledge views.
+  const realItem = ownItemName(battle, pokemon, attackerEntry);
+  const attackerFacts = realItem ? {...publicFacts, item: realItem} : publicFacts;
 
   const defenderFacts = toLiveFacts(defenderMon, hasLandedDamagingHit(battle, defenderMon));
   const attacker = resolveMon(attackerFacts, attackerEntry);

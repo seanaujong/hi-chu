@@ -47,6 +47,19 @@ export interface ClientBattle {
   readonly pseudoWeather?: ReadonlyArray<readonly [string, ...unknown[]]>;
   /** The raw `|`-delimited protocol log, one line per entry ("|move|…", "|-damage|…"). */
   readonly stepQueue?: ReadonlyArray<string>;
+  /** The viewer's OWN team with full private detail (item/ability the opponent can't see),
+   *  present only when the viewer is a player, not a spectator. */
+  readonly myPokemon?: ReadonlyArray<ClientServerPokemon>;
+}
+
+/** One entry of `battle.myPokemon`: the player's private view of their own Pokémon.
+ *  `item`/`ability` are id form ("heavydutyboots"), unlike the display-name form the
+ *  battle-view `ClientPokemon` carries. */
+export interface ClientServerPokemon {
+  readonly ident: string; // "p1: Iron Bundle"
+  readonly item?: string;
+  readonly ability?: string;
+  readonly baseAbility?: string;
 }
 
 const BATTLE_STATUSES = new Set<StatusName>(['brn', 'par', 'psn', 'tox', 'slp', 'frz']);
@@ -163,6 +176,21 @@ export function hasLandedDamagingHit(battle: ClientBattle, mon: ClientPokemon): 
     }
   }
   return false;
+}
+
+/**
+ * The viewer's OWN held item for `mon`, read from the private `battle.myPokemon` (absent
+ * when spectating). Returned in the client's id form ("heavydutyboots"); the caller maps
+ * it to a set's display name. This is the one place we read private team data — used ONLY
+ * to make the player's own move-damage exact (a silent item like Heavy-Duty Boots is
+ * invisible to the opponent, so the public battle view can't supply it). It must never
+ * feed the opponent's-knowledge views, which stay strictly public.
+ */
+export function readOwnItem(battle: ClientBattle, mon: ClientPokemon): string | undefined {
+  const me = identKey(mon.ident);
+  if (!me) return undefined;
+  const entry = (battle.myPokemon ?? []).find((p) => identKey(p.ident) === me);
+  return entry?.item || undefined;
 }
 
 /** The first active Pokémon on a side other than the hovered Pokémon's own side. */

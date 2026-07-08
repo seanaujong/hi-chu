@@ -26,7 +26,7 @@ const data = fixture.randbats as unknown as RandbatsData;
  * The client's classes are untyped and cyclic, so the reconstruction casts through
  * `unknown` — the shapes match readState's structural interfaces.
  */
-function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
+function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; myNoivernItem?: string} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
   const sides: ClientSide[] = fixture.battle.sides.map((s, i) => {
     const side = {isFar: i === 1, sideConditions: {...s.sideConditions}, active: [] as (ClientPokemon | null)[]};
     side.active = s.active.map((p) => {
@@ -36,7 +36,9 @@ function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: strin
       // Un-reveal Tentacruel's item to exercise the still-unknown-item split (its
       // Bulky Support set can run Assault Vest OR Leftovers).
       const item = p.speciesForme === 'Tentacruel' && over.tentacruelItem !== undefined ? over.tentacruelItem : p.item;
-      return {...p, terastallized, item, side} as unknown as ClientPokemon;
+      // Side 0 is ours (p1), side 1 theirs (p2); the client tags actors this way.
+      const ident = `p${i + 1}: ${p.speciesForme}`;
+      return {...p, terastallized, item, side, ident} as unknown as ClientPokemon;
     });
     return side as unknown as ClientSide;
   });
@@ -46,6 +48,8 @@ function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: strin
     weather: fixture.battle.weather,
     pseudoWeather: fixture.battle.pseudoWeather,
     sides,
+    // Our private team view — the item the opponent can't see. Only Noivern is set here.
+    ...(over.myNoivernItem !== undefined ? {myPokemon: [{ident: 'p1: Noivern', item: over.myNoivernItem}]} : {}),
   } as unknown as ClientBattle;
   const active = (name: string): ClientPokemon =>
     sides.flatMap((s) => s.active).find((p): p is ClientPokemon => p?.speciesForme === name)!;
@@ -83,6 +87,30 @@ describe('buildMoveSection on the real captured battle (our move buttons)', () =
     const plain = loadBattle({noivernTerastallized: ''});
     const plainPct = maxPercent(buildMoveSection(plain.battle, plain.active('Tentacruel'), 'Surf', data));
     expect(tera).toBeGreaterThan(plainPct * 1.7);
+  });
+});
+
+describe('buildMoveSection uses YOUR real item for your own attacker (via myPokemon)', () => {
+  // Our Noivern's set can be Choice Specs (Fast Attacker) or Heavy-Duty Boots (Fast
+  // Support). Boots is silent, so without the private team the calc assumes the first
+  // item — Choice Specs — and over-reads a special move's damage by ~1.5×.
+  const dm = (b: ReturnType<typeof loadBattle>) => maxPercent(buildMoveSection(b.battle, b.active('Noivern'), 'Draco Meteor', data));
+  // Un-terastallize so the set ISN'T already narrowed to Boots by the live Tera Fire —
+  // this is the bug scenario, where the item is genuinely undeducible from public info.
+  const untera = {noivernTerastallized: ''};
+
+  it('un-narrowed, the default assumes Choice Specs; your real Boots corrects it', () => {
+    const assumed = dm(loadBattle(untera)); // no private team → assumes Choice Specs (the bug)
+    const real = dm(loadBattle({...untera, myNoivernItem: 'heavydutyboots'})); // your actual item, id form
+    expect(real).toBeLessThan(assumed); // the phantom ~1.5× Specs boost is gone
+  });
+
+  it('bridges the id form to the calc name (choicespecs must map to Choice Specs)', () => {
+    // The calc ignores a raw id — so if the mapping failed, both would fall to the neutral
+    // no-item number and be equal. Boots < Specs proves the override reached the calc as a
+    // real name for both.
+    expect(dm(loadBattle({...untera, myNoivernItem: 'heavydutyboots'})))
+      .toBeLessThan(dm(loadBattle({...untera, myNoivernItem: 'choicespecs'})));
   });
 });
 

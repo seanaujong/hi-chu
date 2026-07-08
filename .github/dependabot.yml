@@ -1,0 +1,14 @@
+# Keeps the GitHub Actions in .github/workflows/ current. The workflows pin each
+# action to a full commit SHA (so a moved tag can't swap in new code); Dependabot is
+# the other half of that trade — it watches for new releases and opens a PR bumping
+# the SHA (and the `# vX.Y.Z` comment), so pinning doesn't rot into stale, unpatched
+# actions. All bumps are grouped into one PR to keep the noise down.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ['*']

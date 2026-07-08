@@ -142,6 +142,17 @@ describe('inferSets', () => {
     expect(k.candidates.every((c) => c.moves.every((m) => !m.known))).toBe(true);
   });
 
+  it('stops speculating once all four move slots are revealed', () => {
+    // Fast Attacker's pool has 5 moves; revealing 4 means the moveset is fully known, so the
+    // 5th (unrevealed) pool move drops — every shown move is a confirmed ✓.
+    const k = inferSets(noivernFacts({revealedMoves: ['Boomburst', 'Draco Meteor', 'Flamethrower', 'U-turn']}), NOIVERN);
+    expect(names(k)).toEqual(['Fast Attacker']);
+    const moves = k.candidates[0]!.moves;
+    expect(moves.every((m) => m.known)).toBe(true); // no speculative pool move
+    expect(moves.map((m) => m.name)).toEqual(['Boomburst', 'Draco Meteor', 'Flamethrower', 'U-turn']);
+    expect(moves.map((m) => m.name)).not.toContain('Hurricane'); // the 5th pool move is gone
+  });
+
   it('marks revealed moves as known inside every surviving set', () => {
     const k = inferSets(noivernFacts({revealedMoves: ['Flamethrower']}), NOIVERN);
     expect(names(k)).toHaveLength(2); // Flamethrower is in both roles — no narrowing yet

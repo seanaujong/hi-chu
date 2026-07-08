@@ -86,6 +86,9 @@ export function inferSets(facts: LiveFacts, entry: RandbatsEntry): SetKnowledge 
   const revealedAbility = innateAbility(facts);
   const activeTera = facts.terastallized && facts.teraType ? [facts.teraType] : [];
   const species = baseSpecies(facts.speciesForme);
+  // A Pokémon has exactly four move slots, so once four are revealed the moveset is fully
+  // known — the rest of the role's pool is no longer possible, so we stop speculating.
+  const fullMoveset = facts.revealedMoves.length >= 4;
 
   const toCandidate = (name: string, role: RandbatsRole): SetKnowledge['candidates'][number] => {
     const items = exclusiveOptions(survivingItems(role.abilities, role.items, facts), revealedItem ? [revealedItem] : []);
@@ -94,7 +97,7 @@ export function inferSets(facts: LiveFacts, entry: RandbatsEntry): SetKnowledge 
       name,
       abilities: exclusiveOptions(role.abilities, revealedAbility ? [revealedAbility] : []),
       items,
-      moves: unionOptions(role.moves, facts.revealedMoves),
+      moves: unionOptions(fullMoveset ? [] : role.moves, facts.revealedMoves),
       gimmicks: deriveGimmicks(items, teraTypes, species),
     };
   };

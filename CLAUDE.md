@@ -51,6 +51,9 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
       `buildResolved` so "known wins" is written once.
     - `knowledge.ts` — the information game: `inferSets` renders each surviving role's
       options into a `SetKnowledge` for display (speculative values never reach the calc).
+    - `illusion.ts` — Zoroark detection: `illusionSuspects` flags when a revealed move fits
+      a Zoroark set but not the shown species (the Illusion tell), so `section.ts` can add
+      that Zoroark as an extra defender variant (move view) and candidate block (sets view).
   - `variants.ts` — the distinct-outcome law: run the calc per `resolveVariants` result,
     then `bucketByDamage` collapses identical rolls into the few DISTINCT outcomes and
     names each bucket by the axis that differs (an Assault Vest that changes the number).
@@ -157,6 +160,17 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   `narrow.roleMatches` skips the ability check when `isMegaForme(speciesForme)` — else every
   role is rejected ("matched no known set"). Checked by `resolve.test.ts` ("a Mega forme
   matches on forme + stone").
+- ✅ **A disguised Zoroark surfaces as its own candidate, never a corrupted one.** Illusion
+  makes the client show Zoroark as a teammate, so the calc/lookup are silently for the WRONG
+  species until it breaks — we can't see through it (the client is fooled too). But a
+  disguised Zoroark attacks with ITS moves under the disguise's name, so a revealed move the
+  shown species can't learn but a Zoroark can (`illusion.illusionSuspects`) means it MIGHT be
+  Zoroark. We don't overwrite the shown species — we ADD the Zoroark as an extra defender
+  variant (a second "vs Zoroark-Hisui" damage line on the move tooltip, labelled by the
+  species axis in `variants.ts`) and an extra candidate block ("⚠ … if Illusion") in the sets
+  view. Silent when no move betrays it (a Zoroark mimicking only shared moves is genuinely
+  undetectable — honest). Checked by `illusion.test.ts`, `variants.test.ts` ("labels by
+  SPECIES first"), and `render.test.ts` ("flags an Illusion candidate").
 - ✅ **Set inference keys on the INNATE ability (`baseAbility`), not the live one.** Trace,
   Skill Swap, Worry Seed, Entrainment, Simple Beam, Gastro Acid, and Mummy/Wandering Spirit
   all change or suppress the current `ability`; the randbats set is keyed to what the mon was
@@ -197,6 +211,14 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
 - ✅ **Own the hit-count model** in `multihit.ts` (`@smogon/calc` collapses multi-hit to
   `k × one shared roll` and ignores Skill Link / Loaded Dice). Checked by `multihit.test.ts`
   (distributions + the "independent rolls narrow the distribution" guard) and `damage.test.ts`.
+- 👁 **Where we correct @smogon/calc** (things it should arguably handle but doesn't, that we
+  own): `multihit.ts` (the multi-hit model above) and the **item id→name quirk** — the calc
+  silently *ignores* an item passed in id form (`heavydutyboots`), applying nothing, so
+  anything feeding it an item maps to the display name first (`section.ownItemName`,
+  `damage.test.ts`'s `isDamagingMove`-era note). NOT in this bucket: `variants.ts`/deductions
+  (our information-game product — the calc computes each variant correctly) and the Illusion
+  case (input correctness — the calc did its job; we fed it the wrong species). Keep the line
+  clear: calc *gaps* here; our *product* elsewhere.
 - 👁 **Hazards are deliberately not modelled** — they change switch-in HP, not a move's
   damage, and live HP is already read. Only weather/terrain/screens feed the calc. (Scope
   decision; no check — don't "add" hazards to the damage Field.)

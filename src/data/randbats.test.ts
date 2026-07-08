@@ -1,7 +1,28 @@
 import {describe, it, expect} from 'vitest';
-import {pickEntry} from './randbats.js';
+import {pickEntry, megaEntryForItem} from './randbats.js';
 import {inferSets} from '../core/knowledge.js';
 import type {LiveFacts, RandbatsData, RandbatsEntry} from '../core/types.js';
+
+describe('megaEntryForItem (a held Mega stone is running the Mega set)', () => {
+  // Real Champions shape: the base forme "Floette-Eternal" and its Mega keyed IRREGULARLY
+  // as "Floette-Mega" (drops "Eternal"), so the set must be found by the stone, not the name.
+  const feed = {
+    'Floette-Eternal': {level: 52, abilities: ['Flower Veil'], items: ['Choice Scarf'], roles: {'Fast Attacker': {items: ['Choice Scarf'], moves: ['Trick']}}},
+    'Floette-Mega': {level: 48, abilities: ['Flower Veil'], items: ['Floettite'], roles: {'Setup Sweeper': {items: ['Floettite'], moves: ['Calm Mind']}}},
+    Blissey: {level: 50, abilities: ['Natural Cure'], items: ['Leftovers']},
+  } as unknown as RandbatsData;
+
+  it('finds the Mega set by its stone, despite the irregular "-Mega" key', () => {
+    expect(megaEntryForItem(feed, 'Floettite')?.level).toBe(48); // the Floette-Mega entry
+    expect(megaEntryForItem(feed, 'Floettite')?.roles?.['Setup Sweeper']).toBeDefined();
+  });
+
+  it('returns undefined for a non-stone item or no item', () => {
+    expect(megaEntryForItem(feed, 'Leftovers')).toBeUndefined(); // held, but no Mega set uses it
+    expect(megaEntryForItem(feed, 'Choice Scarf')).toBeUndefined();
+    expect(megaEntryForItem(feed, undefined)).toBeUndefined();
+  });
+});
 
 const entry = (level: number): RandbatsEntry => ({level, abilities: [], items: []});
 

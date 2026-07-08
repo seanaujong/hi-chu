@@ -25,7 +25,7 @@ import {
   type SetsRenderModel,
 } from './core/render.js';
 import type {CandidateSet, LiveFacts, RandbatsData, RandbatsEntry, ResolvedMon, SetVariant} from './core/types.js';
-import {pickEntry} from './data/randbats.js';
+import {pickEntry, megaEntryForItem} from './data/randbats.js';
 import {
   toLiveFacts,
   readBehaviors,
@@ -45,6 +45,12 @@ function toId(s: string): string {
 /** A defender entry when the feed doesn't cover it: facts only, default spread. */
 function entryOrMinimal(entry: RandbatsEntry | undefined, facts: LiveFacts): RandbatsEntry {
   return entry ?? {level: facts.level, abilities: [], items: []};
+}
+
+/** The mon's set entry: the Mega set when it holds a Mega stone (it's running that set even
+ *  before it evolves — see `megaEntryForItem`), otherwise the forme's own entry. */
+function entryFor(data: RandbatsData, facts: LiveFacts): RandbatsEntry | undefined {
+  return megaEntryForItem(data, facts.item) ?? pickEntry(data, facts.speciesForme);
 }
 
 /**
@@ -163,7 +169,7 @@ export function buildMoveSection(
   if (!defenderMon) return '';
 
   const publicFacts = toLiveFacts(pokemon, readBehaviors(battle, pokemon));
-  const attackerEntry = pickEntry(data, publicFacts.speciesForme);
+  const attackerEntry = entryFor(data, publicFacts);
   if (!attackerEntry) return '';
 
   // Your move, your damage: prefer your REAL item over the set's assumed first item, so a
@@ -176,7 +182,7 @@ export function buildMoveSection(
   const attacker = resolveMon(attackerFacts, attackerEntry);
   // The defender's hidden item/ability can each split the damage — enumerate the
   // still-possible sets and let identical outcomes collapse back to one bucket.
-  const defenderEntry = pickEntry(data, defenderFacts.speciesForme);
+  const defenderEntry = entryFor(data, defenderFacts);
 
   // Pain Split deals no damage — it averages both mons' HP — so @smogon/calc has nothing
   // to say and the normal damage path would insert a blank. Show the HP swing instead.
@@ -244,7 +250,7 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
   if (!format) return '';
 
   const facts = toLiveFacts(pokemon, readBehaviors(battle, pokemon));
-  const entry = pickEntry(data, facts.speciesForme);
+  const entry = entryFor(data, facts);
   if (!entry) return ''; // not a tracked randbats Pokémon
 
   const shown = inferSets(facts, entry);
@@ -265,7 +271,7 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
   // aren't hoverable for us). The own-side mirror carries no damage — public info only.
   const ourMon = isFoe(battle, pokemon) ? findOpposingActive(battle, pokemon) : null;
   const ourFacts = ourMon ? toLiveFacts(ourMon, readBehaviors(battle, ourMon)) : null;
-  const defender = ourFacts ? resolveMon(ourFacts, entryOrMinimal(pickEntry(data, ourFacts.speciesForme), ourFacts)) : null;
+  const defender = ourFacts ? resolveMon(ourFacts, entryOrMinimal(entryFor(data, ourFacts), ourFacts)) : null;
   const field = ourMon ? readFieldFacts(battle, ourMon.side) : undefined;
 
   const blocks: CandidateBlock[] = [];

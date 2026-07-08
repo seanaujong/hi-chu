@@ -136,3 +136,26 @@ export function pickEntry(data: RandbatsData, speciesForme: string): RandbatsEnt
   }
   return undefined;
 }
+
+const asId = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/**
+ * The Mega-forme entry a held item unlocks, or undefined if the item isn't a Mega stone in
+ * this feed. A mon holding a Mega stone is running the MEGA set even before it evolves, but
+ * its live forme is still the base one — so a plain `pickEntry` on the forme returns the
+ * wrong (non-Mega) set. Champions also keys Mega sets irregularly (a Floette-Eternal holding
+ * Floettite becomes "Floette-Mega", dropping "Eternal"), so we find the set by its STONE —
+ * the one Mega entry whose item pool holds it — rather than by mangling the species name.
+ */
+export function megaEntryForItem(data: RandbatsData, item: string | undefined): RandbatsEntry | undefined {
+  if (!item) return undefined;
+  const wanted = asId(item);
+  const raw = data as unknown as Readonly<Record<string, RawEntry>>;
+  for (const [key, entry] of Object.entries(raw)) {
+    if (!/-Mega(-[XY])?$/.test(key)) continue; // only Mega-forme entries hold stones
+    const e = normalizeEntry(entry);
+    const items = e.roles ? Object.values(e.roles).flatMap((r) => r.items) : e.items;
+    if (items.some((i) => asId(i) === wanted)) return e;
+  }
+  return undefined;
+}

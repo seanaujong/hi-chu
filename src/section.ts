@@ -133,7 +133,7 @@ function moveDamageBuckets(
   const scored: {variant: SetVariant; report: DamageReport}[] = [];
   for (const variant of defenderVariants) {
     try {
-      const report = calcDamage(attacker, variant.mon, moveName, {gen, field});
+      const report = calcDamage(attacker, variant.mon, moveName, {gen, field, nhkoTurns: 3});
       if (report.category !== 'Status') scored.push({variant, report});
     } catch {
       // A move outside the calc's world for this variant shouldn't drop the section.
@@ -196,10 +196,18 @@ export function buildMoveSection(
 
   // The live Tera is shared by every variant (it's a revealed fact, not a hidden set).
   const defenderTera = defenderVariants[0]?.mon.teraType;
+  // Leftovers changes the nHKO ladder (recovery between turns) without changing damage, so
+  // it's a foe-level fact, shown only when there's a single outcome to attach it to.
+  const revealedItem = defenderFacts.item ?? defenderFacts.prevItem;
+  const leftovers = buckets.length !== 1 ? undefined
+    : revealedItem ? (toId(revealedItem) === 'leftovers' ? 'certain' : undefined)
+    : defenderVariants.some((v) => toId(v.mon.item ?? '') === 'leftovers') ? 'possible'
+    : undefined;
   return renderMoveSection({
     defenderHpPercent: defenderFacts.hpPercent,
     extraNotes: [],
     buckets,
+    ...(leftovers ? {leftovers} : {}),
     ...(attacker.teraType ? {attackerTera: attacker.teraType} : {}),
     ...(defenderTera ? {defenderTera} : {}),
   });

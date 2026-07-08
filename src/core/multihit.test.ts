@@ -8,6 +8,7 @@ import {
   totalDamagePmf,
   expectedValue,
   probabilityAtLeast,
+  koLadder,
   summarize,
 } from './multihit.js';
 
@@ -148,3 +149,24 @@ describe('summarize', () => {
     expect(s).toEqual({min: 10, max: 30, mean: 20});
   });
 });
+
+describe('koLadder (nHKO with between-turn recovery)', () => {
+  it('is monotonic and matches single-use KO on turn 1', () => {
+    // A move dealing 50 or 60 (50/50) into 100 HP: turn 1 never KOs (max 60 < 100).
+    const perUse = pmfFromSamples([50, 60]);
+    const ladder = koLadder(perUse, 100, 100, 0, 3);
+    expect(ladder[0]).toBe(0); // 60 < 100 → no OHKO
+    expect(ladder[0]).toBeLessThanOrEqual(ladder[1]!); // cumulative
+    expect(ladder[1]).toBeLessThanOrEqual(ladder[2]!);
+    expect(ladder[2]).toBe(1); // by turn 3, 3×50 = 150 ≥ 100 always
+  });
+
+  it('recovery makes a KO strictly harder (Leftovers heals between turns)', () => {
+    const perUse = pmfFromSamples([55]); // deterministic 55 into 100 HP
+    const noRecovery = koLadder(perUse, 100, 100, 0, 3); // 55,110 → 2HKO on turn 2
+    const withLefties = koLadder(perUse, 100, 100, 12, 3); // heals 12/turn → survives longer
+    expect(noRecovery[1]).toBe(1); // 55+55=110 ≥ 100 → guaranteed 2HKO
+    expect(withLefties[1]).toBe(0); // after hit1: 45, heal → 57; hit2: 2 → still alive
+    expect(withLefties[2]).toBe(1); // 57→2→14→ hit3 kills
+  });
+})

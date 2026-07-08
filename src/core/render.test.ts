@@ -109,7 +109,7 @@ describe('renderMoveSection', () => {
     expect(html).not.toContain('<small>Damage:</small>'); // the plain line only appears when there's one outcome
   });
 
-  it('shows the KO flip: the item that saves the KO reads "no KO"', () => {
+  it('shows the KO flip: the item that saves the KO simply omits its KO clause', () => {
     const html = renderMoveSection(
       model({
         buckets: [
@@ -118,8 +118,37 @@ describe('renderMoveSection', () => {
         ],
       }),
     );
-    expect(html).toContain('71% to KO');
-    expect(html).toContain('no KO');
+    expect(html).toContain('71% to KO'); // the KO'ing item keeps its clause
+    expect(html).not.toContain('no KO'); // the saving item shows no blaring "no KO"
+    expect(html).toContain('Damage (Assault Vest):'); // …but still shows its damage line
+  });
+
+  const withNhko = (base: number[], withLeftovers = base) =>
+    model({buckets: [{label: '', report: report({move: 'Surf', koChance: base[0]!, nhko: {base, withLeftovers}})}]});
+
+  it('shows a 2HKO/3HKO ladder, skipping the guaranteed OHKO and empty turns', () => {
+    const html = renderMoveSection(withNhko([0.08, 0.91, 1]));
+    expect(html).toContain('<small>nHKO:</small> 2HKO 91% · 3HKO 100%');
+  });
+
+  it('omits the nHKO line for a guaranteed OHKO', () => {
+    expect(renderMoveSection(withNhko([1, 1, 1]))).not.toContain('nHKO');
+  });
+
+  it('omits the nHKO line when it can’t even 3HKO', () => {
+    expect(renderMoveSection(withNhko([0, 0, 0]))).not.toContain('nHKO');
+  });
+
+  it('appends an "if Leftovers" aside when Leftovers is still possible', () => {
+    const html = renderMoveSection({...withNhko([0.08, 0.91, 1], [0.08, 0.6, 0.95]), leftovers: 'possible'});
+    expect(html).toContain('2HKO 91% · 3HKO 100%');
+    expect(html).toContain('(2HKO 60% · 3HKO 95% w/ Leftovers)');
+  });
+
+  it('uses the Leftovers ladder as the figure when Leftovers is certain', () => {
+    const html = renderMoveSection({...withNhko([0.08, 0.91, 1], [0.08, 0.6, 0.95]), leftovers: 'certain'});
+    expect(html).toContain('<small>nHKO:</small> 2HKO 60% · 3HKO 95%');
+    expect(html).not.toContain('w/ Leftovers');
   });
 });
 

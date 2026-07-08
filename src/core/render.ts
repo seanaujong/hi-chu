@@ -114,7 +114,35 @@ export interface MoveRenderModel {
    * one labelled line each.
    */
   readonly buckets: readonly DamageBucket[];
+  /** Whether the foe's Leftovers is 'certain' (revealed) or 'possible' (a still-open item),
+   *  which decides how the nHKO ladder reflects between-turn recovery. Undefined = neither. */
+  readonly leftovers?: 'certain' | 'possible';
   readonly extraNotes: readonly string[];
+}
+
+/** "2HKO 96% · 3HKO 100%" from a cumulative KO-by-turn ladder, stopping at the first
+ *  guaranteed turn. Starts at 2HKO — the OHKO chance is already on the KO line. */
+function nhkoLadderText(ladder: readonly number[]): string {
+  const parts: string[] = [];
+  for (let i = 1; i < ladder.length; i++) {
+    const p = ladder[i] ?? 0;
+    if (p < 0.005) continue; // skip turns with no real KO chance — only relevant lines
+    parts.push(`${i + 1}HKO ${Math.round(p * 100)}%`);
+    if (p >= 0.995) break; // guaranteed by this turn — nothing more to say
+  }
+  return parts.join(' · ');
+}
+
+/** The nHKO line — shown only when there's a relevant multi-turn KO (not a guaranteed OHKO,
+ *  not a can't-even-3HKO). `certain` Leftovers bakes recovery into the figure; `possible`
+ *  shows it as an "if Leftovers" aside. */
+function nhkoLine(nhko: DamageReport['nhko'], leftovers: MoveRenderModel['leftovers']): string {
+  if (!nhko || (nhko.base[0] ?? 0) >= 0.995) return '';
+  const body = nhkoLadderText(leftovers === 'certain' ? nhko.withLeftovers : nhko.base);
+  if (!body) return '';
+  const asideBody = leftovers === 'possible' ? nhkoLadderText(nhko.withLeftovers) : '';
+  const aside = asideBody ? ` <small>(${asideBody} w/ Leftovers)</small>` : '';
+  return `<small>nHKO:</small> ${body}${aside}`;
 }
 
 function teraTag(attackerTera: string | undefined, defenderTera: string | undefined): string {
@@ -130,9 +158,9 @@ function variantLine(bucket: DamageBucket, model: MoveRenderModel, tera: string)
   const r = bucket.report;
   const ko = koText(r.koChance);
   const koCtx = ko && model.defenderHpPercent < 0.995 ? ` at ${pct1(model.defenderHpPercent)} HP` : '';
-  const koPart = `<span class="hichu-ko">${ko || 'no KO'}</span>${koCtx}`;
+  const koPart = ko ? ` · <span class="hichu-ko">${ko}</span>${koCtx}` : ''; // omit entirely when there's no KO
   const multi = multiHitDetail(r);
-  return `<small>Damage (${esc(bucket.label)}):</small> ${moveDamageText(r)}${tera} · ${koPart}${multi ? ` · ${esc(multi)}` : ''}`;
+  return `<small>Damage (${esc(bucket.label)}):</small> ${moveDamageText(r)}${tera}${koPart}${multi ? ` · ${esc(multi)}` : ''}`;
 }
 
 /**
@@ -160,6 +188,7 @@ export function renderMoveSection(model: MoveRenderModel): string {
       block([
         `<small>Damage:</small> ${moveDamageText(r)}${tera}`,
         ko ? `<small>KO:</small> <span class="hichu-ko">${ko}</span>${koCtx}` : '',
+        nhkoLine(r.nhko, model.leftovers),
         multi ? `<small>Hits:</small> ${esc(multi)}` : '',
       ]) + notesBlock(model.extraNotes)
     );

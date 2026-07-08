@@ -17,6 +17,7 @@ import {
   totalDamagePmf,
   expectedValue,
   probabilityAtLeast,
+  koLadder,
   summarize,
 } from './multihit.js';
 
@@ -39,6 +40,12 @@ export interface DamageReport {
   readonly percent: {readonly min: number; readonly max: number; readonly mean: number};
   /** Probability that a single use of this move KOes the defender, in [0,1]. */
   readonly koChance: number;
+  /**
+   * The nHKO ladder — cumulative KO probability after 1..N uses — under two recovery
+   * assumptions, so the caller shows the base figure and an "if Leftovers" one. Present
+   * only when requested (`CalcDamageOptions.nhkoTurns`); `base[0]` equals `koChance`.
+   */
+  readonly nhko?: {readonly base: readonly number[]; readonly withLeftovers: readonly number[]};
   readonly defenderMaxHP: number;
   readonly defenderRemainingHP: number;
   /** @smogon/calc's own one-line description, kept for comparison/debugging. */
@@ -86,10 +93,18 @@ function summarizeReport(
     notes: string[];
     hits?: HitCountBreakdown;
     perHit?: {min: number; max: number};
+    nhkoTurns?: number;
   },
 ): DamageReport {
   const t = summarize(total);
   const pct = (d: number) => Math.round((d / maxHP) * 1000) / 10;
+  // Leftovers heals 1/16 of max HP (rounded down) each turn.
+  const nhko = extras.nhkoTurns
+    ? {
+        base: koLadder(total, remainingHP, maxHP, 0, extras.nhkoTurns),
+        withLeftovers: koLadder(total, remainingHP, maxHP, Math.floor(maxHP / 16), extras.nhkoTurns),
+      }
+    : undefined;
   return {
     move: moveName,
     category,
@@ -100,6 +115,7 @@ function summarizeReport(
     total: {min: t.min, max: t.max, mean: Math.round(t.mean * 10) / 10},
     percent: {min: pct(t.min), max: pct(t.max), mean: pct(t.mean)},
     koChance: probabilityAtLeast(total, remainingHP),
+    ...(nhko ? {nhko} : {}),
     defenderMaxHP: maxHP,
     defenderRemainingHP: remainingHP,
     calcDesc,
@@ -112,6 +128,8 @@ export interface CalcDamageOptions {
   readonly gen?: number;
   /** Optional field state (weather, terrain, defender's screens). */
   readonly field?: FieldFacts;
+  /** Compute the nHKO ladder up to this many turns (omit to skip — the sets view does). */
+  readonly nhkoTurns?: number;
 }
 
 /** Map our plain FieldFacts onto a @smogon/calc Field. */
@@ -163,6 +181,7 @@ export function calcDamage(
       multiHit: Boolean(profile),
       approximate: Boolean(profile),
       notes,
+      ...(options.nhkoTurns ? {nhkoTurns: options.nhkoTurns} : {}),
     });
   }
 
@@ -193,6 +212,7 @@ export function calcDamage(
     notes,
     hits,
     perHit,
+    ...(options.nhkoTurns ? {nhkoTurns: options.nhkoTurns} : {}),
   });
 }
 

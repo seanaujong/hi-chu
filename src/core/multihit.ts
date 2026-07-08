@@ -164,6 +164,37 @@ export function probabilityAtLeast(pmf: Pmf, threshold: number): number {
   return p;
 }
 
+/**
+ * Cumulative KO probability after 1..`turns` uses of a move — the nHKO ladder. Tracks the
+ * defender's HP distribution across turns: each turn a use deals `perUse` damage; mass that
+ * reaches 0 is an absorbing KO, and a survivor heals `recovery` (capped at `maxHP`) at the
+ * end of the turn, before the next use. Returns `[P(KO by turn 1), …, P(KO by turn n)]`.
+ *
+ * This is what a plain "n × mean ≥ HP" misses: the rolls compound independently, and between
+ * turns the defender recovers (Leftovers). `recovery = 0` gives the no-recovery ladder.
+ */
+export function koLadder(perUse: Pmf, remainingHP: number, maxHP: number, recovery: number, turns: number): number[] {
+  let alive: Map<number, number> = new Map([[remainingHP, 1]]); // surviving HP → probability
+  let dead = 0;
+  const ladder: number[] = [];
+  for (let t = 0; t < turns; t++) {
+    const next = new Map<number, number>();
+    for (const [hp, p] of alive) {
+      for (const [dmg, pd] of perUse) {
+        const afterHit = hp - dmg;
+        if (afterHit <= 0) dead += p * pd; // KO'd — dead mons don't heal
+        else {
+          const healed = Math.min(maxHP, afterHit + recovery);
+          next.set(healed, (next.get(healed) ?? 0) + p * pd);
+        }
+      }
+    }
+    ladder.push(dead);
+    alive = next;
+  }
+  return ladder;
+}
+
 export interface PmfSummary {
   readonly min: number;
   readonly max: number;

@@ -131,17 +131,17 @@ describe('renderMoveSection', () => {
   const withNhko = (base: number[], withLeftovers = base) =>
     model({buckets: [{label: '', report: report({move: 'Surf', koChance: base[0]!, nhko: {base, withLeftovers}})}]});
 
-  it('shows a 2HKO/3HKO ladder, skipping the guaranteed OHKO and empty turns', () => {
+  it('shows a 2HKO/3HKO ladder (unlabelled — it reads for itself), skipping the sure OHKO', () => {
     const html = renderMoveSection(withNhko([0.08, 0.91, 1]));
-    expect(html).toContain('<small>nHKO:</small> 2HKO 91% · 3HKO 100%');
+    expect(html).toContain('2HKO 91% · 3HKO 100%');
   });
 
-  it('omits the nHKO line for a guaranteed OHKO', () => {
-    expect(renderMoveSection(withNhko([1, 1, 1]))).not.toContain('nHKO');
+  it('omits the ladder for a guaranteed OHKO', () => {
+    expect(renderMoveSection(withNhko([1, 1, 1]))).not.toContain('HKO');
   });
 
-  it('omits the nHKO line when it can’t even 3HKO', () => {
-    expect(renderMoveSection(withNhko([0, 0, 0]))).not.toContain('nHKO');
+  it('omits the ladder when it can’t even 3HKO', () => {
+    expect(renderMoveSection(withNhko([0, 0, 0]))).not.toContain('HKO');
   });
 
   it('appends an "if Leftovers" aside when Leftovers is still possible', () => {
@@ -152,7 +152,7 @@ describe('renderMoveSection', () => {
 
   it('uses the Leftovers ladder as the figure when Leftovers is certain', () => {
     const html = renderMoveSection({...withNhko([0.08, 0.91, 1], [0.08, 0.6, 0.95]), leftovers: 'certain'});
-    expect(html).toContain('<small>nHKO:</small> 2HKO 60% · 3HKO 95%');
+    expect(html).toContain('2HKO 60% · 3HKO 95%');
     expect(html).not.toContain('w/ Leftovers');
   });
 });

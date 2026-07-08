@@ -150,7 +150,7 @@ function nhkoLine(nhko: DamageReport['nhko'], leftovers: MoveRenderModel['leftov
   if (!body) return '';
   const asideBody = leftovers === 'possible' ? nhkoLadderText(nhko.withLeftovers) : '';
   const aside = asideBody ? ` <small>(${asideBody} w/ Leftovers)</small>` : '';
-  return `<small>nHKO:</small> ${body}${aside}`;
+  return `${body}${aside}`; // no label — "2HKO 91% · 3HKO 100%" reads for itself
 }
 
 function teraTag(attackerTera: string | undefined, defenderTera: string | undefined): string {
@@ -196,7 +196,7 @@ export function renderMoveSection(model: MoveRenderModel): string {
       block([
         targetHeader(model.targetLabel),
         `<small>Damage:</small> ${moveDamageText(r)}${tera}`,
-        ko ? `<small>KO:</small> <span class="hichu-ko">${ko}</span>${koCtx}` : '',
+        ko ? `<span class="hichu-ko">${ko}</span>${koCtx}` : '', // "12% to KO" reads for itself
         nhkoLine(r.nhko, model.leftovers),
         multi ? `<small>Hits:</small> ${esc(multi)}` : '',
       ]) + notesBlock(model.extraNotes)

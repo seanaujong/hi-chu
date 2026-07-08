@@ -173,6 +173,41 @@ npm run watch     # rebuild on save
 **From source:** `npm install && npm run build`, then Load unpacked → `dist/`. Run
 `npm run package` to produce the release zip yourself.
 
+## Verifying a release
+
+Rather than *asking* you to trust it, hi-chu lets you **check** it. Every tagged
+release ships with a Sigstore-signed [build-provenance attestation][slsa] and a
+`SHA256SUMS` file, so you can confirm the published extension was built by this repo's
+CI from a specific commit — not tampered with, not someone else's code.
+
+**Prove where the download came from** (needs the [GitHub CLI][gh-cli]):
+
+```sh
+gh attestation verify hi-chu-0.2.0.zip --repo seanaujong/hi-chu
+```
+
+A ✓ means GitHub verified the signature: this exact zip was produced by the Release
+workflow, from a commit you can inspect. No keys to trust by hand.
+
+**Prove the shipped code matches the source.** The bundled `content.js` is produced
+deterministically by esbuild at the version pinned in `package-lock.json`, so you can
+rebuild it and compare hashes:
+
+```sh
+git checkout v0.2.0
+npm ci && npm run build
+sha256sum dist/content.js          # compare to content.js in the release's SHA256SUMS
+```
+
+Identical hashes mean the code Chrome runs is exactly the open source in this repo.
+(The Chrome Web Store repackages and re-signs uploads, so the *installed* extension is
+additionally signed by Google — but these two checks are what tie it back to here.)
+
+> **On the install warning.** hi-chu is new, so Chrome's *Enhanced Safe Browsing* may
+> note it isn't "trusted" yet — a reputation signal Google grants new extensions over
+> time, not a finding about the code. The checks above are the concrete answer to "is
+> this safe?": verify the provenance and the source hash yourself.
+
 ## Known limitations (v1)
 
 - **Variable-power multi-hit** — Triple Axel and Triple Kick use `@smogon/calc`'s total
@@ -210,3 +245,5 @@ names are trademarks of their respective owners.
 [feed]: https://github.com/pkmn/randbats
 [calc]: https://github.com/smogon/damage-calc
 [releases]: https://github.com/seanaujong/hi-chu/releases/latest
+[slsa]: https://docs.github.com/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds
+[gh-cli]: https://cli.github.com

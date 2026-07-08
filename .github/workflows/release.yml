@@ -1,0 +1,50 @@
+# Publishes a verifiable release when a v* tag is pushed. Each release carries a
+# signed SLSA build-provenance attestation and a SHA256SUMS file, so anyone can prove
+# the published artifact was built by THIS workflow from THIS commit — turning "trust
+# me, it's safe" into a check. See README → "Verifying a release".
+#
+# Tag a release with the version already in package.json/manifest.json, e.g.:
+#   git tag v0.2.0 && git push origin v0.2.0
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # create the GitHub Release
+  id-token: write # OIDC token so Sigstore can sign the attestation (no keys to manage)
+  attestations: write # record the provenance attestation against the repo
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run check # strict typecheck + tests gate the release
+      - run: npm run package # build + zip → hi-chu-<version>.zip
+
+      # The zip is the store upload; content.js is the deterministic bundle a verifier
+      # can reproduce from source (esbuild is pinned via package-lock.json).
+      - name: Hash the artifacts
+        run: sha256sum hi-chu-*.zip dist/content.js | tee SHA256SUMS
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            hi-chu-*.zip
+            dist/content.js
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" hi-chu-*.zip SHA256SUMS \
+            --title "$GITHUB_REF_NAME" \
+            --notes "Signed build provenance is attached. Verify the download with \`gh attestation verify hi-chu-*.zip --repo $GITHUB_REPOSITORY\`, then see the README's \"Verifying a release\" section for the full check."

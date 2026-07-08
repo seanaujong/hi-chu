@@ -23,7 +23,7 @@ import {
   type MoveKnowledgeRow,
   type SetsRenderModel,
 } from './core/render.js';
-import type {LiveFacts, RandbatsData, RandbatsEntry, ResolvedMon, SetKnowledge, SetVariant} from './core/types.js';
+import type {CandidateSet, LiveFacts, RandbatsData, RandbatsEntry, ResolvedMon, SetVariant} from './core/types.js';
 import {pickEntry} from './data/randbats.js';
 import {
   toLiveFacts,
@@ -71,16 +71,21 @@ function ownItemName(battle: ClientBattle, pokemon: ClientPokemon, entry: Randba
  * a single, clearly-labelled bucket. Its own species/level drive the calc.
  */
 function illusionVariants(defenderFacts: LiveFacts, defenderEntry: RandbatsEntry | undefined, data: RandbatsData): SetVariant[] {
-  const impostors = ILLUSION_SPECIES
-    .map((species): IllusionSuspect | null => {
-      const entry = pickEntry(data, species);
-      return entry ? {species, entry} : null;
-    })
-    .filter((x): x is IllusionSuspect => x !== null);
-  return illusionSuspects(defenderFacts, defenderEntry, impostors).map(({species, entry}) => ({
+  return suspectsFor(defenderFacts, defenderEntry, data).map(({species, entry}) => ({
     mon: resolveMon({...defenderFacts, speciesForme: species, level: entry.level}, entry),
     role: species,
   }));
+}
+
+/** The Zoroark species the hovered mon might secretly be, given the feed's entries. */
+function suspectsFor(facts: LiveFacts, entry: RandbatsEntry | undefined, data: RandbatsData): IllusionSuspect[] {
+  const impostors = ILLUSION_SPECIES
+    .map((species): IllusionSuspect | null => {
+      const e = pickEntry(data, species);
+      return e ? {species, entry: e} : null;
+    })
+    .filter((x): x is IllusionSuspect => x !== null);
+  return illusionSuspects(facts, entry, impostors);
 }
 
 /** True when the hovered Pokémon belongs to the opponent (the far side, from our seat). */
@@ -192,24 +197,22 @@ export function buildMoveSection(
 }
 
 /**
- * Attach damage reports (foe view) to each candidate set's move list. `damagePerSet`
- * is aligned 1:1 with `knowledge.candidates` — each block's numbers come from THAT
- * set's own item/spread, not one set's figures shared across every block.
+ * One candidate set → a render block, with each move's damage (foe view) attached from
+ * THIS set's own item/spread/species. `species` is set only for an Illusion candidate (a
+ * Zoroark the hovered mon might secretly be), which the renderer flags as such.
  */
-function toBlocks(knowledge: SetKnowledge, damagePerSet: readonly (Map<string, DamageReport> | undefined)[]): CandidateBlock[] {
-  return knowledge.candidates.map((c, i) => {
-    const damage = damagePerSet[i];
-    return {
-      name: c.name,
-      abilities: c.abilities,
-      items: c.items,
-      gimmicks: c.gimmicks,
-      moves: c.moves.map((m): MoveKnowledgeRow => {
-        const report = damage?.get(toId(m.name));
-        return {name: m.name, known: m.known, ...(report ? {report} : {})};
-      }),
-    };
-  });
+function toBlock(c: CandidateSet, species: string | undefined, damage: Map<string, DamageReport> | undefined): CandidateBlock {
+  return {
+    name: c.name,
+    ...(species ? {species} : {}),
+    abilities: c.abilities,
+    items: c.items,
+    gimmicks: c.gimmicks,
+    moves: c.moves.map((m): MoveKnowledgeRow => {
+      const report = damage?.get(toId(m.name));
+      return {name: m.name, known: m.known, ...(report ? {report} : {})};
+    }),
+  };
 }
 
 /**
@@ -227,31 +230,39 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
   const entry = pickEntry(data, facts.speciesForme);
   if (!entry) return ''; // not a tracked randbats Pokémon
 
-  const knowledge = inferSets(facts, entry);
-  if (knowledge.candidates.every((c) => c.moves.length === 0)) return '';
+  const shown = inferSets(facts, entry);
+  const notes = shown.uncertainReason ? [shown.uncertainReason] : [];
 
-  const notes = knowledge.uncertainReason ? [knowledge.uncertainReason] : [];
+  // The hovered species, plus any Zoroark it might secretly be (Illusion), as candidate
+  // sources. Each contributes its own blocks; an Illusion source tags its blocks with the
+  // species it might really be (its own set + species drive that block's damage).
+  const sources = [
+    {facts, entry, species: undefined as string | undefined, knowledge: shown},
+    ...suspectsFor(facts, entry, data).map(({species, entry: e}) => {
+      const f: LiveFacts = {...facts, speciesForme: species, level: e.level};
+      return {facts: f, entry: e, species: species as string | undefined, knowledge: inferSets(f, e)};
+    }),
+  ];
 
   // Foe view: attach each possible move's damage into OUR active (their move buttons
-  // aren't hoverable for us, so threat numbers must live on their Pokémon tooltip).
-  // Each set block is calculated from ITS OWN set — a Choice Band set and a Life Orb
-  // set of the same species threaten different numbers. The own-side mirror carries no
-  // damage — it shows only what we've made public.
-  let damagePerSet: (Map<string, DamageReport> | undefined)[] = knowledge.candidates.map(() => undefined);
-  if (isFoe(battle, pokemon)) {
-    const ourMon = findOpposingActive(battle, pokemon);
-    if (ourMon) {
-      const ourFacts = toLiveFacts(ourMon, readBehaviors(battle, ourMon));
-      const defender = resolveMon(ourFacts, entryOrMinimal(pickEntry(data, ourFacts.speciesForme), ourFacts));
-      const field = readFieldFacts(battle, ourMon.side);
-      const attackers = resolveByRole(facts, entry); // aligned 1:1 with knowledge.candidates
-      damagePerSet = knowledge.candidates.map((c, i) => {
-        const attacker = (attackers[i] ?? attackers[0])?.mon;
-        if (!attacker) return undefined;
-        return reportsByMove(attacker, defender, c.moves.map((m) => m.name), format.gen, field);
-      });
-    }
-  }
+  // aren't hoverable for us). The own-side mirror carries no damage — public info only.
+  const ourMon = isFoe(battle, pokemon) ? findOpposingActive(battle, pokemon) : null;
+  const ourFacts = ourMon ? toLiveFacts(ourMon, readBehaviors(battle, ourMon)) : null;
+  const defender = ourFacts ? resolveMon(ourFacts, entryOrMinimal(pickEntry(data, ourFacts.speciesForme), ourFacts)) : null;
+  const field = ourMon ? readFieldFacts(battle, ourMon.side) : undefined;
 
-  return renderSetsSection({candidates: toBlocks(knowledge, damagePerSet), extraNotes: notes});
+  const blocks: CandidateBlock[] = [];
+  for (const s of sources) {
+    const attackers = defender ? resolveByRole(s.facts, s.entry) : []; // aligned 1:1 with candidates
+    s.knowledge.candidates.forEach((c, i) => {
+      const attacker = attackers[i]?.mon ?? attackers[0]?.mon;
+      const damage = defender && attacker && field
+        ? reportsByMove(attacker, defender, c.moves.map((m) => m.name), format.gen, field)
+        : undefined;
+      blocks.push(toBlock(c, s.species, damage));
+    });
+  }
+  if (blocks.every((b) => b.moves.length === 0)) return '';
+
+  return renderSetsSection({candidates: blocks, extraNotes: notes});
 }

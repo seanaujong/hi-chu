@@ -181,6 +181,9 @@ export interface MoveKnowledgeRow {
 /** One candidate set rendered as its own block, exactly like the original. */
 export interface CandidateBlock {
   readonly name: string;
+  /** Set only for an Illusion candidate: the species the mon might SECRETLY be (Zoroark),
+   *  which differs from the hovered species. Rendered as a "possible Illusion" header. */
+  readonly species?: string;
   readonly abilities: readonly KnownOption[];
   readonly items: readonly KnownOption[];
   readonly moves: readonly MoveKnowledgeRow[];
@@ -224,9 +227,13 @@ function gimmickLine(g: Gimmick): string {
   }
 }
 
-/** One candidate set's lines: underlined name (native weight), then labelled lines. */
+/** One candidate set's lines: underlined name (native weight), then labelled lines. An
+ *  Illusion candidate leads with the species it might secretly be, flagged as a maybe. */
 function setLines(c: CandidateBlock): string[] {
-  const name = c.name ? `<span style="text-decoration: underline;">${esc(c.name)}</span>` : '';
+  const underline = (t: string): string => `<span style="text-decoration: underline;">${esc(t)}</span>`;
+  const name = c.species
+    ? `⚠ ${underline(c.species)} <small>(if Illusion${c.name ? ` · ${esc(c.name)}` : ''})</small>`
+    : c.name ? underline(c.name) : '';
   return [
     name,
     optionLine('Abilities', c.abilities),

@@ -167,6 +167,13 @@ describe('renderSetsSection', () => {
     expect(html).toContain('<small>Z-Move:</small> Firium Z');
   });
 
+  it('flags an Illusion candidate by the species it might secretly be', () => {
+    const zoroark = {...bulkySupport, name: 'Bulky Attacker', species: 'Zoroark-Hisui'};
+    const html = renderSetsSection(model({candidates: [zoroark]}));
+    expect(html).toContain('<span style="text-decoration: underline;">Zoroark-Hisui</span>');
+    expect(html).toContain('(if Illusion · Bulky Attacker)');
+  });
+
   it('gives each set its own grey-panelled divider block', () => {
     const twoSets = renderSetsSection(model({candidates: [bulkySupport, {...bulkySupport, name: 'Fast Attacker'}]}));
     expect(twoSets.match(/<div class="hichu-block">/g)).toHaveLength(2);

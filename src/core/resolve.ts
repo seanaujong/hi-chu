@@ -18,6 +18,7 @@ import type {
   SetVariant,
   StatsTable,
 } from './types.js';
+import {survivingItems} from './deductions.js';
 
 const RANDBATS_BASE_EVS = 85; // gen9 randbats starts every stat at 85 EVs…
 const RANDBATS_BASE_IVS = 31; // …and 31 IVs, before per-set overrides.
@@ -61,45 +62,6 @@ function innateAbility(facts: LiveFacts): string | undefined {
  */
 function isMegaForme(speciesForme: string): boolean {
   return /-Mega(-[XY])?$/.test(speciesForme);
-}
-
-// Items that reveal themselves by damaging their own holder after a damaging move.
-// Life Orb (1/10 recoil) is the only one in the covered gens; kept a set so the
-// rule reads as "recoil-on-attack items" rather than a single hard-coded string.
-const RECOIL_ON_ATTACK_ITEMS = new Set(['lifeorb']);
-
-// Abilities that suppress that recoil, so its absence proves nothing: Magic Guard
-// negates all indirect damage; Sheer Force cancels Life Orb recoil on any move it
-// boosts. A set that could be running either keeps Life Orb as a live possibility.
-const RECOIL_SUPPRESSORS = new Set(['sheerforce', 'magicguard']);
-
-/**
- * Can we trust "landed a damaging hit, saw no item ⇒ no recoil-on-attack item" for
- * THIS role? Only when a damaging hit actually landed, no item has been revealed
- * (a revealed item is already the stronger, positive evidence), and no
- * recoil-suppressing ability is in play — judged against the KNOWN innate ability
- * when we have it, otherwise against everything this role could still be running.
- * The "never lie" rule: if the role could be a Sheer Force / Magic Guard set whose
- * ability we haven't seen, we don't rule Life Orb out.
- */
-function recoilRevealTrusted(abilities: readonly string[], facts: LiveFacts): boolean {
-  if (!facts.landedDamagingHit) return false;
-  if (facts.item !== undefined || facts.prevItem !== undefined) return false;
-  const known = innateAbility(facts);
-  if (known !== undefined) return !RECOIL_SUPPRESSORS.has(toId(known));
-  return !abilities.some((a) => RECOIL_SUPPRESSORS.has(toId(a)));
-}
-
-/** An item pool minus any recoil-on-attack item ruled out by the mon having
- *  attacked without one revealing itself — judged against `abilities`, the pool the
- *  ability could still be drawn from. Unchanged unless the reveal is trusted. */
-function survivingItems(
-  abilities: readonly string[],
-  items: readonly string[],
-  facts: LiveFacts,
-): readonly string[] {
-  if (!recoilRevealTrusted(abilities, facts)) return items;
-  return items.filter((i) => !RECOIL_ON_ATTACK_ITEMS.has(toId(i)));
 }
 
 function roleMatches(role: RandbatsRole, facts: LiveFacts): boolean {

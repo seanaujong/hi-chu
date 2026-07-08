@@ -87,6 +87,13 @@ export interface LiveFacts {
    * applied downstream against each role's ability pool, so this stays a raw fact.
    */
   readonly landedDamagingHit: boolean;
+  /**
+   * True once the battle log shows this Pokémon TAKING entry-hazard damage (Stealth Rock,
+   * Spikes) on a switch-in. Heavy-Duty Boots negates that damage, so having taken it rules
+   * Boots out — an item that, like Life Orb, never reveals itself directly. Unambiguous:
+   * taking the damage also rules out Magic Guard, so no ability guard is needed.
+   */
+  readonly tookEntryHazardDamage: boolean;
   readonly gender?: 'M' | 'F' | 'N';
 }
 

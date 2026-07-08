@@ -30,7 +30,7 @@ function facts(over: Partial<LiveFacts> = {}): LiveFacts {
     boosts: {},
     terastallized: false,
     revealedMoves: [],
-    landedDamagingHit: false,
+    landedDamagingHit: false, tookEntryHazardDamage: false,
     ...over,
   };
 }
@@ -116,7 +116,7 @@ function noivernFacts(over: Partial<LiveFacts> = {}): LiveFacts {
     boosts: {},
     terastallized: false,
     revealedMoves: [],
-    landedDamagingHit: false,
+    landedDamagingHit: false, tookEntryHazardDamage: false,
     ...over,
   };
 }
@@ -145,6 +145,16 @@ describe('evidence beyond moves narrows the role', () => {
       'Fast Support',
     ]);
   });
+
+  it('taking entry-hazard damage rules out the Heavy-Duty Boots set', () => {
+    // Fast Support runs ONLY Heavy-Duty Boots; taking Stealth Rock proves it isn't holding
+    // them, leaving the Choice Specs set. (Boots never reveals itself directly — deduced.)
+    expect(names(inferSets(noivernFacts({tookEntryHazardDamage: true}), NOIVERN))).toEqual(['Fast Attacker']);
+  });
+
+  it('keeps the Boots set while no hazard damage has been taken', () => {
+    expect(names(inferSets(noivernFacts(), NOIVERN))).toEqual(['Fast Attacker', 'Fast Support']);
+  });
 });
 
 // A single-role set whose ability (Trace) copies the opponent's mid-battle. Its
@@ -164,7 +174,7 @@ const GARDEVOIR: RandbatsEntry = {
 };
 
 function gardevoirFacts(over: Partial<LiveFacts> = {}): LiveFacts {
-  return {speciesForme: 'Gardevoir', level: 83, hpPercent: 1, boosts: {}, terastallized: false, revealedMoves: [], landedDamagingHit: false, ...over};
+  return {speciesForme: 'Gardevoir', level: 83, hpPercent: 1, boosts: {}, terastallized: false, revealedMoves: [], landedDamagingHit: false, tookEntryHazardDamage: false, ...over};
 }
 
 describe('set inference uses the INNATE ability, not the live one', () => {
@@ -294,7 +304,7 @@ function orbFacts(over: Partial<LiveFacts> = {}): LiveFacts {
     boosts: {},
     terastallized: false,
     revealedMoves: ['Leaf Storm'], // in every role, so it narrows nothing by itself
-    landedDamagingHit: true,
+    landedDamagingHit: true, tookEntryHazardDamage: false,
     ...over,
   };
 }
@@ -391,7 +401,7 @@ function megaMeganiumFacts(over: Partial<LiveFacts> = {}): LiveFacts {
     boosts: {},
     terastallized: false,
     revealedMoves: ['Solar Beam', 'Synthesis'],
-    landedDamagingHit: false,
+    landedDamagingHit: false, tookEntryHazardDamage: false,
     ability: 'Mega Sol',
     baseAbility: 'Mega Sol',
     item: 'Meganiumite',
@@ -435,7 +445,7 @@ const TENTACRUEL: RandbatsEntry = {
 };
 
 function tentacruelFacts(over: Partial<LiveFacts> = {}): LiveFacts {
-  return {speciesForme: 'Tentacruel', level: 82, hpPercent: 1, boosts: {}, terastallized: false, revealedMoves: [], landedDamagingHit: false, ...over};
+  return {speciesForme: 'Tentacruel', level: 82, hpPercent: 1, boosts: {}, terastallized: false, revealedMoves: [], landedDamagingHit: false, tookEntryHazardDamage: false, ...over};
 }
 
 describe('resolveVariants — the still-possible sets to calc over', () => {

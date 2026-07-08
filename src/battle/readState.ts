@@ -73,7 +73,14 @@ function asGender(raw: string | undefined): 'M' | 'F' | 'N' | undefined {
   return raw === 'M' || raw === 'F' || raw === 'N' ? raw : undefined;
 }
 
-export function toLiveFacts(p: ClientPokemon, landedDamagingHit = false): LiveFacts {
+/** Behaviours the SNAPSHOT can't show — deduced from the protocol log by the readers
+ *  below and folded into LiveFacts. Absent flags default to false (nothing observed). */
+export interface BehaviorSignals {
+  readonly landedDamagingHit?: boolean;
+  readonly tookEntryHazardDamage?: boolean;
+}
+
+export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}): LiveFacts {
   // moveTrack entries are [name, pp]; a leading "*" marks a transformed/mimicked move.
   const revealedMoves = (p.moveTrack ?? [])
     .map(([name]) => name.replace(/^\*/, ''))
@@ -101,7 +108,8 @@ export function toLiveFacts(p: ClientPokemon, landedDamagingHit = false): LiveFa
     boosts,
     terastallized: Boolean(p.terastallized),
     revealedMoves,
-    landedDamagingHit,
+    landedDamagingHit: signals.landedDamagingHit ?? false,
+    tookEntryHazardDamage: signals.tookEntryHazardDamage ?? false,
     ...(asStatus(p.status) ? {status: asStatus(p.status)!} : {}),
     ...(p.terastallized ? {teraType: p.terastallized} : {}),
     ...(ability ? {ability} : {}),
@@ -176,6 +184,35 @@ export function hasLandedDamagingHit(battle: ClientBattle, mon: ClientPokemon): 
     }
   }
   return false;
+}
+
+// Entry hazards that deal switch-in damage — the only ones Heavy-Duty Boots negates and
+// thus the only ones whose damage rules Boots out. (Toxic Spikes/Sticky Web don't damage.)
+const DAMAGING_HAZARDS = ['Stealth Rock', 'Spikes', 'G-Max Steelsurge'];
+
+/**
+ * Has `mon` taken entry-hazard damage? Heavy-Duty Boots would have negated it, so a "yes"
+ * rules Boots out (see deductions.ts). Read from the log: a `-damage` on this mon tagged
+ * `[from] <hazard>` — e.g. "|-damage|p2a: Haxorus|214/244|[from] Stealth Rock".
+ */
+export function tookEntryHazardDamage(battle: ClientBattle, mon: ClientPokemon): boolean {
+  const me = identKey(mon.ident);
+  if (!me) return false;
+  for (const line of battle.stepQueue ?? []) {
+    if (!line.startsWith('|-damage|')) continue;
+    const parts = line.split('|');
+    if (identKey(parts[2]) !== me) continue;
+    if (parts.some((p) => DAMAGING_HAZARDS.some((h) => p === `[from] ${h}`))) return true;
+  }
+  return false;
+}
+
+/** Bundle the log-derived behaviours for one Pokémon, ready to hand to `toLiveFacts`. */
+export function readBehaviors(battle: ClientBattle, mon: ClientPokemon): BehaviorSignals {
+  return {
+    landedDamagingHit: hasLandedDamagingHit(battle, mon),
+    tookEntryHazardDamage: tookEntryHazardDamage(battle, mon),
+  };
 }
 
 /**

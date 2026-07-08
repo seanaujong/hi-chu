@@ -2,6 +2,7 @@ import {describe, it, expect} from 'vitest';
 import {
   toLiveFacts,
   hasLandedDamagingHit,
+  tookEntryHazardDamage,
   readOwnItem,
   detectFormat,
   findOpposingActive,
@@ -50,10 +51,12 @@ describe('toLiveFacts', () => {
     expect(f.revealedMoves).toEqual(['Outrage', 'Roost']);
   });
 
-  it('carries the landedDamagingHit flag through, defaulting to false', () => {
-    expect(toLiveFacts(clientMon({}), true).landedDamagingHit).toBe(true);
-    expect(toLiveFacts(clientMon({}), false).landedDamagingHit).toBe(false);
-    expect(toLiveFacts(clientMon({})).landedDamagingHit).toBe(false); // safe default
+  it('carries the behaviour signals through, defaulting to false', () => {
+    expect(toLiveFacts(clientMon({}), {landedDamagingHit: true}).landedDamagingHit).toBe(true);
+    expect(toLiveFacts(clientMon({}), {tookEntryHazardDamage: true}).tookEntryHazardDamage).toBe(true);
+    const f = toLiveFacts(clientMon({})); // no signals → safe defaults
+    expect(f.landedDamagingHit).toBe(false);
+    expect(f.tookEntryHazardDamage).toBe(false);
   });
 
   it('keeps only non-zero stat boosts', () => {
@@ -221,6 +224,26 @@ describe('hasLandedDamagingHit', () => {
   it('is false with no log or no ident (conservative — never a false rule-out)', () => {
     expect(hasLandedDamagingHit(withLog([]), noivern)).toBe(false);
     expect(hasLandedDamagingHit(withLog(['|move|p1a: Noivern|Flamethrower|p2a: X', '|-damage|p2a: X|1/2']), clientMon({}))).toBe(false);
+  });
+});
+
+describe('tookEntryHazardDamage (rules out Heavy-Duty Boots)', () => {
+  const withLog = (stepQueue: string[]): ClientBattle =>
+    ({gen: 9, tier: '[Gen 9] Random Battle', sides: [], stepQueue} as unknown as ClientBattle);
+  const haxorus = clientMon({ident: 'p2: Haxorus'});
+
+  it('is true when the log shows the mon taking Stealth Rock / Spikes damage', () => {
+    expect(tookEntryHazardDamage(withLog(['|-damage|p2a: Haxorus|214/244|[from] Stealth Rock']), haxorus)).toBe(true);
+    expect(tookEntryHazardDamage(withLog(['|-damage|p2a: Haxorus|180/244|[from] Spikes']), haxorus)).toBe(true);
+  });
+
+  it('is false for damage that is not an entry hazard (a move, Life Orb, poison)', () => {
+    expect(tookEntryHazardDamage(withLog(['|-damage|p2a: Haxorus|100/244']), haxorus)).toBe(false); // a move hit
+    expect(tookEntryHazardDamage(withLog(['|-damage|p2a: Haxorus|100/244|[from] psn']), haxorus)).toBe(false);
+  });
+
+  it('does not attribute another Pokémon’s hazard damage to this one', () => {
+    expect(tookEntryHazardDamage(withLog(['|-damage|p1a: Chansey|494/564|[from] Stealth Rock']), haxorus)).toBe(false);
   });
 });
 

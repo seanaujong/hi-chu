@@ -143,7 +143,14 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   mon tagged `[from] Stealth Rock` / `Spikes`; `deductions.ts` rules `heavydutyboots` out. No
   ability guard: taking the damage also rules out Magic Guard, the only other thing that
   blocks it. Checked by `resolve.test.ts` ("taking entry-hazard damage rules out the
-  Heavy-Duty Boots set") and `readState.test.ts` (`tookEntryHazardDamage`).
+  Heavy-Duty Boots set") and `readState.test.ts` (`tookEntryHazardDamage`). **The positive
+  twin:** switching into Stealth Rock and taking NONE *confirms* Boots (`switchedIntoStealthRockUnharmed`
+  → `deductions.bootsRuledIn` → `survivingItems` pins the pool to Boots). Keyed on Stealth
+  Rock alone (nothing is type-immune to it; grounded hazards have airborne exceptions), and
+  it DOES need the Magic Guard guard — Magic Guard dodges Stealth Rock too, so a hidden
+  ability that could be Magic Guard leaves Boots unconfirmed ("never lie"). Checked by
+  `resolve.test.ts` ("switching into Stealth Rock unharmed CONFIRMS…" / "never lies about a
+  possible Magic Guard set") and `readState.test.ts` (`switchedIntoStealthRockUnharmed`).
 - ✅ **A Mega forme matches on forme + stone, never its ability.** A Mega's ability is
   forme-locked (no set-discriminating value) and the live client and feed can name it
   differently (Champions Meganium-Mega: client "Mega Sol" vs feed "Leaf Guard"), so

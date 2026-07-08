@@ -94,6 +94,15 @@ export interface LiveFacts {
    * taking the damage also rules out Magic Guard, so no ability guard is needed.
    */
   readonly tookEntryHazardDamage: boolean;
+  /**
+   * True once the log shows this Pokémon switching in while Stealth Rock was set on its OWN
+   * side, yet taking no Stealth Rock damage. Only Heavy-Duty Boots and Magic Guard prevent
+   * that (nothing is type-immune to Stealth Rock), so it CONFIRMS Boots — the positive twin
+   * of `tookEntryHazardDamage` — once Magic Guard is excluded (done downstream against the
+   * role's abilities). Keyed on Stealth Rock alone: grounded hazards have type/airborne
+   * immunities that would muddy the read.
+   */
+  readonly switchedIntoStealthRockUnharmed: boolean;
   readonly gender?: 'M' | 'F' | 'N';
 }
 

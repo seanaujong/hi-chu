@@ -43,6 +43,19 @@ function bootsRuledOut(facts: LiveFacts): boolean {
   return facts.tookEntryHazardDamage && itemStillHidden(facts);
 }
 
+/**
+ * Heavy-Duty Boots' positive twin: switching into Stealth Rock and taking none CONFIRMS
+ * Boots, since nothing but Boots or Magic Guard lets a switch-in dodge it. So we pin the
+ * item — UNLESS Magic Guard is (or could still be) the ability. "Never lie": a hidden
+ * ability that could be Magic Guard leaves it unconfirmed.
+ */
+function bootsRuledIn(facts: LiveFacts, roleAbilities: readonly string[]): boolean {
+  if (!facts.switchedIntoStealthRockUnharmed || !itemStillHidden(facts)) return false;
+  const known = facts.baseAbility ?? facts.ability;
+  if (known !== undefined) return toId(known) !== 'magicguard';
+  return !roleAbilities.some((a) => toId(a) === 'magicguard');
+}
+
 /** The items (id form) a role can no longer be holding, by behavioural deduction. */
 export function ruledOutItems(facts: LiveFacts, roleAbilities: readonly string[]): ReadonlySet<string> {
   const out = new Set<string>();
@@ -51,14 +64,18 @@ export function ruledOutItems(facts: LiveFacts, roleAbilities: readonly string[]
   return out;
 }
 
-/** An item pool minus anything the deductions have ruled out for this role (its `abilities`
- *  are the pool the still-hidden ability could be drawn from). Unchanged when nothing is
- *  ruled out — the common case. */
+/**
+ * An item pool narrowed by the behavioural deductions for this role (its `abilities` are the
+ * pool the still-hidden ability could be drawn from). A confirmed item (Boots ruled IN) pins
+ * the pool to just that; otherwise ruled-OUT items are removed. Unchanged when nothing fires
+ * — the common case.
+ */
 export function survivingItems(
   abilities: readonly string[],
   items: readonly string[],
   facts: LiveFacts,
 ): readonly string[] {
+  if (bootsRuledIn(facts, abilities)) return items.filter((i) => toId(i) === 'heavydutyboots');
   const ruled = ruledOutItems(facts, abilities);
   return ruled.size === 0 ? items : items.filter((i) => !ruled.has(toId(i)));
 }

@@ -3,6 +3,7 @@ import {
   toLiveFacts,
   hasLandedDamagingHit,
   tookEntryHazardDamage,
+  switchedIntoStealthRockUnharmed,
   readOwnItem,
   detectFormat,
   findOpposingActive,
@@ -244,6 +245,36 @@ describe('tookEntryHazardDamage (rules out Heavy-Duty Boots)', () => {
 
   it('does not attribute another Pokémon’s hazard damage to this one', () => {
     expect(tookEntryHazardDamage(withLog(['|-damage|p1a: Chansey|494/564|[from] Stealth Rock']), haxorus)).toBe(false);
+  });
+});
+
+describe('switchedIntoStealthRockUnharmed (confirms Heavy-Duty Boots)', () => {
+  const withLog = (stepQueue: string[]): ClientBattle =>
+    ({gen: 9, tier: '[Gen 9] Random Battle', sides: [], stepQueue} as unknown as ClientBattle);
+  const corv = clientMon({ident: 'p2: Corviknight'});
+  const SR = '|-sidestart|p2: Player|move: Stealth Rock';
+
+  it('is true when the mon switches into its side’s Stealth Rock and takes no damage', () => {
+    expect(switchedIntoStealthRockUnharmed(withLog([SR, '|switch|p2a: Corviknight|Corviknight, M|100/100', '|turn|3']), corv)).toBe(true);
+  });
+
+  it('is false when it took Stealth Rock damage on the way in', () => {
+    const log = [SR, '|switch|p2a: Corviknight|Corviknight, M|100/100', '|-damage|p2a: Corviknight|88/100|[from] Stealth Rock'];
+    expect(switchedIntoStealthRockUnharmed(withLog(log), corv)).toBe(false);
+  });
+
+  it('is false when no Stealth Rock was set on its side', () => {
+    expect(switchedIntoStealthRockUnharmed(withLog(['|switch|p2a: Corviknight|Corviknight, M|100/100', '|turn|3']), corv)).toBe(false);
+  });
+
+  it('does not count Stealth Rock on the OTHER side', () => {
+    const log = ['|-sidestart|p1: Player|move: Stealth Rock', '|switch|p2a: Corviknight|Corviknight, M|100/100', '|turn|3'];
+    expect(switchedIntoStealthRockUnharmed(withLog(log), corv)).toBe(false);
+  });
+
+  it('respects Stealth Rock being spun/Defogged away before the switch', () => {
+    const log = [SR, '|-sideend|p2: Player|Stealth Rock|[from] move: Rapid Spin', '|switch|p2a: Corviknight|Corviknight, M|100/100', '|turn|3'];
+    expect(switchedIntoStealthRockUnharmed(withLog(log), corv)).toBe(false);
   });
 });
 

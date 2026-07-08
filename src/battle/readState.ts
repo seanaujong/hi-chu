@@ -78,6 +78,7 @@ function asGender(raw: string | undefined): 'M' | 'F' | 'N' | undefined {
 export interface BehaviorSignals {
   readonly landedDamagingHit?: boolean;
   readonly tookEntryHazardDamage?: boolean;
+  readonly switchedIntoStealthRockUnharmed?: boolean;
 }
 
 export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}): LiveFacts {
@@ -110,6 +111,7 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}): Li
     revealedMoves,
     landedDamagingHit: signals.landedDamagingHit ?? false,
     tookEntryHazardDamage: signals.tookEntryHazardDamage ?? false,
+    switchedIntoStealthRockUnharmed: signals.switchedIntoStealthRockUnharmed ?? false,
     ...(asStatus(p.status) ? {status: asStatus(p.status)!} : {}),
     ...(p.terastallized ? {teraType: p.terastallized} : {}),
     ...(ability ? {ability} : {}),
@@ -207,11 +209,59 @@ export function tookEntryHazardDamage(battle: ClientBattle, mon: ClientPokemon):
   return false;
 }
 
+/** The side an ident belongs to ("p1a: X" | "p1: user" → "p1"). */
+function sideOf(ident: string | undefined): string {
+  return (ident ?? '').slice(0, 2);
+}
+
+/** A `-sidestart`/`-sideend` line naming Stealth Rock ("move: Stealth Rock" on start,
+ *  "Stealth Rock" on end). */
+function isStealthRockSide(parts: readonly string[]): boolean {
+  return parts.some((p) => p === 'Stealth Rock' || p === 'move: Stealth Rock');
+}
+
+/**
+ * Did `mon` switch in while Stealth Rock was set on its OWN side, yet take no Stealth Rock
+ * damage? That confirms Heavy-Duty Boots (once Magic Guard is excluded — see deductions.ts),
+ * since nothing else lets a switch-in dodge Stealth Rock. Reads `stepQueue`: track the SR
+ * side-condition, and on each of the mon's switch-ins into it, scan the switch-in resolution
+ * (up to the next major action) for an SR `-damage` on the mon; its ABSENCE is the signal.
+ */
+export function switchedIntoStealthRockUnharmed(battle: ClientBattle, mon: ClientPokemon): boolean {
+  const me = identKey(mon.ident);
+  if (!me) return false;
+  const mySide = sideOf(mon.ident);
+  const lines = battle.stepQueue ?? [];
+  const srUp: Record<string, boolean> = {};
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line === undefined) continue;
+    const parts = line.split('|');
+    if (line.startsWith('|-sidestart|') && isStealthRockSide(parts)) srUp[sideOf(parts[2])] = true;
+    else if (line.startsWith('|-sideend|') && isStealthRockSide(parts)) srUp[sideOf(parts[2])] = false;
+    else if ((line.startsWith('|switch|') || line.startsWith('|drag|')) && identKey(parts[2]) === me && srUp[mySide]) {
+      let tookSr = false;
+      for (let j = i + 1; j < lines.length; j++) {
+        const l = lines[j];
+        if (l === undefined || /^\|(switch|drag|move|turn|upkeep)\|/.test(l)) break; // resolution done
+        const p = l.split('|');
+        if (l.startsWith('|-damage|') && identKey(p[2]) === me && p.some((x) => x === '[from] Stealth Rock')) {
+          tookSr = true;
+          break;
+        }
+      }
+      if (!tookSr) return true; // came in through Stealth Rock unscathed
+    }
+  }
+  return false;
+}
+
 /** Bundle the log-derived behaviours for one Pokémon, ready to hand to `toLiveFacts`. */
 export function readBehaviors(battle: ClientBattle, mon: ClientPokemon): BehaviorSignals {
   return {
     landedDamagingHit: hasLandedDamagingHit(battle, mon),
     tookEntryHazardDamage: tookEntryHazardDamage(battle, mon),
+    switchedIntoStealthRockUnharmed: switchedIntoStealthRockUnharmed(battle, mon),
   };
 }
 

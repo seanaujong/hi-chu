@@ -31,7 +31,7 @@ function facts(over: Partial<LiveFacts> = {}): LiveFacts {
     boosts: {},
     terastallized: false,
     revealedMoves: [],
-    landedDamagingHit: false, tookEntryHazardDamage: false,
+    landedDamagingHit: false, tookEntryHazardDamage: false, switchedIntoStealthRockUnharmed: false,
     ...over,
   };
 }
@@ -117,7 +117,7 @@ function noivernFacts(over: Partial<LiveFacts> = {}): LiveFacts {
     boosts: {},
     terastallized: false,
     revealedMoves: [],
-    landedDamagingHit: false, tookEntryHazardDamage: false,
+    landedDamagingHit: false, tookEntryHazardDamage: false, switchedIntoStealthRockUnharmed: false,
     ...over,
   };
 }
@@ -156,6 +156,45 @@ describe('evidence beyond moves narrows the role', () => {
   it('keeps the Boots set while no hazard damage has been taken', () => {
     expect(names(inferSets(noivernFacts(), NOIVERN))).toEqual(['Fast Attacker', 'Fast Support']);
   });
+
+  it('switching into Stealth Rock unharmed CONFIRMS Heavy-Duty Boots', () => {
+    // Nothing but Boots (or Magic Guard) dodges Stealth Rock; Noivern can't run Magic Guard,
+    // so this pins the Boots set and drops the Choice Specs one.
+    expect(names(inferSets(noivernFacts({switchedIntoStealthRockUnharmed: true}), NOIVERN))).toEqual(['Fast Support']);
+  });
+});
+
+// A role that can run Magic Guard alongside a plain ability, with Heavy-Duty Boots plus an
+// alternative — to check the "never lie" guard on the Boots rule-in (Magic Guard also dodges
+// Stealth Rock, so a hidden ability that could be Magic Guard mustn't confirm Boots).
+const GUARD_MON: RandbatsEntry = {
+  level: 80,
+  abilities: ['Magic Guard', 'Overgrow'],
+  items: [],
+  roles: {
+    Attacker: {abilities: ['Magic Guard', 'Overgrow'], items: ['Heavy-Duty Boots', 'Leftovers'], teraTypes: ['Grass'], moves: ['Leaf Storm']},
+  },
+};
+
+function guardFacts(over: Partial<LiveFacts> = {}): LiveFacts {
+  return {
+    speciesForme: 'Guardmon', level: 80, hpPercent: 1, boosts: {}, terastallized: false,
+    revealedMoves: ['Leaf Storm'], landedDamagingHit: false, tookEntryHazardDamage: false,
+    switchedIntoStealthRockUnharmed: true, ...over,
+  };
+}
+
+describe('the Heavy-Duty Boots rule-in never lies about a possible Magic Guard set', () => {
+  const items = (k: ReturnType<typeof inferSets>): string[] => k.candidates[0]!.items.map((o) => o.name);
+
+  it('does NOT confirm Boots while the ability is hidden and could be Magic Guard', () => {
+    // Magic Guard would dodge Stealth Rock too, so both items stay possible.
+    expect(items(inferSets(guardFacts(), GUARD_MON))).toEqual(['Heavy-Duty Boots', 'Leftovers']);
+  });
+
+  it('confirms Boots once the revealed innate ability rules Magic Guard out', () => {
+    expect(items(inferSets(guardFacts({baseAbility: 'Overgrow'}), GUARD_MON))).toEqual(['Heavy-Duty Boots']);
+  });
 });
 
 // A single-role set whose ability (Trace) copies the opponent's mid-battle. Its
@@ -175,7 +214,7 @@ const GARDEVOIR: RandbatsEntry = {
 };
 
 function gardevoirFacts(over: Partial<LiveFacts> = {}): LiveFacts {
-  return {speciesForme: 'Gardevoir', level: 83, hpPercent: 1, boosts: {}, terastallized: false, revealedMoves: [], landedDamagingHit: false, tookEntryHazardDamage: false, ...over};
+  return {speciesForme: 'Gardevoir', level: 83, hpPercent: 1, boosts: {}, terastallized: false, revealedMoves: [], landedDamagingHit: false, tookEntryHazardDamage: false, switchedIntoStealthRockUnharmed: false, ...over};
 }
 
 describe('set inference uses the INNATE ability, not the live one', () => {
@@ -305,7 +344,7 @@ function orbFacts(over: Partial<LiveFacts> = {}): LiveFacts {
     boosts: {},
     terastallized: false,
     revealedMoves: ['Leaf Storm'], // in every role, so it narrows nothing by itself
-    landedDamagingHit: true, tookEntryHazardDamage: false,
+    landedDamagingHit: true, tookEntryHazardDamage: false, switchedIntoStealthRockUnharmed: false,
     ...over,
   };
 }
@@ -402,7 +441,7 @@ function megaMeganiumFacts(over: Partial<LiveFacts> = {}): LiveFacts {
     boosts: {},
     terastallized: false,
     revealedMoves: ['Solar Beam', 'Synthesis'],
-    landedDamagingHit: false, tookEntryHazardDamage: false,
+    landedDamagingHit: false, tookEntryHazardDamage: false, switchedIntoStealthRockUnharmed: false,
     ability: 'Mega Sol',
     baseAbility: 'Mega Sol',
     item: 'Meganiumite',
@@ -446,7 +485,7 @@ const TENTACRUEL: RandbatsEntry = {
 };
 
 function tentacruelFacts(over: Partial<LiveFacts> = {}): LiveFacts {
-  return {speciesForme: 'Tentacruel', level: 82, hpPercent: 1, boosts: {}, terastallized: false, revealedMoves: [], landedDamagingHit: false, tookEntryHazardDamage: false, ...over};
+  return {speciesForme: 'Tentacruel', level: 82, hpPercent: 1, boosts: {}, terastallized: false, revealedMoves: [], landedDamagingHit: false, tookEntryHazardDamage: false, switchedIntoStealthRockUnharmed: false, ...over};
 }
 
 describe('resolveVariants — the still-possible sets to calc over', () => {

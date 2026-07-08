@@ -196,6 +196,33 @@ export function calcDamage(
   });
 }
 
+/** Both mons' HP before and after Pain Split, as a percentage of their OWN max. */
+export interface PainSplitReport {
+  readonly user: {readonly before: number; readonly after: number};
+  readonly foe: {readonly before: number; readonly after: number};
+}
+
+/**
+ * Pain Split: something @smogon/calc doesn't model (it's HP redistribution, not damage).
+ * Both mons are set to `floor((userHP + foeHP) / 2)` in RAW HP, each capped at its own
+ * max — so the user gains when it's the lower of the two and loses when it's the higher.
+ * Current HP is derived from each side's live % against the calc's max. Percentages are
+ * of each mon's own max, so the two "after" values differ even though the raw HP is equal.
+ */
+export function painSplit(user: ResolvedMon, foe: ResolvedMon, gen = 9): PainSplitReport {
+  const g = Generations.get(gen as GenerationNum);
+  const userMax = buildPokemon(g, user).maxHP();
+  const foeMax = buildPokemon(g, foe).maxHP();
+  const userHP = Math.round(userMax * user.hpPercent);
+  const foeHP = Math.round(foeMax * foe.hpPercent);
+  const split = Math.floor((userHP + foeHP) / 2);
+  const pct = (hp: number, max: number): number => Math.round((hp / max) * 1000) / 10;
+  return {
+    user: {before: pct(userHP, userMax), after: pct(Math.min(userMax, split), userMax)},
+    foe: {before: pct(foeHP, foeMax), after: pct(Math.min(foeMax, split), foeMax)},
+  };
+}
+
 /** @smogon/calc throws from desc()/kochance() when damage is 0 (immune); guard it. */
 function safeDesc(result: ReturnType<typeof calculate>): string {
   try {

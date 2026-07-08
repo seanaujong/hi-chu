@@ -12,7 +12,7 @@
 // tempting to "just eyeball in the browser", so we make the frame a value and
 // snapshot it. No DOM, no @smogon/calc here.
 
-import type {DamageReport} from './damage.js';
+import type {DamageReport, PainSplitReport} from './damage.js';
 import type {DamageBucket} from './variants.js';
 import type {Gimmick, KnownOption} from './types.js';
 
@@ -167,6 +167,20 @@ export function renderMoveSection(model: MoveRenderModel): string {
 
   const lines = model.buckets.map((b, i) => variantLine(b, model, i === 0 ? tera : ''));
   return block(lines) + notesBlock(model.extraNotes);
+}
+
+/** One side's HP swing: "28% → 61% (+33%)", the delta signed (negative when it loses). */
+function hpSwing(side: {before: number; after: number}): string {
+  const delta = Math.round((side.after - side.before) * 10) / 10;
+  return `${side.before}% → ${side.after}% (${delta >= 0 ? '+' : ''}${delta}%)`;
+}
+
+/**
+ * Pain Split's HP redistribution as its own block — the move deals no damage, so the
+ * normal move section shows nothing; this replaces the blank with the swing on both sides.
+ */
+export function renderPainSplit(r: PainSplitReport): string {
+  return block([`<small>Pain Split:</small> you ${hpSwing(r.user)} · foe ${hpSwing(r.foe)}`]);
 }
 
 // --- Pokémon hover: per-set blocks, the original's layout -------------------

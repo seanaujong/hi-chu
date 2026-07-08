@@ -1,5 +1,5 @@
 import {describe, it, expect} from 'vitest';
-import {calcDamage} from './damage.js';
+import {calcDamage, painSplit} from './damage.js';
 import type {FieldFacts, ResolvedMon} from './types.js';
 
 const noField: FieldFacts = {defenderScreens: {reflect: false, lightScreen: false, auroraVeil: false}};
@@ -168,5 +168,23 @@ describe('Guts negates burn (the bug the baseline gets wrong)', () => {
     // Guts both ignores the burn Attack drop AND adds 1.5×, so it should be far higher,
     // not the ~half a naive "burn always halves" model would produce.
     expect(guts.total.mean).toBeGreaterThan(ironFist.total.mean * 2);
+  });
+});
+
+describe('painSplit (HP redistribution the calc does not model)', () => {
+  it('averages both mons’ HP — the low one gains, the high one loses, equalized', () => {
+    const user = mon({speciesForme: 'Blissey', hpPercent: 0.1});
+    const foe = mon({speciesForme: 'Blissey', hpPercent: 0.9});
+    const r = painSplit(user, foe);
+    expect(r.user.after).toBeGreaterThan(r.user.before); // gained
+    expect(r.foe.after).toBeLessThan(r.foe.before); // lost
+    expect(r.user.after).toBe(r.foe.after); // same species → equal % after
+    expect(r.user.after).toBeCloseTo(50, 0);
+  });
+
+  it('never overheals past the user’s own max (caps the split)', () => {
+    // A frail user at half HP vs a full huge-HP foe: the average exceeds the user's max.
+    const r = painSplit(mon({speciesForme: 'Flutter Mane', hpPercent: 0.5}), mon({speciesForme: 'Blissey', hpPercent: 1}));
+    expect(r.user.after).toBe(100);
   });
 });

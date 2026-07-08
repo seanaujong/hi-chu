@@ -80,6 +80,13 @@ describe('buildMoveSection on the real captured battle (our move buttons)', () =
     expect(buildMoveSection(battle, active('Noivern'), 'Roost', data)).toBe('');
   });
 
+  it('shows the HP swing for Pain Split (a status move the calc can’t model)', () => {
+    const html = buildMoveSection(battle, active('Noivern'), 'Pain Split', data);
+    expect(html).toContain('<small>Pain Split:</small>');
+    expect(html).toMatch(/you [\d.]+% → [\d.]+%/);
+    expect(html).toMatch(/foe [\d.]+% → [\d.]+%/);
+  });
+
   it('reflects the defensive Tera: Surf hits the Tera-Fire Noivern far harder', () => {
     // Terastallizing to Fire makes Noivern a pure-Fire DEFENDER — 2× weak to Water.
     // The same Surf into a non-terastallized (Flying/Dragon) Noivern is only neutral.

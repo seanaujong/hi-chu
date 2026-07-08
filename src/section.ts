@@ -11,13 +11,14 @@
 //   buildPokemonSection — a Pokémon hover: the still-possible sets (narrowed by reveals),
 //     with damage numbers attached when the hovered mon is the opponent's.
 
-import {calcDamage, type DamageReport} from './core/damage.js';
+import {calcDamage, painSplit, type DamageReport} from './core/damage.js';
 import {resolveByRole, resolveMon, resolveVariants} from './core/resolve.js';
 import {inferSets} from './core/knowledge.js';
 import {bucketByDamage, type DamageBucket} from './core/variants.js';
 import {illusionSuspects, ILLUSION_SPECIES, type IllusionSuspect} from './core/illusion.js';
 import {
   renderMoveSection,
+  renderPainSplit,
   renderSetsSection,
   type CandidateBlock,
   type MoveKnowledgeRow,
@@ -176,6 +177,14 @@ export function buildMoveSection(
   // The defender's hidden item/ability can each split the damage — enumerate the
   // still-possible sets and let identical outcomes collapse back to one bucket.
   const defenderEntry = pickEntry(data, defenderFacts.speciesForme);
+
+  // Pain Split deals no damage — it averages both mons' HP — so @smogon/calc has nothing
+  // to say and the normal damage path would insert a blank. Show the HP swing instead.
+  if (toId(moveName) === 'painsplit') {
+    const defender = resolveMon(defenderFacts, entryOrMinimal(defenderEntry, defenderFacts));
+    return renderPainSplit(painSplit(attacker, defender, format.gen));
+  }
+
   const defenderVariants = [
     ...resolveVariants(defenderFacts, entryOrMinimal(defenderEntry, defenderFacts)),
     ...illusionVariants(defenderFacts, defenderEntry, data),

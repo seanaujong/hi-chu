@@ -1,8 +1,13 @@
-# Keeps the GitHub Actions in .github/workflows/ current. The workflows pin each
-# action to a full commit SHA (so a moved tag can't swap in new code); Dependabot is
-# the other half of that trade — it watches for new releases and opens a PR bumping
-# the SHA (and the `# vX.Y.Z` comment), so pinning doesn't rot into stale, unpatched
-# actions. All bumps are grouped into one PR to keep the noise down.
+# Keeps dependencies current so the SHA/lockfile pins elsewhere don't rot into stale,
+# unpatched code. Every bump arrives as a CI-gated PR (npm run check + build), never an
+# automatic merge.
+#
+#   github-actions — the workflows pin each action to a full commit SHA (so a moved tag
+#     can't swap in new code); Dependabot bumps the SHA and its `# vX.Y.Z` comment.
+#   npm — esbuild's exact version is what makes content.js reproducible (verified against
+#     package-lock.json, not a frozen number), so a lockfile bump here is safe: a verifier
+#     just rebuilds at the new lock. Production and dev deps are split so a @smogon/calc
+#     bump — which changes the damage math — is reviewed on its own, apart from tooling.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -12,3 +17,13 @@ updates:
     groups:
       github-actions:
         patterns: ['*']
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      production:
+        dependency-type: production
+      development:
+        dependency-type: development

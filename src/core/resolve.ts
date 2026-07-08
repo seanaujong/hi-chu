@@ -42,6 +42,14 @@ function firstDefined<T>(...vals: (T | undefined)[]): T | undefined {
   return undefined;
 }
 
+/** The mon has demonstrably LOST its item — knocked off, consumed, or Tricked away
+ *  (`prevItem` set, nothing held now). We must resolve to NO item rather than guess the
+ *  set's, or the calc keeps applying it: Knock Off stays ×1.5-boosted, Leftovers keeps
+ *  "healing", an Assault Vest keeps padding SpD — all for an item that's gone. */
+function itemGone(facts: LiveFacts): boolean {
+  return facts.item === undefined && facts.prevItem !== undefined;
+}
+
 /** Revealed moves (certainties) unioned over the candidate roles' pool for the rest. */
 function possibleMovesFor(facts: LiveFacts, candidates: readonly RandbatsRole[], entry: RandbatsEntry): string[] {
   const pool = unionMoves(candidates, entry);
@@ -87,12 +95,13 @@ export function resolveMon(facts: LiveFacts, entry: RandbatsEntry): ResolvedMon 
   const {chosen, candidates, uncertain} = selectRoles(entry, facts);
   const possibleMoves = possibleMovesFor(facts, candidates, entry);
   // Assume an item we haven't already ruled out (deductions.ts), so the calc doesn't hand
-  // a demonstrably item-less mon a Life Orb boost.
-  const item = firstDefined(
-    facts.item,
-    chosen ? survivingItems(chosen.abilities, chosen.items, facts)[0] : undefined,
-    survivingItems(entry.abilities, entry.items, facts)[0],
-  );
+  // a demonstrably item-less mon a Life Orb boost — but assume NOTHING once the item's gone.
+  const item = facts.item ?? (itemGone(facts)
+    ? undefined
+    : firstDefined(
+        chosen ? survivingItems(chosen.abilities, chosen.items, facts)[0] : undefined,
+        survivingItems(entry.abilities, entry.items, facts)[0],
+      ));
   const ability = firstDefined(facts.ability, chosen?.abilities[0], entry.abilities[0]);
   return buildResolved(facts, chosen, entry, item, ability, possibleMoves, uncertain);
 }
@@ -124,7 +133,8 @@ export function resolveVariants(facts: LiveFacts, entry: RandbatsEntry): SetVari
     // Drop any item the deductions ruled out, so a landed-hit mon never gets a phantom
     // Life Orb damage bucket alongside the item it's actually still allowed.
     const itemPool = survivingItems(abilityPool, role?.items?.length ? role.items : entry.items, facts);
-    const items: (string | undefined)[] = facts.item !== undefined ? [facts.item] : itemPool.length ? [...itemPool] : [undefined];
+    const items: (string | undefined)[] =
+      facts.item !== undefined ? [facts.item] : itemGone(facts) ? [undefined] : itemPool.length ? [...itemPool] : [undefined];
     const abilities: (string | undefined)[] =
       facts.ability !== undefined ? [facts.ability] : abilityPool.length ? [...abilityPool] : [undefined];
     for (const item of items) {
@@ -145,11 +155,12 @@ export function resolveByRole(facts: LiveFacts, entry: RandbatsEntry): SetVarian
   const {candidates, uncertain} = selectRoles(entry, facts);
   const possibleMoves = possibleMovesFor(facts, candidates, entry);
   return survivingRoles(facts, entry).map(({name, role}) => {
-    const item = firstDefined(
-      facts.item,
-      role ? survivingItems(role.abilities, role.items, facts)[0] : undefined,
-      survivingItems(entry.abilities, entry.items, facts)[0],
-    );
+    const item = facts.item ?? (itemGone(facts)
+      ? undefined
+      : firstDefined(
+          role ? survivingItems(role.abilities, role.items, facts)[0] : undefined,
+          survivingItems(entry.abilities, entry.items, facts)[0],
+        ));
     const ability = firstDefined(facts.ability, role?.abilities[0], entry.abilities[0]);
     return {mon: buildResolved(facts, role, entry, item, ability, possibleMoves, uncertain), role: name};
   });

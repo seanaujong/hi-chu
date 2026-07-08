@@ -55,6 +55,12 @@ describe('resolveMon', () => {
     expect(resolveMon(dragoniteFacts(), DRAGONITE).teraType).toBeUndefined();
     expect(resolveMon(dragoniteFacts({terastallized: true, teraType: 'Flying'}), DRAGONITE).teraType).toBe('Flying');
   });
+
+  it('resolves to NO item once it has been knocked off / consumed (prevItem set)', () => {
+    // Otherwise the calc keeps the gone item — Knock Off would stay ×1.5-boosted, etc.
+    expect(resolveMon(dragoniteFacts({prevItem: 'Heavy-Duty Boots'}), DRAGONITE).item).toBeUndefined();
+    expect(resolveMon(dragoniteFacts(), DRAGONITE).item).toBe('Heavy-Duty Boots'); // still assumed when nothing's revealed
+  });
 });
 
 describe('resolveMon reflects the same narrowing/deductions the display does', () => {

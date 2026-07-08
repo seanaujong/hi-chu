@@ -51,6 +51,18 @@ function innateAbility(facts: LiveFacts): string | undefined {
   return facts.baseAbility ?? facts.ability;
 }
 
+/**
+ * True once a Pokémon has Mega Evolved (its forme carries the "-Mega" suffix). A Mega
+ * forme's ability is forme-LOCKED — every Meganium-Mega has the same one — so it carries
+ * no set-discriminating information, and it must not gate role matching: the live client
+ * and the randbats feed can even name it differently (a Champions Meganium-Mega reports
+ * ability "Mega Sol" while the feed lists "Leaf Guard"), which would otherwise reject
+ * every role. The forme change plus the revealed Mega stone already pin the set.
+ */
+function isMegaForme(speciesForme: string): boolean {
+  return /-Mega(-[XY])?$/.test(speciesForme);
+}
+
 // Items that reveal themselves by damaging their own holder after a damaging move.
 // Life Orb (1/10 recoil) is the only one in the covered gens; kept a set so the
 // rule reads as "recoil-on-attack items" rather than a single hard-coded string.
@@ -102,8 +114,10 @@ function roleMatches(role: RandbatsRole, facts: LiveFacts): boolean {
   // A role whose only items are recoil-on-attack items the mon has just shown it
   // ISN'T holding (landed a hit, none revealed) can no longer be that role.
   if (role.items.length > 0 && survivingItems(role.abilities, role.items, facts).length === 0) return false;
+  // A Mega forme's ability is forme-locked, not set-chosen, and client/feed names for it
+  // can differ — so it never narrows the role (the -Mega forme + stone already do).
   const ability = innateAbility(facts);
-  if (ability && role.abilities.length > 0 && !role.abilities.some((a) => toId(a) === toId(ability))) {
+  if (ability && !isMegaForme(facts.speciesForme) && role.abilities.length > 0 && !role.abilities.some((a) => toId(a) === toId(ability))) {
     return false;
   }
   const activeTera = facts.terastallized ? facts.teraType : undefined;

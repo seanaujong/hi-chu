@@ -364,6 +364,60 @@ describe('a landed damaging hit with no item revealed rules Life Orb out', () =>
   });
 });
 
+// A [Gen 9] Champions Mega set, verbatim from the feed's "Meganium-Mega" entry. The
+// live client reports its ability as "Mega Sol" (a Champions custom name), while the feed
+// lists "Leaf Guard" — so matching on the ability would reject the only role. The forme +
+// stone must carry the match instead.
+const MEGANIUM_MEGA: RandbatsEntry = {
+  level: 50,
+  abilities: ['Leaf Guard'],
+  items: ['Meganiumite'],
+  roles: {
+    'Bulky Attacker': {
+      abilities: ['Leaf Guard'],
+      items: ['Meganiumite'],
+      teraTypes: [],
+      moves: ['Dazzling Gleam', 'Solar Beam', 'Synthesis', 'Weather Ball'],
+    },
+  },
+};
+
+// The facts a mega-evolved Meganium presents, captured live from replay 2646169772.
+function megaMeganiumFacts(over: Partial<LiveFacts> = {}): LiveFacts {
+  return {
+    speciesForme: 'Meganium-Mega',
+    level: 50,
+    hpPercent: 1,
+    boosts: {},
+    terastallized: false,
+    revealedMoves: ['Solar Beam', 'Synthesis'],
+    landedDamagingHit: false,
+    ability: 'Mega Sol',
+    baseAbility: 'Mega Sol',
+    item: 'Meganiumite',
+    ...over,
+  };
+}
+
+describe('a Mega forme matches on forme + stone, not its forme-locked ability', () => {
+  it('matches the -Mega set even when client and feed disagree on the ability name', () => {
+    const k = inferSets(megaMeganiumFacts(), MEGANIUM_MEGA);
+    expect(k.uncertainReason).toBeUndefined(); // was "matched no known set"
+    expect(k.candidates.map((c) => c.name)).toEqual(['Bulky Attacker']);
+    expect(k.candidates[0]!.items).toEqual([{name: 'Meganiumite', known: true}]);
+  });
+
+  it('resolves cleanly for the calc — no shaky-assumptions flag', () => {
+    expect(resolveMon(megaMeganiumFacts(), MEGANIUM_MEGA).assumptionsUncertainReason).toBeUndefined();
+  });
+
+  it('still narrows a Mega set by its MOVES (a move from no role is rejected)', () => {
+    // The ability is ignored, but real evidence must still bite: a foreign move fails.
+    const k = inferSets(megaMeganiumFacts({revealedMoves: ['Hydro Pump']}), MEGANIUM_MEGA);
+    expect(k.uncertainReason).toBeDefined();
+  });
+});
+
 // One role whose hidden item could be Assault Vest OR Leftovers — the shape that makes
 // a single move deal two different amounts (AV halves the special hit).
 const TENTACRUEL: RandbatsEntry = {

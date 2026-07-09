@@ -91,6 +91,12 @@ function probeLiveClient() {
       if (!good) problems.push(`toLiveFacts(${f.speciesForme || '?'}).${field} = ${JSON.stringify(f[field])}`);
     }
     if (!R.findOpposingActive(b, mon)) problems.push(`findOpposingActive(${f.speciesForme}) returned null`);
+    // The calc's fallback for formes it doesn't know reads battle.dex — every species
+    // (not just Champions Megas) is in the client dex, so this must always answer.
+    const sd = R.readSpeciesData(b, mon);
+    if (!sd || typeof sd.baseStats?.hp !== 'number' || !Array.isArray(sd.types) || sd.types.length === 0) {
+      problems.push(`readSpeciesData(${f.speciesForme || '?'}) = ${JSON.stringify(sd)} (battle.dex.species.get drifted?)`);
+    }
     const screens = R.readFieldFacts(b, mon.side)?.defenderScreens;
     if (!screens || ['reflect', 'lightScreen', 'auroraVeil'].some((k) => typeof screens[k] !== 'boolean')) {
       problems.push(`readFieldFacts(${f.speciesForme}).defenderScreens is malformed`);

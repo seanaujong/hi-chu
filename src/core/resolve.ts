@@ -74,6 +74,7 @@ function buildResolved(
 ): ResolvedMon {
   return {
     speciesForme: facts.speciesForme,
+    ...(facts.speciesData ? {speciesData: facts.speciesData} : {}),
     level: facts.level || entry.level,
     nature: RANDBATS_NATURE,
     evs: fillStats(RANDBATS_BASE_EVS, role?.evs ?? entry.evs),

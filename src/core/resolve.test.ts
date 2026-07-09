@@ -34,6 +34,14 @@ describe('resolveMon', () => {
     expect(r.assumptionsUncertainReason).toBeUndefined();
   });
 
+  it('carries client-dex speciesData through to the resolved mon (calc fallback for unknown formes)', () => {
+    // Champions invents Megas the calc's dex lacks; the client dex reading must survive
+    // resolution untouched so the damage layer can fall back to it.
+    const speciesData = {baseStats: {hp: 60, atk: 75, def: 110, spa: 175, spd: 110, spe: 90}, types: ['Ghost', 'Fire'], weightkg: 34.3};
+    expect(resolveMon(dragoniteFacts({speciesData}), DRAGONITE).speciesData).toEqual(speciesData);
+    expect(resolveMon(dragoniteFacts(), DRAGONITE).speciesData).toBeUndefined();
+  });
+
   it('unions all roles when no moves are revealed yet', () => {
     const r = resolveMon(dragoniteFacts(), DRAGONITE);
     expect(r.possibleMoves).toEqual(expect.arrayContaining(['Roost', 'Iron Head']));

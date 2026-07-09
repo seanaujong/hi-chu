@@ -249,6 +249,22 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   (`STORAGE_VERSION`) so a stale unconverted copy can't outlive an update. Checked by
   `randbats.test.ts` ("champions stat points convert to mainline EVs" pins Arbok's real
   156 max HP at L54, plus the format-id keying through `fetchRandbats`).
+- ✅ **A species or item the calc's dex doesn't know must not break the hover.** Champions
+  invents Megas (Chandelure-Mega) and stones (Chandelurite) that never existed in a mainline
+  game: the species crashes `new Pokemon` (no base stats to read) and the stone crashes gen-9
+  Knock Off mechanics (`item.megaEvolves` read off a missing record) — so every hover facing
+  one silently lost its section (`content.ts` swallows the throw). Two fallbacks in `damage.ts`:
+  `unknownSpeciesOverrides` feeds the calc the CLIENT dex's base data — `readState.readSpeciesData`
+  reads `battle.dex.species.get(...)`, the same read the client's own tooltip does, into
+  `LiveFacts.speciesData`, validated whole-or-nothing ("never lie") — used ONLY when
+  `gen.species.get` comes back empty, so a known species keeps the calc's canonical record;
+  and `knownItem` resolves an item the calc's dex lacks to NO item (a stone is damage-inert;
+  the itemless number is the correct one, and Knock Off's boost correctly stays off). The
+  illusion path strips `speciesData` when it swaps species (`section.illusionVariants`) — the
+  disguise's dex data must not tag along into the Zoroark's resolution. Checked by
+  `damage.test.ts` ("a species the calc dex does not know…"), `readState.test.ts`
+  (`readSpeciesData`), and `resolve.test.ts` (pass-through). `battle.dex` is a new client
+  read → probed by `npm run drift-check` (verified against the live client).
 - ✅ **Four revealed moves = the full moveset; stop speculating.** A Pokémon has four move
   slots, so once `revealedMoves.length >= 4`, `inferSets` drops the role's remaining pool from
   the display (every shown move is a confirmed ✓). Checked by `knowledge.test.ts` ("stops

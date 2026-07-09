@@ -6,7 +6,7 @@
 // `toLiveFacts` is pure and unit-tested with a stub; the navigation helpers are
 // thin and defensive (the client's shape can shift between releases).
 
-import type {FieldFacts, LiveFacts, StatID, StatusName, TerrainName, WeatherName} from '../core/types.js';
+import type {FieldFacts, FullStats, LiveFacts, SpeciesData, StatID, StatusName, TerrainName, WeatherName} from '../core/types.js';
 
 export interface ClientPokemon {
   readonly speciesForme: string;
@@ -50,6 +50,20 @@ export interface ClientBattle {
   /** The viewer's OWN team with full private detail (item/ability the opponent can't see),
    *  present only when the viewer is a player, not a spectator. */
   readonly myPokemon?: ReadonlyArray<ClientServerPokemon>;
+  /** The client's dex — the same `battle.dex.species.get(...)` its own tooltips read. */
+  readonly dex?: ClientDex;
+}
+
+export interface ClientDex {
+  readonly species: {get(name: string): ClientSpecies | undefined};
+}
+
+/** The client dex's species record, loosely typed — it's reverse-engineered like the rest. */
+export interface ClientSpecies {
+  readonly exists?: boolean;
+  readonly baseStats?: Readonly<Record<string, number>>;
+  readonly types?: readonly string[];
+  readonly weightkg?: number;
 }
 
 /** One entry of `battle.myPokemon`: the player's private view of their own Pokémon.
@@ -81,7 +95,35 @@ export interface BehaviorSignals {
   readonly switchedIntoStealthRockUnharmed?: boolean;
 }
 
-export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}): LiveFacts {
+/**
+ * The client dex's base data for this Pokémon's species — the damage layer's fallback
+ * for formes `@smogon/calc` doesn't know (Champions' invented Megas). Returns undefined
+ * unless the dex serves a complete, well-formed record: a partial answer would make the
+ * calc lie, and undefined merely keeps today's behaviour (no section for that mon).
+ */
+export function readSpeciesData(battle: ClientBattle, mon: ClientPokemon): SpeciesData | undefined {
+  const species = battle.dex?.species.get(mon.speciesForme);
+  if (!species || species.exists === false) return undefined;
+  const baseStats = asFullStats(species.baseStats);
+  const types = species.types;
+  if (!baseStats || !Array.isArray(types) || types.length === 0) return undefined;
+  if (!types.every((t) => typeof t === 'string' && t.length > 0)) return undefined;
+  return {
+    baseStats,
+    types: [...types],
+    ...(typeof species.weightkg === 'number' && species.weightkg > 0 ? {weightkg: species.weightkg} : {}),
+  };
+}
+
+function asFullStats(raw: Readonly<Record<string, number>> | undefined): FullStats | undefined {
+  if (!raw) return undefined;
+  const out = {hp: raw.hp, atk: raw.atk, def: raw.def, spa: raw.spa, spd: raw.spd, spe: raw.spe};
+  const wellFormed = Object.values(out).every((v) => typeof v === 'number' && Number.isFinite(v) && v > 0);
+  // Cast: the every() above just proved all six values are positive numbers.
+  return wellFormed ? (out as FullStats) : undefined;
+}
+
+export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, speciesData?: SpeciesData): LiveFacts {
   // moveTrack entries are [name, pp]; a leading "*" marks a transformed/mimicked move.
   const revealedMoves = (p.moveTrack ?? [])
     .map(([name]) => name.replace(/^\*/, ''))
@@ -119,6 +161,7 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}): Li
     ...(p.item ? {item: p.item} : {}),
     ...(p.prevItem ? {prevItem: p.prevItem} : {}),
     ...(gender ? {gender} : {}),
+    ...(speciesData ? {speciesData} : {}),
   };
   return facts;
 }

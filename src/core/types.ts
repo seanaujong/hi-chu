@@ -57,9 +57,26 @@ export type RandbatsData = Readonly<Record<string, RandbatsEntry>>;
 
 // --- Live battle facts ------------------------------------------------------
 
+/**
+ * The client dex's base data for one species. Carried on `LiveFacts` so the damage
+ * layer can calculate formes `@smogon/calc`'s own dex doesn't know — Champions invents
+ * new Megas (Chandelure-Mega, Meganium-Mega) that never existed in a mainline game, but
+ * the Showdown client's dex serves them (its own tooltips need the same data). The calc
+ * uses this ONLY as a fallback for a species it lacks; a known species keeps the calc's
+ * canonical record.
+ */
+export interface SpeciesData {
+  readonly baseStats: FullStats;
+  readonly types: readonly string[];
+  /** Needed for weight-based moves (Heavy Slam, Low Kick). */
+  readonly weightkg?: number;
+}
+
 /** Everything the running battle has revealed about one Pokémon. */
 export interface LiveFacts {
   readonly speciesForme: string;
+  /** Client-dex base data for `speciesForme` — see `SpeciesData`. */
+  readonly speciesData?: SpeciesData;
   readonly level: number;
   /** Current HP as a fraction in [0,1]; for opponents we usually only know a %. */
   readonly hpPercent: number;
@@ -176,6 +193,8 @@ export interface SetVariant {
 /** The single concrete set we calculate with: known facts win, the rest assumed. */
 export interface ResolvedMon {
   readonly speciesForme: string;
+  /** Client-dex base data for `speciesForme` — the calc's fallback for a species it lacks. */
+  readonly speciesData?: SpeciesData;
   readonly level: number;
   readonly nature: string;
   readonly evs: FullStats;

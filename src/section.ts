@@ -30,6 +30,7 @@ import {
   toLiveFacts,
   readBehaviors,
   readOwnItem,
+  readSpeciesData,
   findOpposingActive,
   findOpposingActives,
   detectFormat,
@@ -37,6 +38,12 @@ import {
   type ClientBattle,
   type ClientPokemon,
 } from './battle/readState.js';
+
+/** All of one Pokémon's live facts: the snapshot, the log-derived behaviours, and the
+ *  client dex's species data (the calc's fallback for formes its own dex lacks). */
+function factsFor(battle: ClientBattle, mon: ClientPokemon): LiveFacts {
+  return toLiveFacts(mon, readBehaviors(battle, mon), readSpeciesData(battle, mon));
+}
 
 /** Showdown id form: lowercase, alphanumerics only ("Ice Punch" → "icepunch"). */
 function toId(s: string): string {
@@ -79,8 +86,11 @@ function ownItemName(battle: ClientBattle, pokemon: ClientPokemon, entry: Randba
  * a single, clearly-labelled bucket. Its own species/level drive the calc.
  */
 function illusionVariants(defenderFacts: LiveFacts, defenderEntry: RandbatsEntry | undefined, data: RandbatsData): SetVariant[] {
+  // The suspect is a DIFFERENT species than shown, so the shown forme's dex data
+  // (facts.speciesData) must not ride along into the Zoroark's resolution.
+  const {speciesData: _shownFormes, ...publicFacts} = defenderFacts;
   return suspectsFor(defenderFacts, defenderEntry, data).map(({species, entry}) => ({
-    mon: resolveMon({...defenderFacts, speciesForme: species, level: entry.level}, entry),
+    mon: resolveMon({...publicFacts, speciesForme: species, level: entry.level}, entry),
     role: species,
   }));
 }
@@ -171,7 +181,7 @@ export function buildMoveSection(
   const foes = findOpposingActives(battle, pokemon);
   if (foes.length === 0) return '';
 
-  const publicFacts = toLiveFacts(pokemon, readBehaviors(battle, pokemon));
+  const publicFacts = factsFor(battle, pokemon);
   const attackerEntry = entryFor(data, publicFacts);
   if (!attackerEntry) return '';
 
@@ -198,7 +208,7 @@ function moveVsFoe(
   battle: ClientBattle,
   label: boolean,
 ): string {
-  const defenderFacts = toLiveFacts(defenderMon, readBehaviors(battle, defenderMon));
+  const defenderFacts = factsFor(battle, defenderMon);
   const defenderEntry = entryFor(data, defenderFacts);
   const targetLabel = label ? defenderFacts.speciesForme : undefined;
 
@@ -270,7 +280,7 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
   const format = detectFormat(battle);
   if (!format) return '';
 
-  const facts = toLiveFacts(pokemon, readBehaviors(battle, pokemon));
+  const facts = factsFor(battle, pokemon);
   const entry = entryFor(data, facts);
   if (!entry) return ''; // not a tracked randbats Pokémon
 
@@ -291,7 +301,7 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
   // Foe view: attach each possible move's damage into OUR active (their move buttons
   // aren't hoverable for us). The own-side mirror carries no damage — public info only.
   const ourMon = isFoe(battle, pokemon) ? findOpposingActive(battle, pokemon) : null;
-  const ourFacts = ourMon ? toLiveFacts(ourMon, readBehaviors(battle, ourMon)) : null;
+  const ourFacts = ourMon ? factsFor(battle, ourMon) : null;
   const defender = ourFacts ? resolveMon(ourFacts, entryOrMinimal(entryFor(data, ourFacts), ourFacts)) : null;
   const field = ourMon ? readFieldFacts(battle, ourMon.side) : undefined;
 

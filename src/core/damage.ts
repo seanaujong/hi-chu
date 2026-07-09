@@ -7,7 +7,7 @@
 // hit-count distribution (core/multihit.ts) to get the true total — and from the
 // true total, an exact single-use KO chance.
 
-import {calculate, Generations, Pokemon, Move, Field, type GenerationNum, type State} from '@smogon/calc';
+import {calculate, Generations, Pokemon, Move, Field, toID, type GenerationNum, type State} from '@smogon/calc';
 import type {FieldFacts, ResolvedMon} from './types.js';
 import {multiHitProfile} from './moves.js';
 import {
@@ -55,14 +55,52 @@ export interface DamageReport {
 
 type Gen = ReturnType<typeof Generations.get>;
 
+type SpeciesOverrides = NonNullable<State.Pokemon['overrides']>;
+
+/**
+ * Base data for a species the calc's dex does NOT know — Champions invents new Megas
+ * (Chandelure-Mega) that never existed in a mainline game, so `gen.species.get` comes
+ * back empty and the constructor would throw. The client's own dex knows them (its
+ * tooltips need the same data), and that reading rides in on `mon.speciesData`; passed
+ * as `overrides`, the calc computes stats, STAB, and the type chart correctly. A species
+ * the calc DOES know keeps its canonical record — this is a fallback, never a replacement.
+ */
+function unknownSpeciesOverrides(gen: Gen, mon: ResolvedMon): {overrides: SpeciesOverrides} | Record<string, never> {
+  if (!mon.speciesData || gen.species.get(toID(mon.speciesForme)) !== undefined) return {};
+  const {baseStats, types, weightkg} = mon.speciesData;
+  return {
+    overrides: {
+      baseStats,
+      // Cast: battle-sourced type strings; the calc wants its TypeName tuple (same as teraType).
+      types: types as unknown as NonNullable<SpeciesOverrides['types']>,
+      ...(weightkg !== undefined ? {weightkg} : {}),
+    },
+  };
+}
+
+/**
+ * An item the calc's dex doesn't know (a Champions-invented Mega stone like Chandelurite)
+ * CRASHES gen-9 mechanics — Knock Off's stone check reads `item.megaEvolves` off the
+ * missing record — so it resolves to NO item for the calc. That's also the honest number:
+ * a Mega stone is damage-inert, and Knock Off's boost correctly stays off (mainline treats
+ * an unremovable stone as boost-resisting). Known items pass through untouched, in either
+ * display-name or id form (`toID` normalizes both).
+ */
+function knownItem(gen: Gen, item: string | undefined): string | undefined {
+  if (item === undefined) return undefined;
+  return gen.items.get(toID(item)) !== undefined ? item : undefined;
+}
+
 function buildPokemon(gen: Gen, mon: ResolvedMon, curHP?: number): Pokemon {
+  const item = knownItem(gen, mon.item);
   return new Pokemon(gen, mon.speciesForme, {
     level: mon.level,
+    ...unknownSpeciesOverrides(gen, mon),
     nature: mon.nature,
     evs: mon.evs,
     ivs: mon.ivs,
     ...(mon.ability !== undefined ? {ability: mon.ability} : {}),
-    ...(mon.item !== undefined ? {item: mon.item} : {}),
+    ...(item !== undefined ? {item} : {}),
     ...(mon.status !== undefined ? {status: mon.status} : {}),
     boosts: mon.boosts,
     // teraType is only ever set when the Pokémon has ACTUALLY terastallized

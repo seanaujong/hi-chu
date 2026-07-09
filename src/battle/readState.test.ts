@@ -1,6 +1,7 @@
 import {describe, it, expect} from 'vitest';
 import {
   toLiveFacts,
+  readSpeciesData,
   hasLandedDamagingHit,
   tookEntryHazardDamage,
   switchedIntoStealthRockUnharmed,
@@ -308,5 +309,50 @@ describe('findOpposingActive', () => {
     const battle: ClientBattle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [mySide, foeSide]};
     const hovered = {...mine, side: mySide};
     expect(findOpposingActive(battle, hovered)?.speciesForme).toBe('Theirs');
+  });
+});
+
+describe('readSpeciesData (the client dex as calc fallback for unknown formes)', () => {
+  const fullRecord = {
+    exists: true,
+    baseStats: {hp: 60, atk: 75, def: 110, spa: 175, spd: 110, spe: 90},
+    types: ['Ghost', 'Fire'],
+    weightkg: 34.3,
+  };
+  const withDex = (record: unknown): ClientBattle => ({
+    gen: 9,
+    tier: '[Gen 9 Champions] Random Battle',
+    sides: [],
+    dex: {species: {get: () => record as never}},
+  });
+
+  it('reads a complete record into SpeciesData', () => {
+    const sd = readSpeciesData(withDex(fullRecord), clientMon({speciesForme: 'Chandelure-Mega'}));
+    expect(sd).toEqual({
+      baseStats: {hp: 60, atk: 75, def: 110, spa: 175, spd: 110, spe: 90},
+      types: ['Ghost', 'Fire'],
+      weightkg: 34.3,
+    });
+  });
+
+  it('folds into LiveFacts via the toLiveFacts third source', () => {
+    const sd = readSpeciesData(withDex(fullRecord), clientMon());
+    expect(toLiveFacts(clientMon(), {}, sd).speciesData).toEqual(sd);
+    expect(toLiveFacts(clientMon()).speciesData).toBeUndefined();
+  });
+
+  it('returns undefined without a dex (fixtures, older clients) or for a non-existent species', () => {
+    const noDex: ClientBattle = {gen: 9, tier: '[Gen 9] Random Battle', sides: []};
+    expect(readSpeciesData(noDex, clientMon())).toBeUndefined();
+    expect(readSpeciesData(withDex({...fullRecord, exists: false}), clientMon())).toBeUndefined();
+    expect(readSpeciesData(withDex(undefined), clientMon())).toBeUndefined();
+  });
+
+  it('refuses a malformed record rather than half-answering (never lie)', () => {
+    const {spe: _spe, ...missingStat} = fullRecord.baseStats;
+    expect(readSpeciesData(withDex({...fullRecord, baseStats: missingStat}), clientMon())).toBeUndefined();
+    expect(readSpeciesData(withDex({...fullRecord, baseStats: {...fullRecord.baseStats, hp: 0}}), clientMon())).toBeUndefined();
+    expect(readSpeciesData(withDex({...fullRecord, types: []}), clientMon())).toBeUndefined();
+    expect(readSpeciesData(withDex({...fullRecord, types: undefined}), clientMon())).toBeUndefined();
   });
 });

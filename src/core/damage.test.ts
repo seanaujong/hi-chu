@@ -43,6 +43,61 @@ describe('single-hit move', () => {
   });
 });
 
+describe('a species the calc dex does not know (a Champions-invented Mega)', () => {
+  // Chandelure-Mega exists only in Champions — @smogon/calc has no record and throws
+  // reading its base stats (replay gen9championsrandombattle-2646324776 broke every
+  // hover). The client dex's data (verbatim from play.pokemonshowdown.com/data/pokedex.js)
+  // rides in on speciesData, and the calc computes from it via `overrides`.
+  const chandelureMegaDex = {
+    baseStats: {hp: 60, atk: 75, def: 110, spa: 175, spd: 110, spe: 90},
+    types: ['Ghost', 'Fire'],
+    weightkg: 34.3,
+  };
+  const mega = mon({speciesForme: 'Chandelure-Mega', level: 48, speciesData: chandelureMegaDex});
+  const arbok = mon({speciesForme: 'Arbok', level: 54});
+
+  it('computes damage FROM the unknown species, STAB and stats included', () => {
+    const r = calcDamage(mega, arbok, 'Shadow Ball', {gen: 9, field: noField});
+    expect(r.total.min).toBeGreaterThan(0);
+    expect(r.total.max).toBeGreaterThan(r.total.min);
+  });
+
+  it('computes damage INTO the unknown species with its type chart (Ghost is immune to Normal)', () => {
+    const defended = calcDamage(arbok, mega, 'Body Slam', {gen: 9, field: noField});
+    expect(defended.total.max).toBe(0); // the override's Ghost typing is really applied
+    const hit = calcDamage(arbok, mega, 'Crunch', {gen: 9, field: noField});
+    expect(hit.total.min).toBeGreaterThan(0); // super-effective Dark still lands
+  });
+
+  it('without dex data the unknown species still throws — we never guess its stats', () => {
+    const noDex = mon({speciesForme: 'Chandelure-Mega', level: 48});
+    expect(() => calcDamage(noDex, arbok, 'Shadow Ball', {gen: 9, field: noField})).toThrow();
+  });
+
+  it('an item the calc dex does not know resolves to NO item (an invented Mega stone)', () => {
+    // Chandelurite is Champions-invented too: the calc's item dex lacks it, and gen-9
+    // Knock Off mechanics crash reading `.megaEvolves` off the missing record — even
+    // against a base-forme holder. A stone is damage-inert, so the itemless number is
+    // the correct one.
+    const holder = mon({speciesForme: 'Chandelure-Mega', level: 48, speciesData: chandelureMegaDex, item: 'Chandelurite'});
+    const vsHolder = calcDamage(arbok, holder, 'Crunch', {gen: 9, field: noField});
+    const vsItemless = calcDamage(arbok, mega, 'Crunch', {gen: 9, field: noField});
+    expect(vsHolder.total).toEqual(vsItemless.total);
+    // A KNOWN item still applies: Assault Vest visibly cuts the special hit.
+    const vsVest = calcDamage(arbok, mon({...mega, item: 'Assault Vest'}), 'Dark Pulse', {gen: 9, field: noField});
+    const vsPlain = calcDamage(arbok, mega, 'Dark Pulse', {gen: 9, field: noField});
+    expect(vsVest.total.max).toBeLessThan(vsPlain.total.max);
+  });
+
+  it('a species the calc DOES know keeps its canonical record — dex data changes nothing', () => {
+    const bogus = {baseStats: {hp: 1, atk: 1, def: 1, spa: 1, spd: 1, spe: 1}, types: ['Normal']};
+    const withDex = calcDamage(mon({speciesForme: 'Arbok', level: 54, speciesData: bogus}), mega, 'Crunch', {gen: 9, field: noField});
+    const without = calcDamage(arbok, mega, 'Crunch', {gen: 9, field: noField});
+    expect(withDex.total).toEqual(without.total);
+    expect(withDex.percent).toEqual(without.percent);
+  });
+});
+
 describe('uniform-power multi-hit (Bullet Seed, 2-5)', () => {
   const r = calcDamage(
     mon({speciesForme: 'Breloom', nature: 'Adamant'}),

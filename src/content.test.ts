@@ -40,6 +40,14 @@ describe('install (tooltip monkey-patch)', () => {
     expect(() => t.showMoveTooltip(undefined, '', undefined)).not.toThrow();
   });
 
+  it('routes a switch-menu call (null clientPokemon + serverPokemon) without breaking the native tooltip', () => {
+    const Fake = FakeTooltips as unknown as {prototype: Record<string, unknown>};
+    install(Fake);
+    const t = new FakeTooltips() as unknown as {showPokemonTooltip: (p: unknown, s?: unknown) => string; battle: unknown};
+    t.battle = {gen: 9, tier: '[Gen 9] OU', sides: []}; // non-random → augmentation is ''
+    expect(t.showPokemonTooltip(null, {ident: 'p1: Noivern', moves: ['dracometeor']})).toBe('NATIVE(?)');
+  });
+
   it('patches the prototype only once', () => {
     class Once {
       battle: unknown;

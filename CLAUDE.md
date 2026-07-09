@@ -119,9 +119,9 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   ("Terastallize ticked": STAB applies and the line says Tera; no private type or already
   Tera'd → byte-identical output) and `readState.test.ts` (`readOwnTeraType`, `readTeraToggled`
   incl. the no-cross-room-leak case). 👁 for drift: the checkbox selector can't be probed by
-  `drift-check` (a spectator replay has no move controls) — verify by hand after a client
-  update. The sets view may LIST possible Tera types, but they are display-only `SetKnowledge`
-  — they never reach the calc.
+  `drift-check` (a spectator replay has no move controls) — `npm run player-check` (a real
+  two-account battle) probes it after a client update. The sets view may LIST possible Tera
+  types, but they are display-only `SetKnowledge` — they never reach the calc.
 - ✅ **Set narrowing uses every public reveal, nothing private.** Roles are filtered by moves
   used, revealed item (held or `prevItem`), and revealed ability — checked by
   `resolve.test.ts` ("evidence beyond moves narrows the role"). The own-side mirror view is
@@ -145,27 +145,40 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   moves, so the private team is the one source that knows a benched mon's whole kit. Checked by
   `section.test.ts` ("uses YOUR real item…"; the mirror carries no ⚡ line) and
   `readState.test.ts` (`readOwnItem`, `readOwnMoves`). 👁 not ✅ for drift: `myPokemon` only
-  exists for a
-  player, so `drift-check` (a spectator replay) can't exercise it — verify by hand in a live
-  game after a client update.
+  exists for a player, so `drift-check` (a spectator replay) can't exercise it — probe it
+  with `npm run player-check` (a real two-account battle) after a client update.
 - ✅ **Hovering our OWN Pokémon (benched included) leads with the matchup view — our real
   moves' damage into the foe active — and the mirror below stays strictly public.** The
   switch-decision answer: a benched mon's move buttons aren't hoverable, so this is where its
   numbers live (the exact mirror of why the foe view attaches threat damage to THEIR
-  unhoverable moves). `section.ownMovesSection` reads the private moveset (`readOwnMoves`, id
-  form — `calcDamage` resolves ids through the dex, so `report.move` is always the display
-  name) and our real item, resolves the ONE attacker, and computes per-move damage against the
-  foe's `resolveVariants` + Illusion variants, bucketed by distinct outcome exactly like the
-  move tooltip — a hidden Assault Vest splits the line into labelled outcomes, never one
-  confidently-wrong number (`renderOwnMovesSection`; no nHKO ladder — the compact view skips
-  the survival sim). Status moves get no line; a fainted mon (can't switch in), a spectator
-  (no private team), or an all-status kit gets no block — the mirror then renders alone,
-  exactly as before. One "vs <foe>" block per foe active (two in doubles); the header always
-  names the target, since this tooltip is about OUR mon. Checked by `section.test.ts` ("the
-  matchup view": leads before the mirror, same numbers as the move tooltip, AV split, no
-  private leak into the mirror — guards watched failing with the section disabled and with the
-  id→name resolution reverted), `render.test.ts` (`renderOwnMovesSection`), and
-  `readState.test.ts` (`readOwnMoves`).
+  unhoverable moves). `section.ownMovesSection` takes the resolved attacker + the private
+  moveset (id form — `calcDamage` resolves ids through the dex, so `report.move` is always
+  the display name) and computes per-move damage against the foe's `resolveVariants` +
+  Illusion variants, bucketed by distinct outcome exactly like the move tooltip — a hidden
+  Assault Vest splits the line into labelled outcomes, never one confidently-wrong number
+  (`renderOwnMovesSection`; no nHKO ladder — the compact view skips the survival sim).
+  **Two entry paths, split by what the client hands the tooltip.** (1) A battle-view Pokémon
+  (your active's hover, a revealed mon's sidebar icon) → `ownHoverMatchup` inside
+  `buildPokemonSection`: public facts + `readOwnMoves`/`ownItemName`, mirror blocks below.
+  (2) The SWITCH MENU → `buildSwitchSection`: the client dispatches
+  `showPokemonTooltip(null, serverPokemon)` there — its battle-view lookup is commented out
+  in `battle-tooltips.ts`, and a never-revealed benched mon HAS no battle-view object — so
+  the block is built straight from the private `ServerPokemon`
+  (`readState.serverPokemonFacts` parses details/condition, preferring the client's parsed
+  fields). No mirror on that surface: it would have to be derived from private facts, and
+  the native switch tooltip already shows your full real set. `server.item === ''` is a
+  KNOWN empty slot (knocked off/consumed) — the resolved item is forced to none, never the
+  set's assumed item. Found by the two-account live battle (`npm run player-check`), not by
+  the replay harness — a spectator replay has no switch menu. Status moves get no line; a
+  fainted mon (can't switch in), a spectator (no private team), or an all-status kit gets no
+  block — the mirror (where it exists) then renders alone. One "vs <foe>" block per foe
+  active (two in doubles); the header always names the target, since this tooltip is about
+  OUR mon. Checked by `section.test.ts` ("the matchup view" + "buildSwitchSection": leads
+  before the mirror, same numbers as the move tooltip, AV split, no private leak into the
+  mirror, knocked-off item resolves to none — guards watched failing with the section
+  disabled, the id→name resolution reverted, and the gone-item strip removed),
+  `render.test.ts` (`renderOwnMovesSection`), `readState.test.ts` (`readOwnMoves`,
+  `serverPokemonFacts`), and `content.test.ts` (the null-clientPokemon routing).
 - ✅ **A LANDED damaging hit with no item revealed rules Life Orb out.** Life Orb takes 1/10
   recoil when a damaging move connects and REVEALS itself doing so — so if a mon has landed a
   hit and no item has surfaced, it isn't holding one. It must be a *landed* hit, not merely a
@@ -312,9 +325,11 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   the mirror has no ⚡).
 - 👁 **Where we correct @smogon/calc** (things it should arguably handle but doesn't, that we
   own): `multihit.ts` (the multi-hit model above) and the **item id→name quirk** — the calc
-  silently *ignores* an item passed in id form (`heavydutyboots`), applying nothing, so
-  anything feeding it an item maps to the display name first (`section.ownItemName`,
-  `damage.test.ts`'s `isDamagingMove`-era note). NOT in this bucket: `variants.ts`/deductions
+  silently *ignores* an item passed in id form (`heavydutyboots`), applying nothing. Fixed at
+  the layer that owns it: `damage.knownItem` resolves every item through the calc's own dex
+  and hands the calc the DEX display name, so id-form items from any client read apply
+  correctly (✅ `damage.test.ts` "a known item applies in id form too"). `section.ownItemName`
+  still maps ids to the set pool's names where narrowing/display wants them. NOT in this bucket: `variants.ts`/deductions
   (our information-game product — the calc computes each variant correctly) and the Illusion
   case (input correctness — the calc did its job; we fed it the wrong species). Keep the line
   clear: calc *gaps* here; our *product* elsewhere. Two more calc-gap readouts the calc can't
@@ -387,10 +402,16 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   interfaces in `readState.ts` are the contract; the stubbed `readState` tests check *our*
   parsing, not client drift. `npm run drift-check` is the live guard — it bundles the current
   `readState` source, runs it against a real replay's `window.battle` in headless Chrome, and
-  exits non-zero if a field we read is gone or malformed. It's 👁 not ✅ because it needs a
-  browser + the live site, so it can't run in `npm run check`/CI — run it by hand after a client
-  update. If it flags drift (or a calc looks wrong), re-derive from the PS source below and update
-  `readState.ts` and its tests in lockstep.
+  exits non-zero if a field we read is gone or malformed. Its player-side twin is
+  `npm run player-check`: a replay is a spectator view, so `battle.myPokemon` (the
+  `ClientServerPokemon` contract), the switch-menu hover, and the Terastallize checkbox are
+  invisible to drift-check — player-check logs two throwaway accounts into the real site
+  (`PS_ACCOUNT1="name:password" PS_ACCOUNT2=… npm run player-check`; credentials via env,
+  never committed), has them battle each other, and probes exactly those reads with the
+  shipped bundle, forfeiting when done. Both are 👁 not ✅ because they need a browser + the
+  live site, so they can't run in `npm run check`/CI — run them by hand after a client
+  update. If either flags drift (or a calc looks wrong), re-derive from the PS source below
+  and update `readState.ts` and its tests in lockstep.
 
 ## Pointers
 - `README.md` — full architecture, diagrams, install steps, known limitations.

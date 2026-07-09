@@ -84,12 +84,14 @@ function unknownSpeciesOverrides(gen: Gen, mon: ResolvedMon): {overrides: Specie
  * CRASHES gen-9 mechanics — Knock Off's stone check reads `item.megaEvolves` off the
  * missing record — so it resolves to NO item for the calc. That's also the honest number:
  * a Mega stone is damage-inert, and Knock Off's boost correctly stays off (mainline treats
- * an unremovable stone as boost-resisting). Known items pass through untouched, in either
- * display-name or id form (`toID` normalizes both).
+ * an unremovable stone as boost-resisting). A known item comes back as the DEX's display
+ * name: the calc's mechanics compare items by that exact string and silently ignore any
+ * other form, so an id-form item ("choicespecs", the shape `battle.myPokemon` carries)
+ * would otherwise apply nothing at all.
  */
 function knownItem(gen: Gen, item: string | undefined): string | undefined {
   if (item === undefined) return undefined;
-  return gen.items.get(toID(item)) !== undefined ? item : undefined;
+  return gen.items.get(toID(item))?.name;
 }
 
 /** A calc-ready Pokemon from a ResolvedMon, with the Champions safety nets applied

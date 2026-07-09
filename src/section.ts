@@ -37,12 +37,16 @@ import {
   readOwnMoves,
   readOwnTeraType,
   readSpeciesData,
+  serverPokemonFacts,
+  activesOpposing,
   findOpposingActive,
   findOpposingActives,
   detectFormat,
   readFieldFacts,
   type ClientBattle,
   type ClientPokemon,
+  type ClientServerPokemon,
+  type ClientSide,
 } from './battle/readState.js';
 
 /** All of one Pokémon's live facts: the snapshot, the log-derived behaviours, and the
@@ -146,33 +150,23 @@ function speedSection(
 }
 
 /**
- * The own-hover matchup block: OUR hovered Pokémon's real moves (the private team
- * knows all four slots, even for a benched Pokémon whose move buttons aren't
- * hoverable), each with its damage into the current foe active(s) — the "would this
- * Pokémon match up better?" switch-decision view. Private facts feeding an our-view
- * surface, like the move tooltip's real-item read; the mirror blocks below stay
- * strictly public. The foe's hidden item/ability splits a line into labelled
- * outcomes exactly as the move tooltip does — never one confidently-wrong number.
- * Empty when spectating (no private team), when the Pokémon has fainted (it can't
- * switch in), or when no move is modellable.
+ * The own-hover matchup block: OUR Pokémon's real moves (private team — the battle
+ * view only tracks revealed moves), each with its damage into the current foe
+ * active(s) — the "would this Pokémon match up better?" switch-decision view.
+ * Private facts feeding an our-view surface, like the move tooltip's real-item read.
+ * The foe's hidden item/ability splits a line into labelled outcomes exactly as the
+ * move tooltip does — never one confidently-wrong number. Callers resolve the
+ * attacker (they differ in how they know its item); this folds it over the foes.
  */
 function ownMovesSection(
   battle: ClientBattle,
-  pokemon: ClientPokemon,
-  facts: LiveFacts,
-  entry: RandbatsEntry,
+  ourSide: ClientSide | undefined,
+  attacker: ResolvedMon,
+  moves: readonly string[],
   data: RandbatsData,
   format: {gen: number; doubles: boolean},
 ): string {
-  const moves = readOwnMoves(battle, pokemon);
-  if (!moves || facts.hpPercent <= 0) return '';
-
-  // Your Pokémon, your damage: your real item beats the set's assumed one (same
-  // principle as buildMoveSection's attacker).
-  const realItem = ownItemName(battle, pokemon, entry);
-  const attacker = resolveMon(realItem ? {...facts, item: realItem} : facts, entry);
-
-  const sections = findOpposingActives(battle, pokemon).map((foe) => {
+  const sections = activesOpposing(battle, ourSide).map((foe) => {
     const defenderFacts = factsFor(battle, foe);
     const defenderEntry = entryFor(data, defenderFacts);
     const defenderVariants = [
@@ -188,6 +182,54 @@ function ownMovesSection(
     return {foeName: defenderFacts.speciesForme, defenderHpPercent: defenderFacts.hpPercent, moves: rows};
   });
   return renderOwnMovesSection(sections);
+}
+
+/** The matchup block for an own-side hover that carries a battle-view Pokémon (the
+ *  active, or a sidebar icon of a revealed mon). Empty when spectating (no private
+ *  team) or fainted (it can't switch in). */
+function ownHoverMatchup(
+  battle: ClientBattle,
+  pokemon: ClientPokemon,
+  facts: LiveFacts,
+  entry: RandbatsEntry,
+  data: RandbatsData,
+  format: {gen: number; doubles: boolean},
+): string {
+  const moves = readOwnMoves(battle, pokemon);
+  if (!moves || facts.hpPercent <= 0) return '';
+  // Your Pokémon, your damage: your real item beats the set's assumed one (same
+  // principle as buildMoveSection's attacker).
+  const realItem = ownItemName(battle, pokemon, entry);
+  const attacker = resolveMon(realItem ? {...facts, item: realItem} : facts, entry);
+  return ownMovesSection(battle, pokemon.side, attacker, moves, data, format);
+}
+
+/**
+ * The switch-menu tooltip section: the matchup block built straight from the private
+ * `ServerPokemon`. This surface is why the block can't ride on `buildPokemonSection`:
+ * the client passes NO battle-view Pokémon here (its side lookup is commented out —
+ * a never-revealed benched mon has none), so hovering a switch button dispatches
+ * `showPokemonTooltip(null, serverPokemon)`. No mirror blocks either — they would
+ * have to be derived from these PRIVATE facts (a leak into the their-read-on-you
+ * view), and the native switch tooltip already shows your full real set above ours.
+ * `server.item === ''` is a KNOWN empty slot (knocked off / consumed) — the resolved
+ * item is forced to none rather than letting the resolver assume the set's back on.
+ */
+export function buildSwitchSection(battle: ClientBattle, server: ClientServerPokemon, data: RandbatsData): string {
+  const format = detectFormat(battle);
+  if (!format) return '';
+  const moves = server.moves ?? [];
+  const facts = serverPokemonFacts(server);
+  if (!facts || facts.hpPercent <= 0 || moves.length === 0) return '';
+  const speciesData = readSpeciesData(battle, facts);
+  const entry = entryFor(data, facts);
+  if (!entry) return '';
+  // The id-form item narrows the role fine (pools compare by id) and the damage layer
+  // resolves it to the dex name for the calc — no pool mapping needed here.
+  const resolved = resolveMon({...facts, ...(speciesData ? {speciesData} : {})}, entry);
+  const attacker = server.item === '' ? {...resolved, item: undefined} : resolved;
+  const ourSide = battle.sides.find((s) => s.isFar === false) ?? battle.sides[0];
+  return ownMovesSection(battle, ourSide, attacker, moves, data, format);
 }
 
 /** True when the hovered Pokémon belongs to the opponent (the far side, from our seat). */
@@ -439,7 +481,7 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
   // Own view's at-a-glance answer: OUR moves' damage into the current foe (private
   // moveset — an our-view surface). Leads the tooltip like ⚡ does on a foe hover;
   // the mirror blocks below remain strictly public.
-  const ownMovesHtml = foe ? '' : ownMovesSection(battle, pokemon, facts, entry, data, format);
+  const ownMovesHtml = foe ? '' : ownHoverMatchup(battle, pokemon, facts, entry, data, format);
 
   return speedHtml + ownMovesHtml + renderSetsSection({candidates: blocks, extraNotes: notes});
 }

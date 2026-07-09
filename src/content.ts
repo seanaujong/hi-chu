@@ -10,8 +10,8 @@
 
 import {TOOLTIP_STYLE} from './core/render.js';
 import {cachedRandbats, fetchRandbats} from './data/randbats.js';
-import {detectFormat, readTeraToggled, type ClientBattle, type ClientPokemon} from './battle/readState.js';
-import {buildMoveSection, buildPokemonSection} from './section.js';
+import {detectFormat, readTeraToggled, type ClientBattle, type ClientPokemon, type ClientServerPokemon} from './battle/readState.js';
+import {buildMoveSection, buildPokemonSection, buildSwitchSection} from './section.js';
 
 declare global {
   interface Window {
@@ -41,6 +41,12 @@ function dataFor(battle: ClientBattle): ReturnType<typeof cachedRandbats> {
 export function buildSection(battle: ClientBattle, pokemon: ClientPokemon): string {
   const data = dataFor(battle);
   return data ? buildPokemonSection(battle, pokemon, data) : '';
+}
+
+/** Switch-menu hover (a ServerPokemon, no battle-view Pokémon): the matchup block. */
+export function buildSwitchPokemonSection(battle: ClientBattle, server: ClientServerPokemon): string {
+  const data = dataFor(battle);
+  return data ? buildSwitchSection(battle, server, data) : '';
 }
 
 /** Move-button hover: the single-move damage section (or '' while data warms).
@@ -86,10 +92,15 @@ export function install(BattleTooltips: {prototype: Record<string, unknown>}): v
   if (proto[PATCH_FLAG]) return;
   proto[PATCH_FLAG] = true;
 
-  // showPokemonTooltip(clientPokemon, serverPokemon?, isActive?, illusionIndex?)
+  // showPokemonTooltip(clientPokemon, serverPokemon?, isActive?, illusionIndex?).
+  // The switch menu passes NO clientPokemon (null, serverPokemon) — a never-revealed
+  // benched mon has no battle-view object — so that shape routes to the matchup block.
   append(proto, 'showPokemonTooltip', (self, args) => {
     const pokemon = args[0] as ClientPokemon | undefined;
-    return pokemon && self.battle ? buildSection(self.battle, pokemon) : '';
+    const server = args[1] as ClientServerPokemon | undefined;
+    if (!self.battle) return '';
+    if (pokemon) return buildSection(self.battle, pokemon);
+    return server ? buildSwitchPokemonSection(self.battle, server) : '';
   });
 
   // showMoveTooltip(move, isZOrMax, pokemon, serverPokemon, gmaxMove?) — `pokemon`

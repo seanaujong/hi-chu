@@ -69,20 +69,36 @@ export interface ClientSpecies {
   readonly weightkg?: number;
 }
 
-/** One entry of `battle.myPokemon`: the player's private view of their own Pokémon.
- *  `item`/`ability` are id form ("heavydutyboots"), unlike the display-name form the
- *  battle-view `ClientPokemon` carries. */
+/** One entry of `battle.myPokemon`: the player's private view of their own Pokémon
+ *  (the client's `ServerPokemon`). `item`/`ability`/`moves` are id form
+ *  ("heavydutyboots"), unlike the display-name form the battle-view `ClientPokemon`
+ *  carries. The client parses `details`/`condition` into the enrichment fields
+ *  (`speciesForme`, `hp`, …); `serverPokemonFacts` prefers those and falls back to
+ *  parsing the raw strings itself, so either client build works. */
 export interface ClientServerPokemon {
   readonly ident: string; // "p1: Iron Bundle"
-  readonly item?: string;
+  readonly item?: string; // '' is meaningful: the item is KNOWN to be gone (knocked off/consumed)
   readonly ability?: string;
   readonly baseAbility?: string;
   /** The Tera type this Pokémon CAN terastallize into — the client sets it whether or
    *  not the Tera has been used ("always the Tera Type of the Pokemon"). */
   readonly teraType?: string;
+  /** Falsy while not terastallized, else the active Tera type — same semantics as the
+   *  battle view's `terastallized`. */
+  readonly terastallized?: string;
   /** The full moveset, in id form ("dracometeor") — the server request data carries all
    *  four slots, unlike the battle view's `moveTrack` (revealed moves only). */
   readonly moves?: readonly string[];
+  /** Raw protocol strings, always present on the real client. */
+  readonly details?: string; // "Honchkrow, L86, F"
+  readonly condition?: string; // "312/312" | "245/312 par" | "0 fnt"
+  /** Client-parsed enrichments of the two strings above (PokemonDetails/PokemonHealth). */
+  readonly speciesForme?: string;
+  readonly level?: number;
+  readonly gender?: string;
+  readonly hp?: number;
+  readonly maxhp?: number;
+  readonly status?: string;
 }
 
 const BATTLE_STATUSES = new Set<StatusName>(['brn', 'par', 'psn', 'tox', 'slp', 'frz']);
@@ -110,7 +126,7 @@ export interface BehaviorSignals {
  * unless the dex serves a complete, well-formed record: a partial answer would make the
  * calc lie, and undefined merely keeps today's behaviour (no section for that mon).
  */
-export function readSpeciesData(battle: ClientBattle, mon: ClientPokemon): SpeciesData | undefined {
+export function readSpeciesData(battle: ClientBattle, mon: {speciesForme: string}): SpeciesData | undefined {
   const species = battle.dex?.species.get(mon.speciesForme);
   if (!species || species.exists === false) return undefined;
   const baseStats = asFullStats(species.baseStats);
@@ -361,6 +377,73 @@ export function readOwnMoves(battle: ClientBattle, mon: ClientPokemon): readonly
   return moves && moves.length > 0 ? moves : undefined;
 }
 
+/** "Honchkrow, L86, F" → its parts. Level defaults upstream; extra tokens (shiny,
+ *  tera:…) are ignored. */
+function parseServerDetails(details: string | undefined): {speciesForme?: string; level?: number; gender?: 'M' | 'F'} {
+  const parts = (details ?? '').split(',').map((s) => s.trim());
+  const speciesForme = parts[0];
+  let level: number | undefined;
+  let gender: 'M' | 'F' | undefined;
+  for (const part of parts.slice(1)) {
+    if (/^L\d+$/.test(part)) level = Number(part.slice(1));
+    else if (part === 'M' || part === 'F') gender = part;
+  }
+  return {...(speciesForme ? {speciesForme} : {}), ...(level !== undefined ? {level} : {}), ...(gender ? {gender} : {})};
+}
+
+/** "245/312 par" → HP fraction + status; "0 fnt" → 0. Unparseable → full HP (the
+ *  native tooltip is already showing exact HP; ours only gates KO math). */
+function parseServerCondition(condition: string | undefined): {hpPercent: number; status?: StatusName} {
+  const [hpPart = '', statusPart = ''] = (condition ?? '').split(' ');
+  if (statusPart === 'fnt' || hpPart === '0') return {hpPercent: 0};
+  const m = /^(\d+)\/(\d+)$/.exec(hpPart);
+  const hpPercent = m && Number(m[2]) > 0 ? Number(m[1]) / Number(m[2]) : 1;
+  const status = asStatus(statusPart);
+  return {hpPercent, ...(status ? {status} : {})};
+}
+
+/**
+ * LiveFacts for one of the viewer's OWN Pokémon straight from its private
+ * `ServerPokemon` — the switch menu's tooltip surface, where the client passes NO
+ * battle-view Pokémon at all (its side lookup is commented out; a never-revealed
+ * benched mon has none to look up). Prefers the client's parsed fields and falls back
+ * to parsing `details`/`condition` itself. Undefined when even the species can't be
+ * read — no section beats a wrong one. Boosts are empty by construction: a benched mon
+ * has none, and the active's own surfaces pass the full battle-view Pokémon instead.
+ * These facts are PRIVATE (real item/ability) — our-view surfaces only, never the
+ * mirror.
+ */
+export function serverPokemonFacts(p: ClientServerPokemon): LiveFacts | undefined {
+  const parsed = parseServerDetails(p.details);
+  const speciesForme = p.speciesForme || parsed.speciesForme;
+  if (!speciesForme) return undefined;
+  const condition = parseServerCondition(p.condition);
+  const hpPercent = typeof p.hp === 'number' && typeof p.maxhp === 'number' && p.maxhp > 0
+    ? p.hp / p.maxhp
+    : condition.hpPercent;
+  const status = asStatus(p.status ?? '') ?? condition.status;
+  const gender = asGender(p.gender) ?? parsed.gender;
+  const ability = p.ability || p.baseAbility || undefined;
+  const baseAbility = p.baseAbility || p.ability || undefined;
+  return {
+    speciesForme,
+    level: p.level ?? parsed.level ?? 100,
+    hpPercent,
+    boosts: {},
+    terastallized: Boolean(p.terastallized),
+    revealedMoves: [],
+    landedDamagingHit: false,
+    tookEntryHazardDamage: false,
+    switchedIntoStealthRockUnharmed: false,
+    ...(status ? {status} : {}),
+    ...(p.terastallized ? {teraType: p.terastallized} : {}),
+    ...(ability ? {ability} : {}),
+    ...(baseAbility ? {baseAbility} : {}),
+    ...(p.item ? {item: p.item} : {}),
+    ...(gender ? {gender} : {}),
+  };
+}
+
 /** The one DOM shape `readTeraToggled` needs — `document` satisfies it structurally,
  *  and a stub can stand in under test. */
 export interface ToggleDocument {
@@ -388,15 +471,22 @@ export function readTeraToggled(battle: ClientBattle, doc: ToggleDocument): bool
   return (box as {checked?: unknown} | null)?.checked === true;
 }
 
+/** Every active Pokémon on a side other than `side` — one in singles, both foes in
+ *  doubles. Side-keyed so surfaces with no battle-view Pokémon (the switch menu's
+ *  ServerPokemon) can still find their targets. */
+export function activesOpposing(battle: ClientBattle, side: ClientSide | undefined): ClientPokemon[] {
+  const out: ClientPokemon[] = [];
+  for (const s of battle.sides) {
+    if (s === side) continue;
+    for (const mon of s.active) if (mon) out.push(mon);
+  }
+  return out;
+}
+
 /** Every active Pokémon on a side other than the hovered Pokémon's own — one in singles,
  *  both foes in doubles. The move tooltip shows damage into each. */
 export function findOpposingActives(battle: ClientBattle, hovered: ClientPokemon): ClientPokemon[] {
-  const out: ClientPokemon[] = [];
-  for (const side of battle.sides) {
-    if (side === hovered.side) continue;
-    for (const mon of side.active) if (mon) out.push(mon);
-  }
-  return out;
+  return activesOpposing(battle, hovered.side);
 }
 
 /** The first opposing active — the single defender for the sets-view threat calc. */

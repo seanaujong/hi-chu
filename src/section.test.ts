@@ -12,7 +12,7 @@
 
 import {describe, it, expect} from 'vitest';
 import fixture from './__fixtures__/replay-gen9randombattle-2640322654-turn5.json';
-import {buildMoveSection, buildPokemonSection} from './section.js';
+import {buildMoveSection, buildPokemonSection, buildSwitchSection} from './section.js';
 import type {ClientBattle, ClientPokemon, ClientSide} from './battle/readState.js';
 import type {RandbatsData} from './core/types.js';
 
@@ -359,5 +359,38 @@ describe('buildPokemonSection hovering OUR Noivern as the player (the matchup vi
     // only as a speculative pool option, never as a confirmed ✓.
     expect(mirror).not.toContain('✓ Hurricane');
     expect(mirror).toContain('✓ Flamethrower');
+  });
+});
+
+describe('buildSwitchSection (the switch menu: a ServerPokemon, NO battle-view Pokémon)', () => {
+  // The client's switchpokemon tooltip passes (null, serverPokemon) — verified against a
+  // real two-account battle AND the client source (the side lookup is commented out) —
+  // so this surface must build the matchup block from the private ServerPokemon alone.
+  const {battle} = loadBattle();
+  const server = (over: Record<string, unknown> = {}) =>
+    ({ident: 'p1: Noivern', details: 'Noivern, L82, F', condition: '272/272',
+      item: 'heavydutyboots', baseAbility: 'infiltrator', teraType: 'Fire',
+      moves: ['dracometeor', 'flamethrower', 'hurricane', 'roost'], ...over}) as never;
+
+  it('renders the matchup block for a benched mon — and ONLY that (no mirror from private facts)', () => {
+    const html = buildSwitchSection(battle, server(), data);
+    expect(html).toContain('<small>vs</small> <b>Tentacruel</b>');
+    expect(html).toMatch(/Draco Meteor: [\d.]+% - [\d.]+%/);
+    expect(html).not.toContain('Roost:');
+    expect(html).not.toContain('Fast Support'); // no set blocks on this surface
+    expect(html).not.toContain('✓');
+  });
+
+  it('applies the id-form item for real, and resolves a knocked-off item to NONE, never the assumed set item', () => {
+    const max = (html: string) => Number(/Draco Meteor: [\d.]+% - ([\d.]+)%/.exec(html)![1]);
+    const specs = max(buildSwitchSection(battle, server({item: 'choicespecs'}), data));
+    // item: '' is a KNOWN empty slot — if the resolver assumed Choice Specs back on
+    // (the set's first item), these two numbers would be equal.
+    const knockedOff = max(buildSwitchSection(battle, server({item: ''}), data));
+    expect(specs).toBeGreaterThan(knockedOff);
+  });
+
+  it('renders nothing for a fainted mon — it cannot switch in', () => {
+    expect(buildSwitchSection(battle, server({condition: '0 fnt'}), data)).toBe('');
   });
 });

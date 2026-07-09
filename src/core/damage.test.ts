@@ -86,6 +86,17 @@ describe('a species the calc dex does not know (a Champions-invented Mega)', () 
     expect(vsVest.total.max).toBeLessThan(vsPlain.total.max);
   });
 
+  it('a known item applies in id form too — normalized to the dex name for the calc', () => {
+    // The calc's mechanics compare items by display name and silently IGNORE any other
+    // form. battle.myPokemon carries "choicespecs" — without normalization the boost
+    // would vanish and the number would silently read itemless.
+    const specsId = calcDamage(mon({speciesForme: 'Noivern', item: 'choicespecs'}), arbok, 'Draco Meteor', {gen: 9, field: noField});
+    const specsName = calcDamage(mon({speciesForme: 'Noivern', item: 'Choice Specs'}), arbok, 'Draco Meteor', {gen: 9, field: noField});
+    const itemless = calcDamage(mon({speciesForme: 'Noivern'}), arbok, 'Draco Meteor', {gen: 9, field: noField});
+    expect(specsId.total).toEqual(specsName.total);
+    expect(specsId.total.max).toBeGreaterThan(itemless.total.max);
+  });
+
   it('a species the calc DOES know keeps its canonical record — dex data changes nothing', () => {
     const bogus = {baseStats: {hp: 1, atk: 1, def: 1, spa: 1, spd: 1, spe: 1}, types: ['Normal']};
     const withDex = calcDamage(mon({speciesForme: 'Arbok', level: 54, speciesData: bogus}), mega, 'Crunch', {gen: 9, field: noField});

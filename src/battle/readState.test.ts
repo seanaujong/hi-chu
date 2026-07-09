@@ -8,6 +8,8 @@ import {
   readOwnItem,
   readOwnMoves,
   readOwnTeraType,
+  serverPokemonFacts,
+  type ClientServerPokemon,
   readTeraToggled,
   detectFormat,
   findOpposingActive,
@@ -358,6 +360,53 @@ describe('readOwnMoves (your private moveset, for the own-hover matchup view)', 
   it('treats an empty or missing move list as none', () => {
     expect(readOwnMoves(battle([{ident: 'p1: Iron Bundle', moves: []}]), mon)).toBeUndefined();
     expect(readOwnMoves(battle([{ident: 'p1: Iron Bundle'}]), mon)).toBeUndefined();
+  });
+});
+
+describe('serverPokemonFacts (a private ServerPokemon → LiveFacts, for the switch-menu hover)', () => {
+  const server = (over: Record<string, unknown> = {}): ClientServerPokemon =>
+    ({ident: 'p1: Honchkrow', details: 'Honchkrow, L86, F', condition: '312/312',
+      item: 'heavydutyboots', baseAbility: 'moxie', teraType: 'Flying',
+      moves: ['bravebird', 'heatwave', 'suckerpunch', 'uturn'], ...over} as ClientServerPokemon);
+
+  it('prefers the client-parsed fields when present', () => {
+    const facts = serverPokemonFacts(server({speciesForme: 'Honchkrow', level: 86, gender: 'F', hp: 156, maxhp: 312, status: 'par'}))!;
+    expect(facts.speciesForme).toBe('Honchkrow');
+    expect(facts.level).toBe(86);
+    expect(facts.hpPercent).toBe(0.5);
+    expect(facts.status).toBe('par');
+    expect(facts.gender).toBe('F');
+  });
+
+  it('falls back to parsing the raw details/condition strings itself', () => {
+    const facts = serverPokemonFacts(server({condition: '156/312 brn'}))!;
+    expect(facts.speciesForme).toBe('Honchkrow');
+    expect(facts.level).toBe(86);
+    expect(facts.gender).toBe('F');
+    expect(facts.hpPercent).toBe(0.5);
+    expect(facts.status).toBe('brn');
+    expect(facts.item).toBe('heavydutyboots');
+    expect(facts.baseAbility).toBe('moxie');
+    expect(facts.boosts).toEqual({});
+    expect(facts.revealedMoves).toEqual([]);
+  });
+
+  it('reads a fainted condition as 0 HP', () => {
+    expect(serverPokemonFacts(server({condition: '0 fnt'}))!.hpPercent).toBe(0);
+  });
+
+  it('carries an ACTIVE Tera only — teraType is never speculated from the pending type', () => {
+    const pending = serverPokemonFacts(server())!;
+    expect(pending.terastallized).toBe(false);
+    expect(pending.teraType).toBeUndefined();
+    const active = serverPokemonFacts(server({terastallized: 'Flying'}))!;
+    expect(active.terastallized).toBe(true);
+    expect(active.teraType).toBe('Flying');
+  });
+
+  it('is undefined when even the species cannot be read (never lie)', () => {
+    expect(serverPokemonFacts(server({details: ''}))).toBeUndefined();
+    expect(serverPokemonFacts({ident: 'p1: ?'} as ClientServerPokemon)).toBeUndefined();
   });
 });
 

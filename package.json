@@ -13,7 +13,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm run test",
-    "drift-check": "node scripts/drift-check.mjs"
+    "drift-check": "node scripts/drift-check.mjs",
+    "player-check": "node scripts/player-check.mjs"
   },
   "dependencies": {
     "@smogon/calc": "^0.10.0"

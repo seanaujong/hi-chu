@@ -280,19 +280,26 @@ function moveVsFoe(
 
   // The live Tera is shared by every variant (it's a revealed fact, not a hidden set).
   const defenderTera = defenderVariants[0]?.mon.teraType;
-  // Leftovers changes the nHKO ladder (recovery between turns) without changing damage, so
-  // it's a foe-level fact, shown only when there's a single outcome to attach it to.
-  const revealedItem = defenderFacts.item ?? defenderFacts.prevItem;
-  const leftovers = buckets.length !== 1 ? undefined
-    : revealedItem ? (toId(revealedItem) === 'leftovers' ? 'certain' : undefined)
-    : defenderVariants.some((v) => toId(v.mon.item ?? '') === 'leftovers') ? 'possible'
-    : undefined;
+  // How firmly the foe holds `itemId`, read from the RESOLVED variants — so a revealed item
+  // is 'certain', a still-open pool entry 'possible', and a knocked-off/consumed item counts
+  // as nothing at all (resolveVariants already dropped it; a gone Leftovers heals no one).
+  const itemStanding = (itemId: string): 'certain' | 'possible' | undefined => {
+    const holders = defenderVariants.filter((v) => toId(v.mon.item ?? '') === itemId).length;
+    if (holders === 0) return undefined;
+    return holders === defenderVariants.length ? 'certain' : 'possible';
+  };
+  // Leftovers changes the nHKO ladder (recovery between turns) and Focus Sash denies a
+  // single-hit KO from full HP — foe-level facts that qualify the lines without changing
+  // the damage rolls, shown only when there's a single outcome to attach them to.
+  const leftovers = buckets.length === 1 ? itemStanding('leftovers') : undefined;
+  const focusSash = buckets.length === 1 ? itemStanding('focussash') : undefined;
   return renderMoveSection({
     defenderHpPercent: defenderFacts.hpPercent,
     extraNotes: [],
     buckets,
     ...(targetLabel ? {targetLabel} : {}),
     ...(leftovers ? {leftovers} : {}),
+    ...(focusSash ? {focusSash} : {}),
     ...(attacker.teraType ? {attackerTera: attacker.teraType} : {}),
     ...(defenderTera ? {defenderTera} : {}),
   });

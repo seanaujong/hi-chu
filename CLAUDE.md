@@ -233,6 +233,19 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   <target>" preamble (native already names the target), and a **non-damaging move gets
   no section at all** (`renderMoveSection` returns `''`). KO% and the multi-hit `Hits:`
   line ride along only when they apply. Checked by `render.test.ts` / `section.test.ts`.
+- ✅ **Foe-level item facts qualifying the KO/nHKO lines read the RESOLVED variants,
+  never raw facts.** `section.itemStanding` grades an item 'certain' (every surviving
+  set holds it, incl. a revealed one) / 'possible' / absent from `resolveVariants`
+  output — so a knocked-off/consumed item counts as nothing (a gone Leftovers heals no
+  one; reading `facts.prevItem` here was a real never-lie bug). Two consumers: the
+  Leftovers nHKO recovery, and the **Focus Sash caveat** on a KO claim ("(if Focus
+  Sash: survives at 1 HP)"), which renders only when honest — single-hit move (a
+  multi-hit move pops the Sash mid-sequence and the remaining hits still land), full-HP
+  defender, real KO chance. Both attach only to a single-outcome line (a sole bucket);
+  a Sash never splits buckets itself (it's damage-inert, and its usual pool-mates are
+  attacker-side items), so this covers the real cases. Checked by `section.test.ts`
+  ("foe-level item facts…") and `render.test.ts` (the caveat's three honesty gates;
+  guards watched failing with each gate removed).
 - ✅ **Own the hit-count model** in `multihit.ts` (`@smogon/calc` collapses multi-hit to
   `k × one shared roll` and ignores Skill Link / Loaded Dice). This includes the
   **multiaccuracy trio** (Population Bomb, Triple Axel, Triple Kick): each hit after the

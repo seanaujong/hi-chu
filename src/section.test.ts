@@ -26,7 +26,7 @@ const data = fixture.randbats as unknown as RandbatsData;
  * The client's classes are untyped and cyclic, so the reconstruction casts through
  * `unknown` — the shapes match readState's structural interfaces.
  */
-function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; myNoivernItem?: string; myNoivernTera?: string} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
+function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; myNoivernItem?: string; myNoivernTera?: string; fullHp?: boolean} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
   const sides: ClientSide[] = fixture.battle.sides.map((s, i) => {
     const side = {isFar: i === 1, sideConditions: {...s.sideConditions}, active: [] as (ClientPokemon | null)[]};
     side.active = s.active.map((p) => {
@@ -38,7 +38,17 @@ function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: strin
       const item = p.speciesForme === 'Tentacruel' && over.tentacruelItem !== undefined ? over.tentacruelItem : p.item;
       // Side 0 is ours (p1), side 1 theirs (p2); the client tags actors this way.
       const ident = `p${i + 1}: ${p.speciesForme}`;
-      return {...p, terastallized, item, side, ident} as unknown as ClientPokemon;
+      return {
+        ...p,
+        terastallized,
+        item,
+        side,
+        ident,
+        // A knocked-off item: nothing held, prevItem names what was lost.
+        ...(p.speciesForme === 'Tentacruel' && over.tentacruelPrevItem !== undefined ? {prevItem: over.tentacruelPrevItem} : {}),
+        ...(p.speciesForme === 'Tentacruel' && over.tentacruelBoosts !== undefined ? {boosts: over.tentacruelBoosts} : {}),
+        ...(over.fullHp ? {hp: p.maxhp} : {}),
+      } as unknown as ClientPokemon;
     });
     return side as unknown as ClientSide;
   });
@@ -198,6 +208,35 @@ describe('buildMoveSection when the target item is still unknown (the Assault Ve
     const html = buildMoveSection(known.battle, known.active('Noivern'), 'Draco Meteor', data);
     expect(html).toContain('<small>Damage:</small>');
     expect(html).not.toContain('Damage (');
+  });
+});
+
+describe('foe-level item facts qualifying the KO/nHKO lines', () => {
+  it('a knocked-off Leftovers no longer heals — the nHKO ladder drops the recovery', () => {
+    // Held and revealed: the 3HKO figure silently bakes in the between-turns heal.
+    const held = loadBattle();
+    expect(buildMoveSection(held.battle, held.active('Noivern'), 'Draco Meteor', data)).toContain('3HKO 96%');
+    // Knocked off (prevItem set, nothing held): the heal must go with the item.
+    const knocked = loadBattle({tentacruelItem: '', tentacruelPrevItem: 'Leftovers'});
+    const html = buildMoveSection(knocked.battle, knocked.active('Noivern'), 'Draco Meteor', data);
+    expect(html).toContain('3HKO 100%');
+    expect(html).not.toContain('Leftovers');
+  });
+
+  it('a possible Focus Sash caveats the KO claim against a full-HP defender', () => {
+    // Give Noivern's one surviving role (Fast Support — its active Tera Fire pins it) a
+    // Focus Sash option, and make Tentacruel's Surf a genuine OHKO with +2 SpA.
+    const clone = JSON.parse(JSON.stringify(fixture.randbats)) as {Noivern: {roles: {'Fast Support': {items: string[]}}}};
+    clone.Noivern.roles['Fast Support'].items.push('Focus Sash');
+    const sashData = clone as unknown as RandbatsData;
+    const {battle, active} = loadBattle({fullHp: true, tentacruelBoosts: {spa: 2}});
+    const html = buildMoveSection(battle, active('Tentacruel'), 'Surf', sashData);
+    expect(html).toContain('guaranteed KO');
+    expect(html).toContain('(if Focus Sash: survives at 1 HP)');
+    // The same hover with the real feed (no Sash in the pool) carries no caveat.
+    const plain = buildMoveSection(battle, active('Tentacruel'), 'Surf', data);
+    expect(plain).toContain('guaranteed KO');
+    expect(plain).not.toContain('Focus Sash');
   });
 });
 

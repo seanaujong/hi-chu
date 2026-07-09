@@ -117,6 +117,11 @@ export interface MoveRenderModel {
   /** Whether the foe's Leftovers is 'certain' (revealed) or 'possible' (a still-open item),
    *  which decides how the nHKO ladder reflects between-turn recovery. Undefined = neither. */
   readonly leftovers?: 'certain' | 'possible';
+  /** Whether the foe's Focus Sash is 'certain' (revealed, unconsumed) or 'possible'. From
+   *  full HP it turns a single-hit KO into surviving at 1 HP, so the KO line carries a
+   *  caveat — for single-hit moves only (a multi-hit move breaks the Sash mid-sequence
+   *  and usually KOes anyway). Undefined = neither. */
+  readonly focusSash?: 'certain' | 'possible';
   /** The target's name — shown as a header only in doubles, where "which foe" is ambiguous;
    *  singles omits it (native tooltips already name the sole target). */
   readonly targetLabel?: string;
@@ -151,6 +156,16 @@ function nhkoLine(nhko: DamageReport['nhko'], leftovers: MoveRenderModel['leftov
   const asideBody = leftovers === 'possible' ? nhkoLadderText(nhko.withLeftovers) : '';
   const aside = asideBody ? ` <small>(${asideBody} w/ Leftovers)</small>` : '';
   return `${body}${aside}`; // no label — "2HKO 91% · 3HKO 100%" reads for itself
+}
+
+/** The Focus Sash caveat on a KO claim, or ''. Only an honest case shows it: a single-hit
+ *  move (a multi-hit move pops the Sash mid-sequence and the remaining hits still land)
+ *  into a full-HP foe (the Sash does nothing once damaged) with a real KO chance to deny. */
+function sashAside(r: DamageReport, model: MoveRenderModel): string {
+  if (!model.focusSash || r.multiHit || r.koChance <= 0) return '';
+  if (model.defenderHpPercent < 0.995) return '';
+  const prefix = model.focusSash === 'possible' ? 'if ' : '';
+  return ` <small>(${prefix}Focus Sash: survives at 1 HP)</small>`;
 }
 
 function teraTag(attackerTera: string | undefined, defenderTera: string | undefined): string {
@@ -196,7 +211,7 @@ export function renderMoveSection(model: MoveRenderModel): string {
       block([
         targetHeader(model.targetLabel),
         `<small>Damage:</small> ${moveDamageText(r)}${tera}`,
-        ko ? `<span class="hichu-ko">${ko}</span>${koCtx}` : '', // "12% to KO" reads for itself
+        ko ? `<span class="hichu-ko">${ko}</span>${koCtx}${sashAside(r, model)}` : '', // "12% to KO" reads for itself
         nhkoLine(r.nhko, model.leftovers),
         multi ? `<small>Hits:</small> ${esc(multi)}` : '',
       ]) + notesBlock(model.extraNotes)

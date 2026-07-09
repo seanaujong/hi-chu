@@ -77,6 +77,37 @@ describe('renderMoveSection', () => {
     expect(html).toContain('per hit'); // 14.7–18% per hit (49/333, 60/333)
   });
 
+  it('caveats a KO claim when the foe might hold Focus Sash — "if" only while unconfirmed', () => {
+    const possible = renderMoveSection(model({focusSash: 'possible', report: report({move: 'Earthquake', koChance: 0.8})}));
+    expect(possible).toContain('(if Focus Sash: survives at 1 HP)');
+    const certain = renderMoveSection(model({focusSash: 'certain', report: report({move: 'Earthquake', koChance: 0.8})}));
+    expect(certain).toContain('(Focus Sash: survives at 1 HP)');
+    expect(certain).not.toContain('if Focus Sash');
+  });
+
+  it('keeps the Sash caveat OFF whenever it would lie', () => {
+    // A damaged foe: the Sash only works from full HP.
+    const damaged = renderMoveSection(
+      model({focusSash: 'possible', defenderHpPercent: 0.78, report: report({move: 'Earthquake', koChance: 0.8})}),
+    );
+    expect(damaged).not.toContain('Focus Sash');
+    // A multi-hit move: the Sash pops mid-sequence and the remaining hits still land.
+    const multi = renderMoveSection(
+      model({
+        focusSash: 'possible',
+        report: report({
+          move: 'Bullet Seed',
+          koChance: 0.8,
+          multiHit: {perHit: {min: 49, max: 60}, hits: {expected: 3.1, distribution: [[2, 0.35], [3, 0.35], [4, 0.15], [5, 0.15]]}},
+        }),
+      }),
+    );
+    expect(multi).not.toContain('Focus Sash');
+    // No KO chance to deny.
+    const noKo = renderMoveSection(model({focusSash: 'possible', report: report({move: 'Earthquake', koChance: 0})}));
+    expect(noKo).not.toContain('Focus Sash');
+  });
+
   it('inserts nothing for a non-damaging move (no report → empty section)', () => {
     expect(renderMoveSection(model())).toBe('');
   });

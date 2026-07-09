@@ -275,6 +275,54 @@ export function renderSpeedSection(lines: readonly SpeedLineModel[]): string {
   return block(lines.map(speedLine));
 }
 
+// --- Pokémon hover (own side): your moves' damage vs the foe active ---------
+
+/** One of OUR moves vs the foe: its distinct damage outcomes. Usually one bucket;
+ *  a hidden defensive item on the foe (Assault Vest) splits it, labelled like the
+ *  move tooltip's variant lines. */
+export interface OwnMoveLineModel {
+  readonly name: string;
+  readonly buckets: readonly DamageBucket[];
+}
+
+/** One foe active's worth of our-move damage (one in singles, two in doubles). */
+export interface OwnMovesModel {
+  readonly foeName: string;
+  /** Foe current HP as a fraction in [0,1] — KO chances are relative to it. */
+  readonly defenderHpPercent: number;
+  readonly moves: readonly OwnMoveLineModel[];
+}
+
+/** "Draco Meteor: 62.5% - 74.1% · 43% to KO" — one line per damaging move, each
+ *  distinct outcome labelled by what sets it apart when the foe's item splits it. */
+function ownMoveLine(row: OwnMoveLineModel, model: OwnMovesModel): string {
+  const outcomes = row.buckets.map((b) => {
+    const r = b.report;
+    const ko = koText(r.koChance);
+    const koCtx = ko && model.defenderHpPercent < 0.995 ? ` at ${pct1(model.defenderHpPercent)} HP` : '';
+    const koPart = ko ? ` · <span class="hichu-ko">${ko}</span>${koCtx}` : '';
+    const label = b.label ? `<small>(${esc(b.label)})</small> ` : '';
+    return `${label}${moveDamageText(r)}${koPart}`;
+  });
+  return `${esc(row.name)}: ${outcomes.join(' · ')}`;
+}
+
+/**
+ * The own-hover matchup block: OUR Pokémon's real moves, each with its damage into
+ * the current foe active — the switch-decision view (a benched Pokémon's move
+ * buttons aren't hoverable, so this is where its numbers live, mirroring how the
+ * foe view attaches threat numbers to their unhoverable moves). One block per foe,
+ * headed "vs <name>" — the tooltip is about OUR Pokémon, so the target needs
+ * naming even in singles. Status moves never reach the model; a foe with no
+ * modellable move yields no block.
+ */
+export function renderOwnMovesSection(sections: readonly OwnMovesModel[]): string {
+  return sections
+    .filter((s) => s.moves.length > 0)
+    .map((s) => block([targetHeader(s.foeName), ...s.moves.map((row) => ownMoveLine(row, s))]))
+    .join('');
+}
+
 // --- Pokémon hover: per-set blocks, the original's layout -------------------
 
 /** One move in a set block; `report` carries its damage vs our active (foe view). */

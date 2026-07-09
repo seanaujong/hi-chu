@@ -8,7 +8,9 @@ over the random 2–5 hit count, not `k × one roll`); hovering a **Pokémon** s
 **information game** — which randbats sets are still possible given every public
 reveal (moves used, item incl. consumed/knocked-off, ability), with damage vs our
 active attached on the opponent's tooltip, and the mirror ("their read on you") on
-our own. A foe hover leads with a **⚡ speed-order verdict** — exact randbats speeds,
+our own — led, on our own (benched included), by the **matchup view**: our real
+moves' damage into the foe active, read from the private team. A foe hover leads
+with a **⚡ speed-order verdict** — exact randbats speeds,
 a surviving Scarf set as an "if …" aside, Trick Room flipping the verdict. Calcs are
 **reality-aware** (active Tera — incl. a ticked-but-not-yet-used Terastallize box
 previewing YOUR move damage — status, boosts, current HP,
@@ -125,23 +127,45 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   `resolve.test.ts` ("evidence beyond moves narrows the role"). The own-side mirror view is
   honest only because client `Pokemon` objects carry public info exclusively (the private
   team lives in `battle.myPokemon`).
-- 👁 **`battle.myPokemon` feeds OUR-view surfaces only — two reads (`readOwnItem`,
-  `readOwnTeraType`), never the set/mirror views.** The principle: private facts (you know
-  your own item even when it's *silent* to the opponent — Heavy-Duty Boots never reveals
-  itself) may inform what WE see, and must never leak into the opponent's-knowledge views,
-  which stay strictly public — that separation is the whole reason the "their read on you"
-  mirror is honest. Three consumers. Two go through `ownItemName` (which maps the client's id
+- 👁 **`battle.myPokemon` feeds OUR-view surfaces only — three reads (`readOwnItem`,
+  `readOwnTeraType`, `readOwnMoves`), never the set/mirror views.** The principle: private
+  facts (you know your own item even when it's *silent* to the opponent — Heavy-Duty Boots
+  never reveals itself) may inform what WE see, and must never leak into the
+  opponent's-knowledge views, which stay strictly public — that separation is the whole
+  reason the "their read on you" mirror is honest. Four consumers. Two go through
+  `ownItemName` (which maps the client's id
   form `heavydutyboots` to the set's display name; `@smogon/calc` silently ignores the id
   form, so the id→name map is load-bearing): (1) your own attacker's item on the move tooltip,
   making YOUR damage exact without assuming the set's first item (e.g. an Iron Bundle read as
   Choice Specs, ~1.5× too high); (2) our side of the ⚡ speed line on a foe hover, so a Scarf
   we're holding judges the order correctly (showing US our own speed as uncertain would be
   absurd). The third is `readOwnTeraType`: your own Tera type for the selected-Tera preview
-  (see the `teraType` bullet). Checked by
+  (see the `teraType` bullet). The fourth is `readOwnMoves`: your full moveset for the
+  own-hover matchup view (next bullet) — the battle view's `moveTrack` knows only REVEALED
+  moves, so the private team is the one source that knows a benched mon's whole kit. Checked by
   `section.test.ts` ("uses YOUR real item…"; the mirror carries no ⚡ line) and
-  `readState.test.ts` (`readOwnItem`). 👁 not ✅ for drift: `myPokemon` only exists for a
+  `readState.test.ts` (`readOwnItem`, `readOwnMoves`). 👁 not ✅ for drift: `myPokemon` only
+  exists for a
   player, so `drift-check` (a spectator replay) can't exercise it — verify by hand in a live
   game after a client update.
+- ✅ **Hovering our OWN Pokémon (benched included) leads with the matchup view — our real
+  moves' damage into the foe active — and the mirror below stays strictly public.** The
+  switch-decision answer: a benched mon's move buttons aren't hoverable, so this is where its
+  numbers live (the exact mirror of why the foe view attaches threat damage to THEIR
+  unhoverable moves). `section.ownMovesSection` reads the private moveset (`readOwnMoves`, id
+  form — `calcDamage` resolves ids through the dex, so `report.move` is always the display
+  name) and our real item, resolves the ONE attacker, and computes per-move damage against the
+  foe's `resolveVariants` + Illusion variants, bucketed by distinct outcome exactly like the
+  move tooltip — a hidden Assault Vest splits the line into labelled outcomes, never one
+  confidently-wrong number (`renderOwnMovesSection`; no nHKO ladder — the compact view skips
+  the survival sim). Status moves get no line; a fainted mon (can't switch in), a spectator
+  (no private team), or an all-status kit gets no block — the mirror then renders alone,
+  exactly as before. One "vs <foe>" block per foe active (two in doubles); the header always
+  names the target, since this tooltip is about OUR mon. Checked by `section.test.ts` ("the
+  matchup view": leads before the mirror, same numbers as the move tooltip, AV split, no
+  private leak into the mirror — guards watched failing with the section disabled and with the
+  id→name resolution reverted), `render.test.ts` (`renderOwnMovesSection`), and
+  `readState.test.ts` (`readOwnMoves`).
 - ✅ **A LANDED damaging hit with no item revealed rules Life Orb out.** Life Orb takes 1/10
   recoil when a damaging move connects and REVEALS itself doing so — so if a mon has landed a
   hit and no item has surfaced, it isn't holding one. It must be a *landed* hit, not merely a

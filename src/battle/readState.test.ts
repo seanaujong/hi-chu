@@ -6,6 +6,7 @@ import {
   tookEntryHazardDamage,
   switchedIntoStealthRockUnharmed,
   readOwnItem,
+  readOwnMoves,
   readOwnTeraType,
   readTeraToggled,
   detectFormat,
@@ -336,6 +337,27 @@ describe('readOwnTeraType (your private Tera type, for the selected-Tera preview
   it('treats an empty or missing teraType as none', () => {
     expect(readOwnTeraType(battle([{ident: 'p1: Iron Bundle', teraType: ''}]), mon)).toBeUndefined();
     expect(readOwnTeraType(battle([{ident: 'p1: Iron Bundle'}]), mon)).toBeUndefined();
+  });
+});
+
+describe('readOwnMoves (your private moveset, for the own-hover matchup view)', () => {
+  const battle = (myPokemon?: unknown): ClientBattle =>
+    ({gen: 9, tier: '[Gen 9] Random Battle', sides: [], myPokemon} as unknown as ClientBattle);
+  const mon = clientMon({ident: 'p1: Iron Bundle'});
+
+  it("reads the viewer's own full moveset by ident (id form)", () => {
+    const moves = ['freezedry', 'hydropump', 'icebeam', 'flipturn'];
+    expect(readOwnMoves(battle([{ident: 'p1: Iron Bundle', moves}]), mon)).toEqual(moves);
+  });
+
+  it('is undefined when spectating (no myPokemon) or when nothing matches the ident', () => {
+    expect(readOwnMoves(battle(undefined), mon)).toBeUndefined();
+    expect(readOwnMoves(battle([{ident: 'p1: Cetitan', moves: ['iciclecrash']}]), mon)).toBeUndefined();
+  });
+
+  it('treats an empty or missing move list as none', () => {
+    expect(readOwnMoves(battle([{ident: 'p1: Iron Bundle', moves: []}]), mon)).toBeUndefined();
+    expect(readOwnMoves(battle([{ident: 'p1: Iron Bundle'}]), mon)).toBeUndefined();
   });
 });
 

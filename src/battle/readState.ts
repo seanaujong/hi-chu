@@ -80,6 +80,9 @@ export interface ClientServerPokemon {
   /** The Tera type this Pokémon CAN terastallize into — the client sets it whether or
    *  not the Tera has been used ("always the Tera Type of the Pokemon"). */
   readonly teraType?: string;
+  /** The full moveset, in id form ("dracometeor") — the server request data carries all
+   *  four slots, unlike the battle view's `moveTrack` (revealed moves only). */
+  readonly moves?: readonly string[];
 }
 
 const BATTLE_STATUSES = new Set<StatusName>(['brn', 'par', 'psn', 'tox', 'slp', 'frz']);
@@ -343,6 +346,19 @@ function ownServerPokemon(battle: ClientBattle, mon: ClientPokemon): ClientServe
  */
 export function readOwnTeraType(battle: ClientBattle, mon: ClientPokemon): string | undefined {
   return ownServerPokemon(battle, mon)?.teraType || undefined;
+}
+
+/**
+ * The viewer's OWN full moveset for `mon`, read from the private team, in the client's
+ * id form ("dracometeor"). The battle view only tracks REVEALED moves (`moveTrack`), so
+ * this is the one source that knows a benched Pokémon's whole kit. Same principle as
+ * `readOwnItem`: a private fact, feeding only OUR-view surfaces (the own-hover "your
+ * moves vs their active" damage), never the opponent's-knowledge views. Undefined when
+ * spectating or when the private team doesn't know this Pokémon.
+ */
+export function readOwnMoves(battle: ClientBattle, mon: ClientPokemon): readonly string[] | undefined {
+  const moves = ownServerPokemon(battle, mon)?.moves;
+  return moves && moves.length > 0 ? moves : undefined;
 }
 
 /** The one DOM shape `readTeraToggled` needs — `document` satisfies it structurally,

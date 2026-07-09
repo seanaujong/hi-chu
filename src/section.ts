@@ -19,6 +19,7 @@ import {compareSpeed, finalSpeed, speedBuckets} from './core/speed.js';
 import {illusionSuspects, ILLUSION_SPECIES, type IllusionSuspect} from './core/illusion.js';
 import {
   renderMoveSection,
+  renderOwnMovesSection,
   renderPainSplit,
   renderSetsSection,
   renderSpeedSection,
@@ -33,6 +34,7 @@ import {
   toLiveFacts,
   readBehaviors,
   readOwnItem,
+  readOwnMoves,
   readOwnTeraType,
   readSpeciesData,
   findOpposingActive,
@@ -143,6 +145,51 @@ function speedSection(
   return renderSpeedSection(lines);
 }
 
+/**
+ * The own-hover matchup block: OUR hovered Pokémon's real moves (the private team
+ * knows all four slots, even for a benched Pokémon whose move buttons aren't
+ * hoverable), each with its damage into the current foe active(s) — the "would this
+ * Pokémon match up better?" switch-decision view. Private facts feeding an our-view
+ * surface, like the move tooltip's real-item read; the mirror blocks below stay
+ * strictly public. The foe's hidden item/ability splits a line into labelled
+ * outcomes exactly as the move tooltip does — never one confidently-wrong number.
+ * Empty when spectating (no private team), when the Pokémon has fainted (it can't
+ * switch in), or when no move is modellable.
+ */
+function ownMovesSection(
+  battle: ClientBattle,
+  pokemon: ClientPokemon,
+  facts: LiveFacts,
+  entry: RandbatsEntry,
+  data: RandbatsData,
+  format: {gen: number; doubles: boolean},
+): string {
+  const moves = readOwnMoves(battle, pokemon);
+  if (!moves || facts.hpPercent <= 0) return '';
+
+  // Your Pokémon, your damage: your real item beats the set's assumed one (same
+  // principle as buildMoveSection's attacker).
+  const realItem = ownItemName(battle, pokemon, entry);
+  const attacker = resolveMon(realItem ? {...facts, item: realItem} : facts, entry);
+
+  const sections = findOpposingActives(battle, pokemon).map((foe) => {
+    const defenderFacts = factsFor(battle, foe);
+    const defenderEntry = entryFor(data, defenderFacts);
+    const defenderVariants = [
+      ...resolveVariants(defenderFacts, entryOrMinimal(defenderEntry, defenderFacts)),
+      ...illusionVariants(defenderFacts, defenderEntry, data),
+    ];
+    const field = readFieldFacts(battle, foe.side);
+    const rows = moves
+      .map((move) => moveDamageBuckets(attacker, defenderVariants, move, format.gen, field, format.doubles))
+      .filter((buckets) => buckets.length > 0) // status / unmodellable moves get no line
+      // The report's move name is dex-resolved, so the id form ("dracometeor") displays right.
+      .map((buckets) => ({name: buckets[0]!.report.move, buckets}));
+    return {foeName: defenderFacts.speciesForme, defenderHpPercent: defenderFacts.hpPercent, moves: rows};
+  });
+  return renderOwnMovesSection(sections);
+}
+
 /** True when the hovered Pokémon belongs to the opponent (the far side, from our seat). */
 function isFoe(battle: ClientBattle, pokemon: ClientPokemon): boolean {
   if (pokemon.side?.isFar !== undefined) return pokemon.side.isFar;
@@ -176,6 +223,8 @@ function reportsByMove(
  * The distinct damage outcomes for `moveName` from `attacker` into the target, one
  * per still-possible defending set, merged where they land on the same number. Status
  * and unmodellable variants are dropped; an all-dropped move yields no buckets (→ '').
+ * `nhkoTurns` requests the nHKO ladder (the move tooltip shows it; the compact
+ * own-hover view doesn't, and skips the survival sim).
  */
 function moveDamageBuckets(
   attacker: ResolvedMon,
@@ -184,11 +233,12 @@ function moveDamageBuckets(
   gen: number,
   field: ReturnType<typeof readFieldFacts>,
   doubles: boolean,
+  nhkoTurns?: number,
 ): DamageBucket[] {
   const scored: {variant: SetVariant; report: DamageReport}[] = [];
   for (const variant of defenderVariants) {
     try {
-      const report = calcDamage(attacker, variant.mon, moveName, {gen, field, nhkoTurns: 3, doubles});
+      const report = calcDamage(attacker, variant.mon, moveName, {gen, field, doubles, ...(nhkoTurns !== undefined ? {nhkoTurns} : {})});
       if (report.category !== 'Status') scored.push({variant, report});
     } catch {
       // A move outside the calc's world for this variant shouldn't drop the section.
@@ -275,7 +325,7 @@ function moveVsFoe(
   ];
   const field = readFieldFacts(battle, defenderMon.side);
 
-  const buckets = moveDamageBuckets(attacker, defenderVariants, moveName, format.gen, field, format.doubles);
+  const buckets = moveDamageBuckets(attacker, defenderVariants, moveName, format.gen, field, format.doubles, 3);
   if (buckets.length === 0) return ''; // status / unmodellable move
 
   // The live Tera is shared by every variant (it's a revealed fact, not a hidden set).
@@ -386,6 +436,10 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
         format,
       )
     : '';
+  // Own view's at-a-glance answer: OUR moves' damage into the current foe (private
+  // moveset — an our-view surface). Leads the tooltip like ⚡ does on a foe hover;
+  // the mirror blocks below remain strictly public.
+  const ownMovesHtml = foe ? '' : ownMovesSection(battle, pokemon, facts, entry, data, format);
 
-  return speedHtml + renderSetsSection({candidates: blocks, extraNotes: notes});
+  return speedHtml + ownMovesHtml + renderSetsSection({candidates: blocks, extraNotes: notes});
 }

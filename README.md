@@ -16,6 +16,12 @@ fills in what you'd otherwise tab out to a calculator or a set dump for:
   (held, consumed, or knocked off), ability, and any active Terastallization. On the opponent
   it answers "what could they still have?"; on your own it mirrors "what have they figured out
   about me?".
+- **Would a switch match up better?** Hovering one of your own Pokémon — benched ones
+  included, whose move buttons you can't hover — leads with each of its moves' damage into
+  the current opponent, KO chance attached. Your real moveset and item are read from your
+  private team, so the numbers are exact; if the foe's hidden item would change a number
+  (an Assault Vest they may or may not hold), the line splits into labelled outcomes
+  instead of guessing.
 - **Who moves first.** Hovering an opponent leads with a ⚡ speed-order verdict — your
   active's effective Speed against theirs. Randbats makes the numbers *exact* (the level is
   public and the spread is fixed), so the only real unknowns are the ones the set inference

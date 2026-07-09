@@ -26,7 +26,7 @@ const data = fixture.randbats as unknown as RandbatsData;
  * The client's classes are untyped and cyclic, so the reconstruction casts through
  * `unknown` — the shapes match readState's structural interfaces.
  */
-function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; myNoivernItem?: string; myNoivernTera?: string; fullHp?: boolean} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
+function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; fullHp?: boolean} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
   const sides: ClientSide[] = fixture.battle.sides.map((s, i) => {
     const side = {isFar: i === 1, sideConditions: {...s.sideConditions}, active: [] as (ClientPokemon | null)[]};
     side.active = s.active.map((p) => {
@@ -58,12 +58,13 @@ function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: strin
     weather: fixture.battle.weather,
     pseudoWeather: fixture.battle.pseudoWeather,
     sides,
-    // Our private team view — the item and Tera type the opponent can't see. Only Noivern.
-    ...(over.myNoivernItem !== undefined || over.myNoivernTera !== undefined
+    // Our private team view — the item, Tera type, and moveset the opponent can't see. Only Noivern.
+    ...(over.myNoivernItem !== undefined || over.myNoivernTera !== undefined || over.myNoivernMoves !== undefined
       ? {myPokemon: [{
           ident: 'p1: Noivern',
           ...(over.myNoivernItem !== undefined ? {item: over.myNoivernItem} : {}),
           ...(over.myNoivernTera !== undefined ? {teraType: over.myNoivernTera} : {}),
+          ...(over.myNoivernMoves !== undefined ? {moves: over.myNoivernMoves} : {}),
         }]}
       : {}),
   } as unknown as ClientBattle;
@@ -311,5 +312,52 @@ describe('buildPokemonSection hovering OUR Noivern (their read on us)', () => {
 
   it('carries no speed line either — judging it would use private facts, and the mirror stays public', () => {
     expect(html).not.toContain('⚡');
+  });
+});
+
+describe('buildPokemonSection hovering OUR Noivern as the player (the matchup view)', () => {
+  // The private team knows the whole kit — Fast Support's real moves, in the client's
+  // id form — even though only Flamethrower is publicly revealed at turn 5.
+  const moves = ['dracometeor', 'flamethrower', 'hurricane', 'roost'];
+  const mine = {myNoivernItem: 'heavydutyboots', myNoivernMoves: moves};
+
+  it('leads with our moves vs their active, before the mirror blocks', () => {
+    const {battle, active} = loadBattle(mine);
+    const html = buildPokemonSection(battle, active('Noivern'), data);
+    expect(html).toContain('<small>vs</small> <b>Tentacruel</b>');
+    expect(html).toMatch(/Draco Meteor: [\d.]+% - [\d.]+%/); // id form displayed as the real name
+    expect(html.indexOf('<b>Tentacruel</b>')).toBeLessThan(html.indexOf('Fast Support'));
+  });
+
+  it('gives status moves no line — damage is the question here', () => {
+    const {battle, active} = loadBattle(mine);
+    const html = buildPokemonSection(battle, active('Noivern'), data);
+    expect(html).not.toContain('Roost:');
+  });
+
+  it('shows the same numbers the move tooltip would — one truth per move', () => {
+    const {battle, active} = loadBattle(mine);
+    const hover = buildPokemonSection(battle, active('Noivern'), data);
+    const line = /Draco Meteor: ([\d.]+)% - ([\d.]+)%/.exec(hover)!;
+    const button = buildMoveSection(battle, active('Noivern'), 'Draco Meteor', data);
+    expect(button).toContain(`<small>Damage:</small> ${line[1]}% - ${line[2]}%`);
+  });
+
+  it("splits a move into labelled outcomes when the foe's item is still unknown", () => {
+    // Tentacruel's Bulky Support can hold Assault Vest or Leftovers; Draco Meteor is
+    // special, so the hidden Vest changes the number — never one confidently-wrong line.
+    const {battle, active} = loadBattle({...mine, tentacruelItem: ''});
+    const html = buildPokemonSection(battle, active('Noivern'), data);
+    expect(html).toMatch(/Draco Meteor: <small>\((Assault Vest|Leftovers)\)<\/small>/);
+  });
+
+  it('keeps the mirror blocks strictly public — the private moveset never leaks into them', () => {
+    const {battle, active} = loadBattle(mine);
+    const html = buildPokemonSection(battle, active('Noivern'), data);
+    const mirror = html.slice(html.indexOf('Fast Support'));
+    // Hurricane is in our private kit but publicly unrevealed — the mirror may list it
+    // only as a speculative pool option, never as a confirmed ✓.
+    expect(mirror).not.toContain('✓ Hurricane');
+    expect(mirror).toContain('✓ Flamethrower');
   });
 });

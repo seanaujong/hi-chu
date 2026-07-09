@@ -1,5 +1,5 @@
 import {describe, it, expect} from 'vitest';
-import {koText, renderMoveSection, renderSetsSection, renderSpeedSection, type MoveRenderModel, type SetsRenderModel} from './render.js';
+import {koText, renderMoveSection, renderOwnMovesSection, renderSetsSection, renderSpeedSection, type MoveRenderModel, type OwnMovesModel, type SetsRenderModel} from './render.js';
 import type {DamageReport} from './damage.js';
 
 function report(over: Partial<DamageReport> & {move: string}): DamageReport {
@@ -314,5 +314,59 @@ describe('renderSpeedSection', () => {
   it('renders nothing when there are no outcomes to judge', () => {
     expect(renderSpeedSection([{order: order(231, [])}])).toBe('');
     expect(renderSpeedSection([])).toBe('');
+  });
+});
+
+describe('renderOwnMovesSection (own hover: your moves vs the foe active)', () => {
+  const section = (over: Partial<OwnMovesModel> = {}): OwnMovesModel => ({
+    foeName: 'Tentacruel',
+    defenderHpPercent: 1,
+    moves: [{name: 'Draco Meteor', buckets: [{label: '', report: report({move: 'Draco Meteor'})}]}],
+    ...over,
+  });
+
+  it('heads the block with the target — the tooltip is about OUR mon, so the foe needs naming', () => {
+    const html = renderOwnMovesSection([section()]);
+    expect(html).toContain('<small>vs</small> <b>Tentacruel</b>');
+    expect(html).toContain('<div class="hichu-block">');
+  });
+
+  it('gives each move a line in the native damage format', () => {
+    const html = renderOwnMovesSection([section()]);
+    expect(html).toContain('Draco Meteor: 30% - 36%');
+  });
+
+  it('adds a red KO figure, with HP context only when the foe is damaged', () => {
+    const hurt = renderOwnMovesSection([
+      section({defenderHpPercent: 0.78, moves: [{name: 'Surf', buckets: [{label: '', report: report({move: 'Surf', koChance: 0.52})}]}]}),
+    ]);
+    expect(hurt).toContain('<span class="hichu-ko">52% to KO</span> at 78% HP');
+    const full = renderOwnMovesSection([
+      section({moves: [{name: 'Surf', buckets: [{label: '', report: report({move: 'Surf', koChance: 0.52})}]}]}),
+    ]);
+    expect(full).toContain('<span class="hichu-ko">52% to KO</span>');
+    expect(full).not.toContain('at 100% HP');
+  });
+
+  it("labels each distinct outcome when the foe's hidden item splits the number", () => {
+    const html = renderOwnMovesSection([
+      section({
+        moves: [{
+          name: 'Draco Meteor',
+          buckets: [
+            {label: 'Assault Vest', report: report({move: 'Draco Meteor', percent: {min: 20, max: 24, mean: 22}})},
+            {label: 'Leftovers', report: report({move: 'Draco Meteor'})},
+          ],
+        }],
+      }),
+    ]);
+    expect(html).toContain('Draco Meteor: <small>(Assault Vest)</small> 20% - 24% · <small>(Leftovers)</small> 30% - 36%');
+  });
+
+  it('renders one headed block per foe (doubles) and nothing for a foe with no modellable move', () => {
+    const html = renderOwnMovesSection([section(), section({foeName: 'Noivern', moves: []})]);
+    expect(html).toContain('<b>Tentacruel</b>');
+    expect(html).not.toContain('<b>Noivern</b>');
+    expect(renderOwnMovesSection([])).toBe('');
   });
 });

@@ -205,7 +205,10 @@ export function calcDamage(
 
   const profile = multiHitProfile(moveName);
   const notes: string[] = [];
-  const category = new Move(gen, moveName).category;
+  // The dex's own record: `.name` normalizes an id-form input ("dracometeor") to the
+  // display name, so `report.move` is always presentable as-is.
+  const dexMove = new Move(gen, moveName);
+  const category = dexMove.category;
   const field = options.field ? buildField(options.field, options.doubles ?? false) : undefined;
 
   const run = (hits?: number) =>
@@ -215,7 +218,7 @@ export function calcDamage(
   if (!profile) {
     const result = run();
     const total = pmfFromSamples(rollsOf(result.damage));
-    return summarizeReport(moveName, category, total, remainingHP, maxHP, safeDesc(result), {
+    return summarizeReport(dexMove.name, category, total, remainingHP, maxHP, safeDesc(result), {
       notes,
       ...(options.nhkoTurns ? {nhkoTurns: options.nhkoTurns} : {}),
     });
@@ -236,10 +239,9 @@ export function calcDamage(
   // special-casing, carrying the hit's BP and the real move's type/category. Probe-verified
   // exact against the real move's hits:1 rolls, Technician and Tough Claws included (both
   // moves, like Pound, are contact and carry no punch/slice/bite flag an ability keys on).
-  const real = new Move(gen, moveName);
   const perHitPmfs = profile.perHitPowers
     ? profile.perHitPowers.map((basePower) => {
-        const standIn = new Move(gen, 'Pound', {overrides: {basePower, type: real.type, category: real.category}});
+        const standIn = new Move(gen, 'Pound', {overrides: {basePower, type: dexMove.type, category: dexMove.category}});
         return pmfFromSamples(rollsOf(calculate(gen, atk, def, standIn, field).damage));
       })
     : [pmfFromSamples(rollsOf(run(1).damage))]; // uniform power: every hit rolls the same
@@ -251,7 +253,7 @@ export function calcDamage(
   const allRolls = perHitPmfs.flatMap((pmf) => [...pmf.keys()]);
   const perHit = {min: Math.min(...allRolls), max: Math.max(...allRolls)};
 
-  return summarizeReport(moveName, category, total, remainingHP, maxHP, safeDesc(run()), {
+  return summarizeReport(dexMove.name, category, total, remainingHP, maxHP, safeDesc(run()), {
     notes,
     multiHit: {hits, perHit},
     ...(options.nhkoTurns ? {nhkoTurns: options.nhkoTurns} : {}),

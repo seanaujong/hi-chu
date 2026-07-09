@@ -10,7 +10,7 @@
 
 import {TOOLTIP_STYLE} from './core/render.js';
 import {cachedRandbats, fetchRandbats} from './data/randbats.js';
-import {detectFormat, type ClientBattle, type ClientPokemon} from './battle/readState.js';
+import {detectFormat, readTeraToggled, type ClientBattle, type ClientPokemon} from './battle/readState.js';
 import {buildMoveSection, buildPokemonSection} from './section.js';
 
 declare global {
@@ -43,10 +43,14 @@ export function buildSection(battle: ClientBattle, pokemon: ClientPokemon): stri
   return data ? buildPokemonSection(battle, pokemon, data) : '';
 }
 
-/** Move-button hover: the single-move damage section (or '' while data warms). */
+/** Move-button hover: the single-move damage section (or '' while data warms).
+ *  The Terastallize checkbox lives only in the DOM (both clients), so this shell
+ *  reads it here and hands the pure orchestration a plain flag. */
 export function buildMoveButtonSection(battle: ClientBattle, pokemon: ClientPokemon, moveName: string): string {
   const data = dataFor(battle);
-  return data ? buildMoveSection(battle, pokemon, moveName, data) : '';
+  if (!data) return '';
+  const teraSelected = typeof document !== 'undefined' && readTeraToggled(battle, document);
+  return buildMoveSection(battle, pokemon, moveName, data, teraSelected);
 }
 
 function injectStyleOnce(): void {

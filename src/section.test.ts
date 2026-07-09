@@ -26,7 +26,7 @@ const data = fixture.randbats as unknown as RandbatsData;
  * The client's classes are untyped and cyclic, so the reconstruction casts through
  * `unknown` — the shapes match readState's structural interfaces.
  */
-function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; myNoivernItem?: string} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
+function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; myNoivernItem?: string; myNoivernTera?: string} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
   const sides: ClientSide[] = fixture.battle.sides.map((s, i) => {
     const side = {isFar: i === 1, sideConditions: {...s.sideConditions}, active: [] as (ClientPokemon | null)[]};
     side.active = s.active.map((p) => {
@@ -48,8 +48,14 @@ function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: strin
     weather: fixture.battle.weather,
     pseudoWeather: fixture.battle.pseudoWeather,
     sides,
-    // Our private team view — the item the opponent can't see. Only Noivern is set here.
-    ...(over.myNoivernItem !== undefined ? {myPokemon: [{ident: 'p1: Noivern', item: over.myNoivernItem}]} : {}),
+    // Our private team view — the item and Tera type the opponent can't see. Only Noivern.
+    ...(over.myNoivernItem !== undefined || over.myNoivernTera !== undefined
+      ? {myPokemon: [{
+          ident: 'p1: Noivern',
+          ...(over.myNoivernItem !== undefined ? {item: over.myNoivernItem} : {}),
+          ...(over.myNoivernTera !== undefined ? {teraType: over.myNoivernTera} : {}),
+        }]}
+      : {}),
   } as unknown as ClientBattle;
   const active = (name: string): ClientPokemon =>
     sides.flatMap((s) => s.active).find((p): p is ClientPokemon => p?.speciesForme === name)!;
@@ -134,6 +140,33 @@ describe('buildMoveSection uses YOUR real item for your own attacker (via myPoke
     // real name for both.
     expect(dm(loadBattle({...untera, myNoivernItem: 'heavydutyboots'})))
       .toBeLessThan(dm(loadBattle({...untera, myNoivernItem: 'choicespecs'})));
+  });
+});
+
+describe('buildMoveSection with Terastallize ticked (the pre-move Tera preview)', () => {
+  // Un-terastallize Noivern and pin its item to Boots on BOTH sides of each comparison, so
+  // the only thing the toggle changes is the Tera itself (the pending Tera type also narrows
+  // the role, which could otherwise shift the assumed item and muddy the number).
+  const base = {noivernTerastallized: '', myNoivernItem: 'heavydutyboots'};
+  const flame = (b: ReturnType<typeof loadBattle>, teraSelected: boolean) =>
+    buildMoveSection(b.battle, b.active('Noivern'), 'Flamethrower', data, teraSelected);
+
+  it('previews OUR private Tera type: Flamethrower gains Fire STAB and the line says so', () => {
+    const plain = flame(loadBattle(base), false);
+    const tera = flame(loadBattle({...base, myNoivernTera: 'Fire'}), true);
+    expect(tera).toContain('Tera Fire');
+    expect(plain).not.toContain('Tera Fire');
+    // Flamethrower is non-STAB on Flying/Dragon Noivern; Tera Fire makes it STAB (×1.5).
+    expect(maxPercent(tera)).toBeGreaterThan(maxPercent(plain) * 1.4);
+  });
+
+  it('changes nothing when the private team carries no Tera type to preview', () => {
+    expect(flame(loadBattle(base), true)).toBe(flame(loadBattle(base), false));
+  });
+
+  it('changes nothing once actually terastallized (the public facts already drive the calc)', () => {
+    const already = {myNoivernItem: 'heavydutyboots', myNoivernTera: 'Fire'}; // fixture Noivern IS Tera Fire
+    expect(flame(loadBattle(already), true)).toBe(flame(loadBattle(already), false));
   });
 });
 

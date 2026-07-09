@@ -10,7 +10,8 @@ reveal (moves used, item incl. consumed/knocked-off, ability), with damage vs ou
 active attached on the opponent's tooltip, and the mirror ("their read on you") on
 our own. A foe hover leads with a **⚡ speed-order verdict** — exact randbats speeds,
 a surviving Scarf set as an "if …" aside, Trick Room flipping the verdict. Calcs are
-**reality-aware** (active Tera, status, boosts, current HP,
+**reality-aware** (active Tera — incl. a ticked-but-not-yet-used Terastallize box
+previewing YOUR move damage — status, boosts, current HP,
 weather/terrain/screens/Tailwind) and delegated to `@smogon/calc` so interactions
 resolve correctly. This file is the orientation map; `README.md` has the full prose and
 diagrams.
@@ -101,26 +102,42 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
 - ◐ **Delegate damage interactions to `@smogon/calc`; never hand-apply status/ability
   modifiers.** Guarded for the known case by `damage.test.ts` ("Guts negates burn"), but
   nothing stops a new hand-rolled modifier — keep this on review.
-- ✅ **`teraType` is set only when a Pokémon has actually terastallized** (setting it activates
-  Tera in the calc; never speculate a Tera type). Checked by `resolve.test.ts` ("only applies
-  a Tera type when the Pokémon has actually terastallized"). The sets view may LIST possible
-  Tera types, but they are display-only `SetKnowledge` — they never reach the calc.
+- ✅ **`teraType` is set only when the Tera is ACTIVE for that calc** — actually terastallized
+  (setting it activates Tera in the calc; never speculate a Tera type; checked by
+  `resolve.test.ts` "only applies a Tera type when the Pokémon has actually terastallized"),
+  with ONE sanctioned preview: OUR OWN attacker on the move tooltip when the move panel's
+  Terastallize checkbox is ticked. That isn't speculation — the type is our own private truth
+  (`readOwnTeraType` via `battle.myPokemon`; the client keeps `teraType` set whether or not the
+  Tera has been used) and activating it is the user's declared intent for the pending move. The
+  toggle lives ONLY in the DOM in both clients (`input[name=terastallize]` production,
+  `input[name=tera]` preact), so `readTeraToggled` reads the checkbox, scoped to this battle's
+  `#room-<roomid>` element so a second battle's box can't leak in; `content.ts` passes the flag
+  and `buildMoveSection` applies it — it never touches the foe's variants, the sets/mirror
+  views, or the ⚡ line, and is moot once actually terastallized. Checked by `section.test.ts`
+  ("Terastallize ticked": STAB applies and the line says Tera; no private type or already
+  Tera'd → byte-identical output) and `readState.test.ts` (`readOwnTeraType`, `readTeraToggled`
+  incl. the no-cross-room-leak case). 👁 for drift: the checkbox selector can't be probed by
+  `drift-check` (a spectator replay has no move controls) — verify by hand after a client
+  update. The sets view may LIST possible Tera types, but they are display-only `SetKnowledge`
+  — they never reach the calc.
 - ✅ **Set narrowing uses every public reveal, nothing private.** Roles are filtered by moves
   used, revealed item (held or `prevItem`), and revealed ability — checked by
   `resolve.test.ts` ("evidence beyond moves narrows the role"). The own-side mirror view is
   honest only because client `Pokemon` objects carry public info exclusively (the private
   team lives in `battle.myPokemon`).
-- 👁 **`battle.myPokemon` feeds OUR-view surfaces only — one read (`readOwnItem`), never the
-  set/mirror views.** The principle: private facts (you know your own item even when it's
-  *silent* to the opponent — Heavy-Duty Boots never reveals itself) may inform what WE see,
-  and must never leak into the opponent's-knowledge views, which stay strictly public — that
-  separation is the whole reason the "their read on you" mirror is honest. Two consumers,
-  both through `ownItemName` (which maps the client's id form `heavydutyboots` to the set's
-  display name; `@smogon/calc` silently ignores the id form, so the id→name map is
-  load-bearing): (1) your own attacker's item on the move tooltip, making YOUR damage exact
-  without assuming the set's first item (e.g. an Iron Bundle read as Choice Specs, ~1.5× too
-  high); (2) our side of the ⚡ speed line on a foe hover, so a Scarf we're holding judges
-  the order correctly (showing US our own speed as uncertain would be absurd). Checked by
+- 👁 **`battle.myPokemon` feeds OUR-view surfaces only — two reads (`readOwnItem`,
+  `readOwnTeraType`), never the set/mirror views.** The principle: private facts (you know
+  your own item even when it's *silent* to the opponent — Heavy-Duty Boots never reveals
+  itself) may inform what WE see, and must never leak into the opponent's-knowledge views,
+  which stay strictly public — that separation is the whole reason the "their read on you"
+  mirror is honest. Three consumers. Two go through `ownItemName` (which maps the client's id
+  form `heavydutyboots` to the set's display name; `@smogon/calc` silently ignores the id
+  form, so the id→name map is load-bearing): (1) your own attacker's item on the move tooltip,
+  making YOUR damage exact without assuming the set's first item (e.g. an Iron Bundle read as
+  Choice Specs, ~1.5× too high); (2) our side of the ⚡ speed line on a foe hover, so a Scarf
+  we're holding judges the order correctly (showing US our own speed as uncertain would be
+  absurd). The third is `readOwnTeraType`: your own Tera type for the selected-Tera preview
+  (see the `teraType` bullet). Checked by
   `section.test.ts` ("uses YOUR real item…"; the mirror carries no ⚡ line) and
   `readState.test.ts` (`readOwnItem`). 👁 not ✅ for drift: `myPokemon` only exists for a
   player, so `drift-check` (a spectator replay) can't exercise it — verify by hand in a live

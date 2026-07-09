@@ -41,6 +41,9 @@ export interface ClientBattle {
   readonly gen: number;
   readonly tier: string;
   readonly sides: ReadonlyArray<ClientSide>;
+  /** The battle room's id ("battle-gen9randombattle-123…") — the room's DOM element is
+   *  `#room-<roomid>`, which scopes the Tera-toggle read to THIS battle's controls. */
+  readonly roomid?: string;
   /** Weather id ("sunnyday", "raindance", …), or "" / undefined when clear. */
   readonly weather?: string;
   /** Field conditions including terrains; each entry is [displayName, …]. */
@@ -74,6 +77,9 @@ export interface ClientServerPokemon {
   readonly item?: string;
   readonly ability?: string;
   readonly baseAbility?: string;
+  /** The Tera type this Pokémon CAN terastallize into — the client sets it whether or
+   *  not the Tera has been used ("always the Tera Type of the Pokemon"). */
+  readonly teraType?: string;
 }
 
 const BATTLE_STATUSES = new Set<StatusName>(['brn', 'par', 'psn', 'tox', 'slp', 'frz']);
@@ -318,10 +324,52 @@ export function readBehaviors(battle: ClientBattle, mon: ClientPokemon): Behavio
  * opponent's-knowledge views, which stay strictly public.
  */
 export function readOwnItem(battle: ClientBattle, mon: ClientPokemon): string | undefined {
+  return ownServerPokemon(battle, mon)?.item || undefined;
+}
+
+/** `mon`'s entry in the viewer's private team view (absent when spectating). */
+function ownServerPokemon(battle: ClientBattle, mon: ClientPokemon): ClientServerPokemon | undefined {
   const me = identKey(mon.ident);
   if (!me) return undefined;
-  const entry = (battle.myPokemon ?? []).find((p) => identKey(p.ident) === me);
-  return entry?.item || undefined;
+  return (battle.myPokemon ?? []).find((p) => identKey(p.ident) === me);
+}
+
+/**
+ * The viewer's OWN Tera type for `mon`, read from the private team — the client keeps
+ * `teraType` set whether or not the Tera has been used, so this is what the pending
+ * Terastallize WOULD activate. Same principle as `readOwnItem`: a private fact, feeding
+ * only OUR-view surfaces (the move tooltip's selected-Tera preview), never the
+ * opponent's-knowledge views. Undefined when spectating.
+ */
+export function readOwnTeraType(battle: ClientBattle, mon: ClientPokemon): string | undefined {
+  return ownServerPokemon(battle, mon)?.teraType || undefined;
+}
+
+/** The one DOM shape `readTeraToggled` needs — `document` satisfies it structurally,
+ *  and a stub can stand in under test. */
+export interface ToggleDocument {
+  getElementById(id: string): {querySelector(selectors: string): unknown} | null;
+  querySelector(selectors: string): unknown;
+}
+
+// The move panel's Terastallize checkbox: `name=terastallize` in the production client,
+// `name=tera` in the preact client. Neither stores the toggle anywhere but the DOM (the
+// production client reads the checkbox with jQuery at choice time), so the DOM is the
+// one honest source. A client rename here can't be caught by drift-check (a spectator
+// replay has no move controls) — verify by hand in a live game after a client update.
+const TERA_TOGGLE_SELECTOR = 'input[name=terastallize], input[name=tera]';
+
+/**
+ * Is the Terastallize checkbox ticked in this battle's move panel? Scoped to the
+ * battle's own room element (`#room-<roomid>`) so a second battle's checked box never
+ * leaks in; falls back to a document-wide read only when the room element can't be
+ * found (the preact client). False whenever the checkbox doesn't exist — already
+ * terastallized, can't Tera, not our turn to choose.
+ */
+export function readTeraToggled(battle: ClientBattle, doc: ToggleDocument): boolean {
+  const room = battle.roomid ? doc.getElementById(`room-${battle.roomid}`) : null;
+  const box = (room ?? doc).querySelector(TERA_TOGGLE_SELECTOR);
+  return (box as {checked?: unknown} | null)?.checked === true;
 }
 
 /** Every active Pokémon on a side other than the hovered Pokémon's own — one in singles,

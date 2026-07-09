@@ -33,6 +33,7 @@ import {
   toLiveFacts,
   readBehaviors,
   readOwnItem,
+  readOwnTeraType,
   readSpeciesData,
   findOpposingActive,
   findOpposingActives,
@@ -202,13 +203,15 @@ function moveDamageBuckets(
  * (an Assault Vest that may or may not be there), the distinct outcomes each get a
  * labelled line; otherwise it's the plain "Damage:" line. Returns '' when there's
  * nothing to show (not a Random Battle, no target, untracked species, no modellable
- * outcome).
+ * outcome). `teraSelected` is the move panel's Terastallize checkbox (content.ts reads
+ * the DOM): when ticked, the damage previews the Tera as already active.
  */
 export function buildMoveSection(
   battle: ClientBattle,
   pokemon: ClientPokemon,
   moveName: string,
   data: RandbatsData,
+  teraSelected = false,
 ): string {
   const format = detectFormat(battle);
   if (!format) return '';
@@ -225,7 +228,16 @@ export function buildMoveSection(
   // Heavy-Duty Boots Iron Bundle isn't calculated as Choice Specs. Treated like a revealed
   // fact for resolution — but only here, never in the opponent's-knowledge views.
   const realItem = ownItemName(battle, pokemon, attackerEntry);
-  const attackerFacts = realItem ? {...publicFacts, item: realItem} : publicFacts;
+  // Terastallize is ticked for this turn: preview the damage with the Tera active, using
+  // OUR private Tera type (an our-view surface, like realItem). Not speculation — the type
+  // is our own truth and activating it is the user's declared intent. Moot once actually
+  // terastallized (the public facts already carry it); absent when spectating.
+  const pendingTera = teraSelected && !publicFacts.terastallized ? readOwnTeraType(battle, pokemon) : undefined;
+  const attackerFacts = {
+    ...publicFacts,
+    ...(realItem ? {item: realItem} : {}),
+    ...(pendingTera ? {terastallized: true, teraType: pendingTera} : {}),
+  };
   const attacker = resolveMon(attackerFacts, attackerEntry);
 
   // Name each target only when there's more than one (doubles) — singles keeps native parity.

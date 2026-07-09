@@ -29,7 +29,10 @@ fills in what you'd otherwise tab out to a calculator or a set dump for:
   that integrates over both the per-hit rolls and the random hit count.
 - **Reality-aware calcs.** It reads the live battle, so an *active* Terastallization, the
   current status, stat boosts, revealed ability/item, current HP, **weather, terrain, and
-  the defender's screens** all feed the calc. The math is delegated to `@smogon/calc`, so
+  the defender's screens** all feed the calc. Tick the **Terastallize** checkbox in the
+  move panel and your move damage previews the Tera as already active (your own Tera type,
+  read from your private team) — so Tera Dark + Knock Off shows the boosted number before
+  you commit. The math is delegated to `@smogon/calc`, so
   interactions resolve correctly — e.g. a *burn* normally halves a physical attacker's damage,
   but the ability **Guts** ignores that, and the calc gets it right.
 
@@ -98,7 +101,9 @@ client Pokemon │ LiveFacts  │ ──▶ │ ResolvedMon│ ──▶ │ Dam
   the two whose power varies per hit (Triple Axel/Kick, which fall back to the calc).
 - **`resolve.ts`** — merges known live facts over assumed randbats possibilities into
   the one concrete set we calculate with. Revealed facts always win; a Tera type is
-  only ever applied when the Pokémon has actually terastallized.
+  only ever applied when the Pokémon has actually terastallized. (The one preview:
+  ticking the move panel's Terastallize checkbox makes *your own* move damage
+  calculate as if your Tera — your private, known type — were already active.)
 - **`damage.ts`** — wraps `@smogon/calc`. For uniform multi-hit moves it asks the calc
   for one hit and runs the convolution; otherwise it uses the calc's total directly.
 - **`speed.ts`** — the speed-order law. Effective Speed per still-possible set — the

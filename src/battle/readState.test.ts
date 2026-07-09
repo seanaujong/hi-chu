@@ -6,12 +6,15 @@ import {
   tookEntryHazardDamage,
   switchedIntoStealthRockUnharmed,
   readOwnItem,
+  readOwnTeraType,
+  readTeraToggled,
   detectFormat,
   findOpposingActive,
   readFieldFacts,
   type ClientPokemon,
   type ClientBattle,
   type ClientSide,
+  type ToggleDocument,
 } from './readState.js';
 
 function clientMon(over: Partial<ClientPokemon> = {}): ClientPokemon {
@@ -313,6 +316,60 @@ describe('readOwnItem (your private item, for your own move damage only)', () =>
 
   it('treats an empty item string as no item', () => {
     expect(readOwnItem(battle([{ident: 'p1: Iron Bundle', item: ''}]), mon)).toBeUndefined();
+  });
+});
+
+describe('readOwnTeraType (your private Tera type, for the selected-Tera preview)', () => {
+  const battle = (myPokemon?: unknown): ClientBattle =>
+    ({gen: 9, tier: '[Gen 9] Random Battle', sides: [], myPokemon} as unknown as ClientBattle);
+  const mon = clientMon({ident: 'p1: Iron Bundle'});
+
+  it("reads the viewer's own Tera type by ident", () => {
+    expect(readOwnTeraType(battle([{ident: 'p1: Iron Bundle', teraType: 'Ice'}]), mon)).toBe('Ice');
+  });
+
+  it('is undefined when spectating (no myPokemon) or when nothing matches the ident', () => {
+    expect(readOwnTeraType(battle(undefined), mon)).toBeUndefined();
+    expect(readOwnTeraType(battle([{ident: 'p1: Cetitan', teraType: 'Ice'}]), mon)).toBeUndefined();
+  });
+
+  it('treats an empty or missing teraType as none', () => {
+    expect(readOwnTeraType(battle([{ident: 'p1: Iron Bundle', teraType: ''}]), mon)).toBeUndefined();
+    expect(readOwnTeraType(battle([{ident: 'p1: Iron Bundle'}]), mon)).toBeUndefined();
+  });
+});
+
+describe('readTeraToggled (the move panel’s Terastallize checkbox)', () => {
+  const battle = (roomid?: string): ClientBattle =>
+    ({gen: 9, tier: '[Gen 9] Random Battle', sides: [], roomid} as unknown as ClientBattle);
+  /** A stub document: `rooms` maps element ids to that room's checkbox (if any);
+   *  `global` is what a document-wide query would find. */
+  const doc = (over: {rooms?: Record<string, {checked: boolean} | null>; global?: {checked: boolean} | null} = {}): ToggleDocument => ({
+    getElementById: (id) => {
+      const box = over.rooms?.[id];
+      return over.rooms && id in over.rooms ? {querySelector: () => box ?? null} : null;
+    },
+    querySelector: () => over.global ?? null,
+  });
+
+  it('reads the checked box inside THIS battle’s room element', () => {
+    const d = doc({rooms: {'room-battle-x': {checked: true}}});
+    expect(readTeraToggled(battle('battle-x'), d)).toBe(true);
+    expect(readTeraToggled(battle('battle-x'), doc({rooms: {'room-battle-x': {checked: false}}}))).toBe(false);
+  });
+
+  it("never leaks another room's checked box (a scoped miss is false, not a fallback)", () => {
+    const d = doc({rooms: {'room-battle-x': null}, global: {checked: true}});
+    expect(readTeraToggled(battle('battle-x'), d)).toBe(false);
+  });
+
+  it('falls back to a document-wide read when the room element is missing (preact client)', () => {
+    expect(readTeraToggled(battle('battle-x'), doc({global: {checked: true}}))).toBe(true);
+    expect(readTeraToggled(battle(undefined), doc({global: {checked: true}}))).toBe(true);
+  });
+
+  it('is false when no checkbox exists at all (already terastallized, can’t Tera, not choosing)', () => {
+    expect(readTeraToggled(battle('battle-x'), doc())).toBe(false);
   });
 });
 

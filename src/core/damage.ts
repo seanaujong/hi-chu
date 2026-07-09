@@ -106,8 +106,10 @@ export function buildPokemon(gen: Gen, mon: ResolvedMon, curHP?: number): Pokemo
     ...(item !== undefined ? {item} : {}),
     ...(mon.status !== undefined ? {status: mon.status} : {}),
     boosts: mon.boosts,
-    // teraType is only ever set when the Pokémon has ACTUALLY terastallized
-    // (resolveMon enforces this), and setting it is what activates Tera in the calc.
+    // teraType is only ever set when the Tera is ACTIVE for this calc — actually
+    // terastallized (resolveMon enforces this), or our own attacker with Terastallize
+    // ticked for the pending move (buildMoveSection's preview, our private type).
+    // Setting it is what activates Tera in the calc.
     // Cast: our teraType is a battle-sourced string; calc wants its TypeName union.
     ...(mon.teraType !== undefined ? {teraType: mon.teraType as NonNullable<State.Pokemon['teraType']>} : {}),
     ...(curHP !== undefined ? {curHP} : {}),

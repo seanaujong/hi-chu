@@ -15,14 +15,17 @@ import {calcDamage, painSplit, type DamageReport} from './core/damage.js';
 import {resolveByRole, resolveMon, resolveVariants} from './core/resolve.js';
 import {inferSets} from './core/knowledge.js';
 import {bucketByDamage, type DamageBucket} from './core/variants.js';
+import {compareSpeed, finalSpeed, speedBuckets} from './core/speed.js';
 import {illusionSuspects, ILLUSION_SPECIES, type IllusionSuspect} from './core/illusion.js';
 import {
   renderMoveSection,
   renderPainSplit,
   renderSetsSection,
+  renderSpeedSection,
   type CandidateBlock,
   type MoveKnowledgeRow,
   type SetsRenderModel,
+  type SpeedLineModel,
 } from './core/render.js';
 import type {CandidateSet, LiveFacts, RandbatsData, RandbatsEntry, ResolvedMon, SetVariant} from './core/types.js';
 import {pickEntry, megaEntryForItem} from './data/randbats.js';
@@ -104,6 +107,39 @@ function suspectsFor(facts: LiveFacts, entry: RandbatsEntry | undefined, data: R
     })
     .filter((x): x is IllusionSuspect => x !== null);
   return illusionSuspects(facts, entry, impostors);
+}
+
+/**
+ * The ⚡ speed-order line(s) for a hovered FOE: one per our active (one in singles,
+ * both in doubles), each judging OUR effective speed against the foe's distinct
+ * possible speeds (Scarf and weather-ability sets split into "if …" asides; a
+ * possible disguised Zoroark rides along as its own outcome). Our side of the pair
+ * uses our REAL item — private facts may feed any our-view surface; the own-side
+ * mirror never gets this line at all, so it stays strictly public.
+ */
+function speedSection(
+  battle: ClientBattle,
+  foeVariants: readonly SetVariant[],
+  ourActives: readonly ClientPokemon[],
+  data: RandbatsData,
+  format: {gen: number},
+): string {
+  if (foeVariants.length === 0) return '';
+  const lines = ourActives.map((our): SpeedLineModel => {
+    const publicFacts = factsFor(battle, our);
+    const ourEntry = entryFor(data, publicFacts);
+    const realItem = ourEntry ? ownItemName(battle, our, ourEntry) : undefined;
+    const ourFacts = realItem ? {...publicFacts, item: realItem} : publicFacts;
+    const ourMon = resolveMon(ourFacts, entryOrMinimal(ourEntry, ourFacts));
+    // Field read with OUR side as the defender, so defenderTailwind is ours and
+    // attackerTailwind the foe's; weather/terrain/Trick Room are battle-wide.
+    const field = readFieldFacts(battle, our.side);
+    const ourSpeed = finalSpeed(ourMon, {gen: format.gen, field, tailwind: Boolean(field.defenderTailwind)});
+    const foe = speedBuckets(foeVariants, {gen: format.gen, field, tailwind: Boolean(field.attackerTailwind)});
+    const order = compareSpeed(ourSpeed, foe, Boolean(field.trickRoom));
+    return {order, ...(ourActives.length > 1 ? {ourName: publicFacts.speciesForme} : {})};
+  });
+  return renderSpeedSection(lines);
 }
 
 /** True when the hovered Pokémon belongs to the opponent (the far side, from our seat). */
@@ -300,7 +336,8 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
 
   // Foe view: attach each possible move's damage into OUR active (their move buttons
   // aren't hoverable for us). The own-side mirror carries no damage — public info only.
-  const ourMon = isFoe(battle, pokemon) ? findOpposingActive(battle, pokemon) : null;
+  const foe = isFoe(battle, pokemon);
+  const ourMon = foe ? findOpposingActive(battle, pokemon) : null;
   const ourFacts = ourMon ? factsFor(battle, ourMon) : null;
   const defender = ourFacts ? resolveMon(ourFacts, entryOrMinimal(entryFor(data, ourFacts), ourFacts)) : null;
   const field = ourMon ? readFieldFacts(battle, ourMon.side) : undefined;
@@ -318,5 +355,18 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
   }
   if (blocks.every((b) => b.moves.length === 0)) return '';
 
-  return renderSetsSection({candidates: blocks, extraNotes: notes});
+  // The at-a-glance verdict, above the set blocks. Foe view only: putting a speed
+  // read on our own tooltip would mean judging it with private facts, and the
+  // mirror's honesty rests on staying strictly public.
+  const speedHtml = foe
+    ? speedSection(
+        battle,
+        [...resolveVariants(facts, entry), ...illusionVariants(facts, entry, data)],
+        findOpposingActives(battle, pokemon),
+        data,
+        format,
+      )
+    : '';
+
+  return speedHtml + renderSetsSection({candidates: blocks, extraNotes: notes});
 }

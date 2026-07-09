@@ -162,6 +162,22 @@ describe('readFieldFacts', () => {
       auroraVeil: false,
     });
   });
+
+  it('finds Trick Room among the pseudo-weathers (alongside a terrain)', () => {
+    const b = battle({pseudoWeather: [['Trick Room', 5, 0], ['Grassy Terrain', 5, 8]]});
+    expect(readFieldFacts(b, undefined).trickRoom).toBe(true);
+    expect(readFieldFacts(battle(), undefined).trickRoom).toBeUndefined();
+  });
+
+  it("reads each side's Tailwind — the defender's own, and the other side's as the attacker's", () => {
+    const windy: ClientSide = {active: [], sideConditions: {tailwind: ['Tailwind', 1, 3, 5]}};
+    const calm: ClientSide = {active: []};
+    const b = battle({sides: [windy, calm]});
+    expect(readFieldFacts(b, windy).defenderTailwind).toBe(true);
+    expect(readFieldFacts(b, windy).attackerTailwind).toBeUndefined();
+    expect(readFieldFacts(b, calm).attackerTailwind).toBe(true);
+    expect(readFieldFacts(b, calm).defenderTailwind).toBeUndefined();
+  });
 });
 
 describe('hasLandedDamagingHit', () => {

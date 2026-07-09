@@ -53,7 +53,7 @@ export interface DamageReport {
   readonly notes: readonly string[];
 }
 
-type Gen = ReturnType<typeof Generations.get>;
+export type Gen = ReturnType<typeof Generations.get>;
 
 type SpeciesOverrides = NonNullable<State.Pokemon['overrides']>;
 
@@ -91,7 +91,10 @@ function knownItem(gen: Gen, item: string | undefined): string | undefined {
   return gen.items.get(toID(item)) !== undefined ? item : undefined;
 }
 
-function buildPokemon(gen: Gen, mon: ResolvedMon, curHP?: number): Pokemon {
+/** A calc-ready Pokemon from a ResolvedMon, with the Champions safety nets applied
+ *  (client-dex overrides for a species the calc lacks, unknown items dropped).
+ *  Exported for core/speed.ts, which reads the same Pokemon's effective Speed. */
+export function buildPokemon(gen: Gen, mon: ResolvedMon, curHP?: number): Pokemon {
   const item = knownItem(gen, mon.item);
   return new Pokemon(gen, mon.speciesForme, {
     level: mon.level,

@@ -97,9 +97,18 @@ function probeLiveClient() {
     if (!sd || typeof sd.baseStats?.hp !== 'number' || !Array.isArray(sd.types) || sd.types.length === 0) {
       problems.push(`readSpeciesData(${f.speciesForme || '?'}) = ${JSON.stringify(sd)} (battle.dex.species.get drifted?)`);
     }
-    const screens = R.readFieldFacts(b, mon.side)?.defenderScreens;
+    const fieldFacts = R.readFieldFacts(b, mon.side);
+    const screens = fieldFacts?.defenderScreens;
     if (!screens || ['reflect', 'lightScreen', 'auroraVeil'].some((k) => typeof screens[k] !== 'boolean')) {
       problems.push(`readFieldFacts(${f.speciesForme}).defenderScreens is malformed`);
+    }
+    // The speed-order reads (Tailwind off sideConditions, Trick Room off pseudoWeather)
+    // are true-or-absent flags. A replay without them active only proves the shape is
+    // sane — a false "absent" from a renamed client id needs a replay where they're up.
+    for (const k of ['trickRoom', 'attackerTailwind', 'defenderTailwind']) {
+      if (fieldFacts?.[k] !== undefined && fieldFacts[k] !== true) {
+        problems.push(`readFieldFacts(${f.speciesForme}).${k} = ${JSON.stringify(fieldFacts[k])}`);
+      }
     }
     facts.push({
       species: f.speciesForme, level: f.level, hpPct: Math.round(f.hpPercent * 1000) / 10,

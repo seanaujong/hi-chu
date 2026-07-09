@@ -16,6 +16,13 @@ fills in what you'd otherwise tab out to a calculator or a set dump for:
   (held, consumed, or knocked off), ability, and any active Terastallization. On the opponent
   it answers "what could they still have?"; on your own it mirrors "what have they figured out
   about me?".
+- **Who moves first.** Hovering an opponent leads with a ⚡ speed-order verdict — your
+  active's effective Speed against theirs. Randbats makes the numbers *exact* (the level is
+  public and the spread is fixed), so the only real unknowns are the ones the set inference
+  already tracks: a still-possible Choice Scarf or weather ability shows up as an
+  "if Choice Scarf: they do" aside, and only when it genuinely survives the evidence.
+  Paralysis, stat stages, Tailwind, and weather all feed the number; Trick Room flips the
+  verdict. In doubles you get one line per active of yours.
 - **Granular multi-hit damage.** Some moves (Bullet Seed, Rock Blast) hit a *random* 2–5
   times, each hit rolling its own damage. The tooltip shows the per-hit damage range, the
   expected number of hits, and a *true* KO chance (probability of knocking the target out)
@@ -94,6 +101,11 @@ client Pokemon │ LiveFacts  │ ──▶ │ ResolvedMon│ ──▶ │ Dam
   only ever applied when the Pokémon has actually terastallized.
 - **`damage.ts`** — wraps `@smogon/calc`. For uniform multi-hit moves it asks the calc
   for one hit and runs the convolution; otherwise it uses the calc's total directly.
+- **`speed.ts`** — the speed-order law. Effective Speed per still-possible set — the
+  arithmetic (Scarf, paralysis, Tailwind, boosts, weather abilities) delegated to
+  `@smogon/calc`'s `getFinalSpeed` — with identical numbers collapsed into distinct
+  outcomes the same way damage is, and Trick Room flipping the who-moves-first verdict
+  (an order inversion, never a stat change).
 - **`render.ts`** — turns reports into the tooltip HTML string (kept pure so it can be
   snapshot-tested rather than eyeballed in a browser).
 
@@ -217,6 +229,9 @@ additionally signed by Google — but these two checks are what tie it back to h
 - **Hazards are intentionally not modelled** — Stealth Rock/Spikes change switch-in HP,
   not a move's damage, and we already read the defender's live HP. Only weather, terrain,
   and screens feed the calc.
+- **Speed order is not turn order.** The ⚡ line answers "who is faster" — priority moves
+  (Aqua Jet, Grassy Glide), Gale Wings, and Quick Claw are out of scope, and the native
+  tooltip already lists the moves themselves.
 
 ## Glossary
 

@@ -1,5 +1,5 @@
 import {describe, it, expect} from 'vitest';
-import {koText, renderMoveSection, renderSetsSection, type MoveRenderModel, type SetsRenderModel} from './render.js';
+import {koText, renderMoveSection, renderSetsSection, renderSpeedSection, type MoveRenderModel, type SetsRenderModel} from './render.js';
 import type {DamageReport} from './damage.js';
 
 function report(over: Partial<DamageReport> & {move: string}): DamageReport {
@@ -238,5 +238,56 @@ describe('renderSetsSection', () => {
     const html = renderSetsSection(model({extraNotes: ['revealed moves/item/ability matched no known set']}));
     expect(html).toContain('matched no known set');
     expect(html).toContain('hichu-note');
+  });
+});
+
+describe('renderSpeedSection', () => {
+  const order = (ourSpeed: number, outcomes: {speed: number; label?: string; first: 'ours' | 'theirs' | 'tie'}[], trickRoom = false) => ({
+    ourSpeed,
+    trickRoom,
+    outcomes: outcomes.map((o) => ({speed: o.speed, label: o.label ?? '', first: o.first})),
+  });
+
+  it('renders the single-outcome verdict, numbers always OURS vs THEIRS', () => {
+    const html = renderSpeedSection([{order: order(231, [{speed: 213, first: 'ours'}])}]);
+    expect(html).toContain('⚡ you move first — 231 vs 213');
+    expect(html).toContain('hichu-block'); // its own native-style divider block
+  });
+
+  it('paints a foe-first verdict red — being outsped is the threat, like the KO figure', () => {
+    const html = renderSpeedSection([{order: order(166, [{speed: 213, first: 'theirs'}])}]);
+    expect(html).toContain('<span class="hichu-ko">they move first</span> — 166 vs 213');
+  });
+
+  it('leads with the majority outcome and rides the Scarf case along as an "if" aside', () => {
+    const html = renderSpeedSection([
+      {order: order(231, [{speed: 213, first: 'ours'}, {speed: 319, label: 'Choice Scarf', first: 'theirs'}])},
+    ]);
+    expect(html).toContain('you move first — 231 vs 213');
+    expect(html).toContain('<small>if Choice Scarf:</small> <span class="hichu-ko">they do</span> (319)');
+  });
+
+  it('labels a Trick Room verdict (already flipped upstream) so the slower-wins read explains itself', () => {
+    const html = renderSpeedSection([{order: order(166, [{speed: 213, first: 'ours'}], true)}]);
+    expect(html).toContain('<small>Trick Room:</small> you move first — 166 vs 213');
+  });
+
+  it('calls a tie a tie', () => {
+    const html = renderSpeedSection([{order: order(231, [{speed: 231, first: 'tie'}])}]);
+    expect(html).toContain('speed tie — 231 vs 231');
+  });
+
+  it('names our active only when given one (doubles — singles omits the noise)', () => {
+    const html = renderSpeedSection([
+      {order: order(231, [{speed: 213, first: 'ours'}]), ourName: 'Kyurem'},
+      {order: order(166, [{speed: 213, first: 'theirs'}]), ourName: 'Iron Hands'},
+    ]);
+    expect(html).toContain('<small>your Kyurem:</small> you move first');
+    expect(html).toContain('<small>your Iron Hands:</small>');
+  });
+
+  it('renders nothing when there are no outcomes to judge', () => {
+    expect(renderSpeedSection([{order: order(231, [])}])).toBe('');
+    expect(renderSpeedSection([])).toBe('');
   });
 });

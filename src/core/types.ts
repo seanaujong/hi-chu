@@ -17,7 +17,9 @@ export type StatusName = 'brn' | 'par' | 'psn' | 'tox' | 'slp' | 'frz';
 export type WeatherName = 'Sand' | 'Sun' | 'Rain' | 'Hail' | 'Snow' | 'Harsh Sunshine' | 'Heavy Rain' | 'Strong Winds';
 export type TerrainName = 'Electric' | 'Grassy' | 'Psychic' | 'Misty';
 
-/** Battle-wide and defender-side conditions that change a move's damage. */
+/** Battle-wide and per-side conditions that change a move's damage or the move ORDER.
+ *  Sides are named by calc orientation (attacker/defender), same as `defenderScreens`.
+ *  Absent optional fields mean "not active", matching `weather`. */
 export interface FieldFacts {
   readonly weather?: WeatherName;
   readonly terrain?: TerrainName;
@@ -27,6 +29,12 @@ export interface FieldFacts {
     readonly lightScreen: boolean;
     readonly auroraVeil: boolean;
   };
+  /** Trick Room: battle-wide, inverts speed ORDER (slower acts first). It never
+   *  changes a speed stat — only the verdict layer (core/speed.ts) reads it. */
+  readonly trickRoom?: boolean;
+  /** Tailwind doubles Speed for the side it blows on. */
+  readonly attackerTailwind?: boolean;
+  readonly defenderTailwind?: boolean;
 }
 
 // --- Static randbats data (https://pkmn.github.io/randbats) -----------------

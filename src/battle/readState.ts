@@ -311,10 +311,11 @@ export function readBehaviors(battle: ClientBattle, mon: ClientPokemon): Behavio
 /**
  * The viewer's OWN held item for `mon`, read from the private `battle.myPokemon` (absent
  * when spectating). Returned in the client's id form ("heavydutyboots"); the caller maps
- * it to a set's display name. This is the one place we read private team data — used ONLY
- * to make the player's own move-damage exact (a silent item like Heavy-Duty Boots is
- * invisible to the opponent, so the public battle view can't supply it). It must never
- * feed the opponent's-knowledge views, which stay strictly public.
+ * it to a set's display name. This is the one place we read private team data — it feeds
+ * only OUR-view surfaces (the player's own move damage, and our side of the speed-order
+ * line), where a silent item like Heavy-Duty Boots or a Scarf we're holding is invisible
+ * to the opponent so the public battle view can't supply it. It must never feed the
+ * opponent's-knowledge views, which stay strictly public.
  */
 export function readOwnItem(battle: ClientBattle, mon: ClientPokemon): string | undefined {
   const me = identKey(mon.ident);
@@ -385,25 +386,32 @@ const TERRAIN_BY_ID: Readonly<Record<string, TerrainName>> = {
   mistyterrain: 'Misty',
 };
 
+/** Is the side condition with this id ("tailwind", "reflect", …) active on `side`? */
+function hasSideCondition(side: ClientSide | undefined, id: string): boolean {
+  return Boolean(side?.sideConditions?.[id]);
+}
+
 /**
- * Read the field conditions that change damage: weather, terrain, and the screens
- * on the DEFENDER's side. (Hazards are intentionally excluded — they affect
- * switch-in HP, not a move's damage, and we already read live HP.)
+ * Read the field conditions that change damage or move order: weather, terrain,
+ * the screens on the DEFENDER's side, Trick Room, and each side's Tailwind (the
+ * attacker's side is whichever one isn't the defender's — battles have two sides).
+ * (Hazards are intentionally excluded — they affect switch-in HP, not a move's
+ * damage, and we already read live HP.)
  */
 export function readFieldFacts(battle: ClientBattle, defenderSide: ClientSide | undefined): FieldFacts {
   const weather = WEATHER_BY_ID[toId(battle.weather ?? '')];
 
   let terrain: TerrainName | undefined;
+  let trickRoom = false;
   for (const entry of battle.pseudoWeather ?? []) {
-    const match = TERRAIN_BY_ID[toId(entry[0])];
-    if (match) {
-      terrain = match;
-      break;
-    }
+    const id = toId(entry[0]);
+    const match = TERRAIN_BY_ID[id];
+    if (match) terrain = match;
+    if (id === 'trickroom') trickRoom = true;
   }
 
-  const conditions = defenderSide?.sideConditions ?? {};
-  const has = (id: string): boolean => Boolean(conditions[id]);
+  const has = (id: string): boolean => hasSideCondition(defenderSide, id);
+  const attackerSide = defenderSide ? battle.sides.find((s) => s !== defenderSide) : undefined;
 
   return {
     ...(weather ? {weather} : {}),
@@ -413,5 +421,8 @@ export function readFieldFacts(battle: ClientBattle, defenderSide: ClientSide | 
       lightScreen: has('lightscreen'),
       auroraVeil: has('auroraveil'),
     },
+    ...(trickRoom ? {trickRoom} : {}),
+    ...(hasSideCondition(attackerSide, 'tailwind') ? {attackerTailwind: true} : {}),
+    ...(has('tailwind') ? {defenderTailwind: true} : {}),
   };
 }

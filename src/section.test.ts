@@ -198,6 +198,24 @@ describe('buildPokemonSection hovering THEIR Tentacruel (possible sets)', () => 
   });
 });
 
+describe('buildPokemonSection speed order (the ⚡ line on a foe hover)', () => {
+  const {battle, active} = loadBattle();
+
+  it('leads the foe tooltip with the verdict, before any set block', () => {
+    const html = buildPokemonSection(battle, active('Tentacruel'), data);
+    // Real numbers off the real battle: our Noivern 249 Spe vs their Tentacruel 216.
+    expect(html).toContain('⚡ you move first — 249 vs 216');
+    expect(html.indexOf('⚡')).toBeLessThan(html.indexOf('Bulky Support'));
+  });
+
+  it('does not split the line over an item that cannot change speed (AV vs Leftovers)', () => {
+    const {battle: b, active: a} = loadBattle({tentacruelItem: ''});
+    const html = buildPokemonSection(b, a('Tentacruel'), data);
+    expect(html).toContain('⚡ you move first — 249 vs 216');
+    expect(html).not.toContain('<small>if '); // no speed asides — both items are speed-inert
+  });
+});
+
 describe('buildPokemonSection hovering OUR Noivern (their read on us)', () => {
   const {battle, active} = loadBattle();
   const html = buildPokemonSection(battle, active('Noivern'), data);
@@ -217,5 +235,9 @@ describe('buildPokemonSection hovering OUR Noivern (their read on us)', () => {
 
   it('carries no damage figures — this view is about information, not threat', () => {
     expect(html).not.toMatch(/\(\d+(\.\d+)?–\d+(\.\d+)?%\)/);
+  });
+
+  it('carries no speed line either — judging it would use private facts, and the mirror stays public', () => {
+    expect(html).not.toContain('⚡');
   });
 });

@@ -8,9 +8,11 @@ over the random 2–5 hit count, not `k × one roll`); hovering a **Pokémon** s
 **information game** — which randbats sets are still possible given every public
 reveal (moves used, item incl. consumed/knocked-off, ability), with damage vs our
 active attached on the opponent's tooltip, and the mirror ("their read on you") on
-our own. Calcs are **reality-aware** (active Tera, status, boosts, current HP,
-weather/terrain/screens) and delegated to `@smogon/calc` so interactions resolve
-correctly. This file is the orientation map; `README.md` has the full prose and
+our own. A foe hover leads with a **⚡ speed-order verdict** — exact randbats speeds,
+a surviving Scarf set as an "if …" aside, Trick Room flipping the verdict. Calcs are
+**reality-aware** (active Tera, status, boosts, current HP,
+weather/terrain/screens/Tailwind) and delegated to `@smogon/calc` so interactions
+resolve correctly. This file is the orientation map; `README.md` has the full prose and
 diagrams.
 
 ## Build, test, run
@@ -34,6 +36,9 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
 - `src/core/` — pure: no DOM, no network, unit-tested. All the interesting logic lives here.
   - `multihit.ts` — the probability law (hit-count PMFs + convolution → KO%/expected).
   - `damage.ts` — wraps `@smogon/calc`; builds the calc `Field` from `FieldFacts`.
+  - `speed.ts` — the speed-order law: effective Speed per still-possible set (delegated
+    to the calc's `getFinalSpeed`), distinct outcomes bucketed like damage, Trick Room
+    flipping the who-moves-first verdict (an order inversion, never a stat change).
   - **The set-inference pipeline, split by concern** (was one `resolve.ts`):
     - `facts.ts` — tiny shared readings of `LiveFacts` (`toId`, `innateAbility`,
       `isMegaForme`); a leaf so the layers below needn't depend on each other for them.
@@ -105,15 +110,18 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   `resolve.test.ts` ("evidence beyond moves narrows the role"). The own-side mirror view is
   honest only because client `Pokemon` objects carry public info exclusively (the private
   team lives in `battle.myPokemon`).
-- 👁 **`battle.myPokemon` is read in exactly ONE place: your own attacker's item on the move
-  tooltip.** Move buttons only exist for your own active, and you know your own item even when
-  it's *silent* to the opponent (Heavy-Duty Boots never reveals itself), so `buildMoveSection`
-  reads `readOwnItem` and maps it to the set's display name (the client stores an id like
-  `heavydutyboots`; `@smogon/calc` silently ignores the id form, so the id→name map is
-  load-bearing). This makes YOUR damage exact without assuming the set's first item (e.g. an
-  Iron Bundle read as Choice Specs, ~1.5× too high). It must never leak into the set/mirror
-  views, which stay strictly public — that separation is the whole reason the "their read on
-  you" mirror is honest. Checked by `section.test.ts` ("uses YOUR real item…") and
+- 👁 **`battle.myPokemon` feeds OUR-view surfaces only — one read (`readOwnItem`), never the
+  set/mirror views.** The principle: private facts (you know your own item even when it's
+  *silent* to the opponent — Heavy-Duty Boots never reveals itself) may inform what WE see,
+  and must never leak into the opponent's-knowledge views, which stay strictly public — that
+  separation is the whole reason the "their read on you" mirror is honest. Two consumers,
+  both through `ownItemName` (which maps the client's id form `heavydutyboots` to the set's
+  display name; `@smogon/calc` silently ignores the id form, so the id→name map is
+  load-bearing): (1) your own attacker's item on the move tooltip, making YOUR damage exact
+  without assuming the set's first item (e.g. an Iron Bundle read as Choice Specs, ~1.5× too
+  high); (2) our side of the ⚡ speed line on a foe hover, so a Scarf we're holding judges
+  the order correctly (showing US our own speed as uncertain would be absurd). Checked by
+  `section.test.ts` ("uses YOUR real item…"; the mirror carries no ⚡ line) and
   `readState.test.ts` (`readOwnItem`). 👁 not ✅ for drift: `myPokemon` only exists for a
   player, so `drift-check` (a spectator replay) can't exercise it — verify by hand in a live
   game after a client update.
@@ -211,6 +219,25 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
 - ✅ **Own the hit-count model** in `multihit.ts` (`@smogon/calc` collapses multi-hit to
   `k × one shared roll` and ignores Skill Link / Loaded Dice). Checked by `multihit.test.ts`
   (distributions + the "independent rolls narrow the distribution" guard) and `damage.test.ts`.
+- ✅ **Speed order: arithmetic delegated, ORDER owned, foe hover only.** `core/speed.ts`
+  computes each still-possible set's effective Speed with the calc's `getFinalSpeed` (Scarf,
+  paralysis incl. Quick Feet, Tailwind, boosts, weather/terrain abilities, Protosynthesis) —
+  never hand-applied, same rule as damage. That function is a **deep import**
+  (`@smogon/calc/dist/mechanics/util`; implemented and typed but not re-exported from the
+  index — no `exports` map blocks the path), so `speed.test.ts`'s exact pins (Dragapult L80:
+  273 raw / 409 Scarf / 136 par / 546 Tailwind) double as the guard that a calc upgrade
+  moving it fails the build, not the hover. Distinct speeds bucket like damage
+  (`speedBuckets` reuses `labelBuckets`; a speed-inert item never splits the line) with the
+  lead outcome the one most surviving sets share, Scarf/Zoroark as "if …" asides. **Trick
+  Room is ours**: an order INVERSION — `compareSpeed` flips the verdict, ties stay ties,
+  numbers never change (guard watched failing with the flip removed). Rendered only on a FOE
+  hover (one ⚡ line per our active in doubles), never on the own-side mirror — our side of
+  the pair uses our REAL item (the `myPokemon` principle above). Priority is deliberately
+  out of scope: speed order, not turn order. New client reads (`tailwind` in
+  `sideConditions`, `trickroom` in `pseudoWeather`) → probed by `npm run drift-check`.
+  Checked by `speed.test.ts`, `render.test.ts` (verdict/aside/Trick Room/tie lines), and
+  `section.test.ts` (real fixture: "⚡ you move first — 249 vs 216" leads the foe tooltip;
+  the mirror has no ⚡).
 - 👁 **Where we correct @smogon/calc** (things it should arguably handle but doesn't, that we
   own): `multihit.ts` (the multi-hit model above) and the **item id→name quirk** — the calc
   silently *ignores* an item passed in id form (`heavydutyboots`), applying nothing, so

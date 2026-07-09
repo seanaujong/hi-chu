@@ -14,6 +14,7 @@
 
 import type {DamageReport, PainSplitReport} from './damage.js';
 import type {DamageBucket} from './variants.js';
+import type {SpeedOrder, SpeedOutcome} from './speed.js';
 import type {Gimmick, KnownOption} from './types.js';
 
 /** Escape the few characters that matter when injecting into innerHTML. */
@@ -219,6 +220,45 @@ function hpSwing(side: {before: number; after: number}): string {
  */
 export function renderPainSplit(r: PainSplitReport, targetLabel?: string): string {
   return block([targetHeader(targetLabel), `<small>Pain Split:</small> you ${hpSwing(r.user)} · foe ${hpSwing(r.foe)}`]);
+}
+
+// --- Pokémon hover: the speed-order line -------------------------------------
+
+/** One our-active × hovered-foe speed verdict; `ourName` names our side of the pair,
+ *  shown only in doubles (singles has one active — naming it would be noise). */
+export interface SpeedLineModel {
+  readonly order: SpeedOrder;
+  readonly ourName?: string;
+}
+
+/** The verdict, red when the foe acts first (that's the threat, like the KO figure). */
+function verdictText(first: SpeedOutcome['first'], long: boolean): string {
+  if (first === 'tie') return 'speed tie';
+  if (first === 'ours') return long ? 'you move first' : 'you do';
+  const text = long ? 'they move first' : 'they do';
+  return `<span class="hichu-ko">${text}</span>`;
+}
+
+/** "⚡ you move first — 231 vs 213 · if Choice Scarf: they do (319)". The lead outcome
+ *  is the one most surviving sets share (speedBuckets orders it first); every other
+ *  possible speed rides along as an "if <what differs>" aside. Numbers are always
+ *  OURS vs THEIRS. Trick Room already flipped the verdicts in core/speed.ts — the
+ *  prefix here just says why the slower number is winning. */
+function speedLine(model: SpeedLineModel): string {
+  const {order, ourName} = model;
+  const [lead, ...asides] = order.outcomes;
+  if (!lead) return '';
+  const name = ourName ? `<small>your ${esc(ourName)}:</small> ` : '';
+  const room = order.trickRoom ? '<small>Trick Room:</small> ' : '';
+  const head = `⚡ ${name}${room}${verdictText(lead.first, true)} — ${order.ourSpeed} vs ${lead.speed}`;
+  const tail = asides.map((a) => `<small>if ${esc(a.label)}:</small> ${verdictText(a.first, false)} (${a.speed})`);
+  return [head, ...tail].join(' · ');
+}
+
+/** The speed-order block: one line per our active (one in singles, two in doubles).
+ *  Rendered above the candidate-set blocks — it's the at-a-glance answer. */
+export function renderSpeedSection(lines: readonly SpeedLineModel[]): string {
+  return block(lines.map(speedLine));
 }
 
 // --- Pokémon hover: per-set blocks, the original's layout -------------------

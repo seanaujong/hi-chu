@@ -95,17 +95,21 @@ client Pokemon │ LiveFacts  │ ──▶ │ ResolvedMon│ ──▶ │ Dam
   sum of independent random variables) — one per-hit roll summed over the hit-count distribution. This is the fix for `@smogon/calc`, which models *k* hits as
   `k × one shared roll` (perfectly correlated) — both the variance and the hit-count
   randomness are wrong there. The exact hit-count distributions (35/35/15/15, Skill
-  Link, Loaded Dice) are taken from Showdown's `sim/battle-actions.ts`.
-- **`moves.ts`** — the multi-hit move table, derived from Showdown's `data/moves.ts`.
-  Marks which moves have uniform per-hit power (so the convolution is exact) versus
-  the two whose power varies per hit (Triple Axel/Kick, which fall back to the calc).
+  Link, Loaded Dice, and the stop-at-miss law for moves that check 90% accuracy before
+  every hit — Population Bomb, Triple Axel, Triple Kick, where Loaded Dice deletes the
+  checks and Wide Lens lifts each to 99%) are taken from Showdown's
+  `sim/battle-actions.ts` and `data/items.ts`.
+- **`moves.ts`** — the multi-hit move table, derived from Showdown's `data/moves.ts`:
+  each move's hit spec, its per-hit accuracy if it checks one, and — for Triple Axel
+  (20/40/60) and Triple Kick (10/20/30), the only two — each hit's own base power.
 - **`resolve.ts`** — merges known live facts over assumed randbats possibilities into
   the one concrete set we calculate with. Revealed facts always win; a Tera type is
   only ever applied when the Pokémon has actually terastallized. (The one preview:
   ticking the move panel's Terastallize checkbox makes *your own* move damage
   calculate as if your Tera — your private, known type — were already active.)
-- **`damage.ts`** — wraps `@smogon/calc`. For uniform multi-hit moves it asks the calc
-  for one hit and runs the convolution; otherwise it uses the calc's total directly.
+- **`damage.ts`** — wraps `@smogon/calc`. For multi-hit moves it asks the calc for one
+  hit at a time — one run for a uniform-power move, one per hit's true base power for
+  Triple Axel/Triple Kick — and runs the convolution over those per-hit rolls.
 - **`speed.ts`** — the speed-order law. Effective Speed per still-possible set — the
   arithmetic (Scarf, paralysis, Tailwind, boosts, weather abilities) delegated to
   `@smogon/calc`'s `getFinalSpeed` — with identical numbers collapsed into distinct
@@ -227,10 +231,11 @@ additionally signed by Google — but these two checks are what tie it back to h
 
 ## Known limitations (v1)
 
-- **Variable-power multi-hit** — Triple Axel and Triple Kick use `@smogon/calc`'s total
-  (marked "approx."), since their base power changes per hit.
-- **Population Bomb without Loaded Dice** assumes all 10 hits land (it skips the per-hit
-  accuracy check); with Loaded Dice the 4–10 distribution is exact.
+- **Per-hit accuracy modifiers stop at Wide Lens.** The multiaccuracy moves (Population
+  Bomb, Triple Axel, Triple Kick) model their 90%-per-hit checks exactly, including
+  Wide Lens (→99%) and Loaded Dice (deletes the checks) — but accuracy/evasion boosts,
+  Compound Eyes, Hustle, and No Guard are out of scope; no randbats set pairs one with
+  a multiaccuracy move.
 - **Hazards are intentionally not modelled** — Stealth Rock/Spikes change switch-in HP,
   not a move's damage, and we already read the defender's live HP. Only weather, terrain,
   and screens feed the calc.

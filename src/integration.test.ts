@@ -63,10 +63,9 @@ describe('Breloom vs Tyranitar (multi-hit + status moves)', () => {
 
   it('computes a sane Bullet Seed report (total spans 2..5 hits of the per-hit roll)', () => {
     const bs = reportsFor(ourActive(battle), theirActive(battle)).find((r) => r.move === 'Bullet Seed')!;
-    expect(bs.multiHit).toBe(true);
-    expect(bs.approximate).toBe(false);
-    expect(bs.total.min).toBe(bs.perHit!.min * 2);
-    expect(bs.total.max).toBe(bs.perHit!.max * 5);
+    expect(bs.multiHit).toBeDefined();
+    expect(bs.total.min).toBe(bs.multiHit!.perHit.min * 2);
+    expect(bs.total.max).toBe(bs.multiHit!.perHit.max * 5);
     expect(bs.koChance).toBeGreaterThanOrEqual(0);
     expect(bs.koChance).toBeLessThanOrEqual(1);
   });

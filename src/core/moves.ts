@@ -1,23 +1,24 @@
 // The multi-hit move table — data, derived directly from Pokémon Showdown's
 // `data/moves.ts` (every move whose definition carries a `multihit`).
 //
-// Two facts per move matter for our math:
-//   - its HitSpec (how many times it hits), and
-//   - whether each hit has UNIFORM base power.
+// Three facts per move matter for our math:
+//   - its HitSpec (how many times it hits),
+//   - whether it checks accuracy before each hit (`multiaccuracy`, carried on the
+//     HitSpec — Population Bomb, Triple Axel, Triple Kick, all 90%), and
+//   - each hit's base power, when it varies by hit (Triple Axel 20/40/60, Triple
+//     Kick 10/20/30 — the only two; every other multi-hit move rolls one power).
 //
-// Uniform-power moves can be modelled exactly by convolving one per-hit roll
-// (see core/multihit.ts). Triple Axel and Triple Kick are the only multi-hit
-// moves whose base power changes per hit (20/40/60 and 10/20/30), so a single
-// per-hit roll does not describe them — those fall back to @smogon/calc's own
-// (correlated) total. Population Bomb's power IS uniform, so it convolves; its
-// only wrinkle is the per-hit accuracy check, noted where it's resolved.
+// All of them are modelled exactly by convolving per-hit rolls over the hit-count
+// distribution (see core/multihit.ts); a variable-power move just supplies one
+// damage roll per hit instead of one shared roll.
 
 import type {HitSpec} from './multihit.js';
 
 export interface MultiHitMove {
   readonly spec: HitSpec;
-  /** True when every hit has the same base power (so per-hit convolution is exact). */
-  readonly uniformPower: boolean;
+  /** Base power of each successive hit, when it varies by hit (Triple Axel 20/40/60).
+   *  Absent = every hit rolls the move's own base power. */
+  readonly perHitPowers?: readonly number[];
 }
 
 const RANGE: HitSpec = {kind: 'range', min: 2, max: 5};
@@ -56,24 +57,18 @@ const FIXED_UNIFORM: Readonly<Record<string, number>> = {
   'Triple Dive': 3,
   'Twin Beam': 2,
   Twineedle: 2,
-  'Population Bomb': 10, // uniform power; per-hit accuracy handled at resolve time
-};
-
-/** Fixed-count moves whose base power changes per hit — cannot use one per-hit roll. */
-const VARIABLE_POWER: Readonly<Record<string, number>> = {
-  'Triple Axel': 3,
-  'Triple Kick': 3,
 };
 
 const TABLE: Map<string, MultiHitMove> = (() => {
   const t = new Map<string, MultiHitMove>();
-  for (const name of RANGE_UNIFORM) t.set(name, {spec: RANGE, uniformPower: true});
+  for (const name of RANGE_UNIFORM) t.set(name, {spec: RANGE});
   for (const [name, hits] of Object.entries(FIXED_UNIFORM)) {
-    t.set(name, {spec: {kind: 'fixed', hits}, uniformPower: true});
+    t.set(name, {spec: {kind: 'fixed', hits}});
   }
-  for (const [name, hits] of Object.entries(VARIABLE_POWER)) {
-    t.set(name, {spec: {kind: 'fixed', hits}, uniformPower: false});
-  }
+  // The multiaccuracy trio: each hit after the first checks 90% or the move ends.
+  t.set('Population Bomb', {spec: {kind: 'fixed', hits: 10, accuracyPerHit: 90}});
+  t.set('Triple Axel', {spec: {kind: 'fixed', hits: 3, accuracyPerHit: 90}, perHitPowers: [20, 40, 60]});
+  t.set('Triple Kick', {spec: {kind: 'fixed', hits: 3, accuracyPerHit: 90}, perHitPowers: [10, 20, 30]});
   return t;
 })();
 

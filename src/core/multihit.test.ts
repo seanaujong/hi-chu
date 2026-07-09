@@ -3,6 +3,7 @@ import {
   type Pmf,
   pmfFromSamples,
   hitCountPmf,
+  perHitChance,
   convolve,
   convolveN,
   totalDamagePmf,
@@ -29,7 +30,7 @@ function expectPmf(pmf: Pmf, expected: Record<number, number>) {
 }
 
 describe('hitCountPmf', () => {
-  const none = {skillLink: false, loadedDice: false};
+  const none = {skillLink: false, loadedDice: false, wideLens: false};
 
   it('2-5 move with no mods is 35/35/15/15 (matches PS sample table)', () => {
     expectPmf(hitCountPmf({kind: 'range', min: 2, max: 5}, none), {
@@ -62,8 +63,46 @@ describe('hitCountPmf', () => {
   });
 
   it('Population Bomb + Loaded Dice is uniform over 4..10', () => {
-    const pmf = hitCountPmf({kind: 'fixed', hits: 10}, {...none, loadedDice: true});
+    const pmf = hitCountPmf({kind: 'fixed', hits: 10, accuracyPerHit: 90}, {...none, loadedDice: true});
     expectPmf(pmf, {4: 1 / 7, 5: 1 / 7, 6: 1 / 7, 7: 1 / 7, 8: 1 / 7, 9: 1 / 7, 10: 1 / 7});
+  });
+});
+
+describe('per-hit accuracy (multiaccuracy): the stop-at-miss law', () => {
+  const none = {skillLink: false, loadedDice: false, wideLens: false};
+  const tripleAxel = {kind: 'fixed', hits: 3, accuracyPerHit: 90} as const;
+  const populationBomb = {kind: 'fixed', hits: 10, accuracyPerHit: 90} as const;
+
+  it('a 3-hit 90% move: P(k) = 0.9^(k-1)·0.1, capped mass at 3', () => {
+    // Hit 1 is conditioned on (damage calcs always assume the shown move connects);
+    // hits 2 and 3 each land at 90% or the move ends.
+    expectPmf(hitCountPmf(tripleAxel, none), {1: 0.1, 2: 0.09, 3: 0.81});
+  });
+
+  it('expected hits are Σ p^k — Triple Axel ≈2.71, Population Bomb ≈6.51', () => {
+    expect(expectedValue(hitCountPmf(tripleAxel, none))).toBeCloseTo(2.71, 10);
+    expect(expectedValue(hitCountPmf(populationBomb, none))).toBeCloseTo((1 - 0.9 ** 10) / 0.1, 10);
+  });
+
+  it('Population Bomb reaches all 10 hits with probability 0.9^9', () => {
+    const pmf = hitCountPmf(populationBomb, none);
+    expect(mass(pmf)).toBeCloseTo(1, 10);
+    expect(pmf.get(10)).toBeCloseTo(0.9 ** 9, 10);
+    expect(pmf.get(1)).toBeCloseTo(0.1, 10);
+  });
+
+  it('Loaded Dice DELETES the per-hit checks — a 3-hit move always gets all 3', () => {
+    // PS data/items.ts: `if (move.multiaccuracy) delete move.multiaccuracy`.
+    expectPmf(hitCountPmf(tripleAxel, {...none, loadedDice: true}), {3: 1});
+  });
+
+  it('Wide Lens raises each check with PS rounding: 90 → 99', () => {
+    expect(perHitChance(90, {...none, wideLens: true})).toBeCloseTo(0.99, 10);
+    expect(perHitChance(90, none)).toBeCloseTo(0.9, 10);
+    // A boosted check can exceed 100 on paper; the chance caps at certainty.
+    expect(perHitChance(100, {...none, wideLens: true})).toBe(1);
+    const wide = hitCountPmf(populationBomb, {...none, wideLens: true});
+    expect(expectedValue(wide)).toBeCloseTo((1 - 0.99 ** 10) / 0.01, 10); // ≈9.56 hits
   });
 });
 
@@ -102,7 +141,7 @@ describe('totalDamagePmf', () => {
     [1, 0.5],
     [2, 0.5],
   ]);
-  const total = totalDamagePmf(perHit, oneOrTwo);
+  const total = totalDamagePmf([perHit], oneOrTwo);
 
   it('mixes per-hit rolls over the hit-count distribution', () => {
     expectPmf(total, {2: 0.25, 4: 0.375, 6: 0.25, 8: 0.125});
@@ -118,6 +157,25 @@ describe('totalDamagePmf', () => {
     expect(probabilityAtLeast(total, 4)).toBeCloseTo(0.75, 10); // 4, 6, 8
     expect(probabilityAtLeast(total, 9)).toBeCloseTo(0, 10); // nothing reaches 9
   });
+
+  it('a variable-power move draws each hit from ITS OWN distribution, in order', () => {
+    // Deterministic per-hit damage 1 / 10 / 100 with the stop-at-miss counts of a
+    // 3-hit 90% move: the totals separate cleanly by how many hits landed.
+    const hit1: Pmf = new Map([[1, 1]]);
+    const hit2: Pmf = new Map([[10, 1]]);
+    const hit3: Pmf = new Map([[100, 1]]);
+    const counts: Pmf = new Map([
+      [1, 0.1],
+      [2, 0.09],
+      [3, 0.81],
+    ]);
+    expectPmf(totalDamagePmf([hit1, hit2, hit3], counts), {1: 0.1, 11: 0.09, 111: 0.81});
+  });
+
+  it('hits past the array’s end repeat its last entry (uniform = one element)', () => {
+    const perHit: Pmf = new Map([[5, 1]]);
+    expectPmf(totalDamagePmf([perHit], new Map([[4, 1]])), {20: 1});
+  });
 });
 
 describe('independent rolls narrow the distribution vs @smogon/calc', () => {
@@ -129,7 +187,7 @@ describe('independent rolls narrow the distribution vs @smogon/calc', () => {
   ]);
 
   it('mean is preserved but extreme-total probability shrinks', () => {
-    const independent = totalDamagePmf(perHit, new Map([[3, 1]]));
+    const independent = totalDamagePmf([perHit], new Map([[3, 1]]));
     expect(expectedValue(independent)).toBeCloseTo(9, 10); // same mean as 3 × E=3
 
     const pAllMaxIndependent = independent.get(12) ?? 0; // 0.5^3

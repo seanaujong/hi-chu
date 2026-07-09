@@ -5,8 +5,6 @@ import type {DamageReport} from './damage.js';
 function report(over: Partial<DamageReport> & {move: string}): DamageReport {
   return {
     category: 'Physical',
-    multiHit: false,
-    approximate: false,
     total: {min: 100, max: 120, mean: 110},
     percent: {min: 30, max: 36, mean: 33},
     koChance: 0,
@@ -66,9 +64,10 @@ describe('renderMoveSection', () => {
       model({
         report: report({
           move: 'Bullet Seed',
-          multiHit: true,
-          perHit: {min: 49, max: 60},
-          hits: {expected: 3.1, distribution: [[2, 0.35], [3, 0.35], [4, 0.15], [5, 0.15]]},
+          multiHit: {
+            perHit: {min: 49, max: 60},
+            hits: {expected: 3.1, distribution: [[2, 0.35], [3, 0.35], [4, 0.15], [5, 0.15]]},
+          },
           percent: {min: 29.4, max: 90.1, mean: 45.6},
         }),
       }),
@@ -76,11 +75,6 @@ describe('renderMoveSection', () => {
     expect(html).toContain('<small>Hits:</small>');
     expect(html).toContain('≈3.1 hits');
     expect(html).toContain('per hit'); // 14.7–18% per hit (49/333, 60/333)
-  });
-
-  it('marks variable-power multi-hit as approximate', () => {
-    const html = renderMoveSection(model({report: report({move: 'Triple Axel', multiHit: true, approximate: true})}));
-    expect(html).toContain('multi-hit (approx.)');
   });
 
   it('inserts nothing for a non-damaging move (no report → empty section)', () => {

@@ -234,8 +234,26 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   no section at all** (`renderMoveSection` returns `''`). KO% and the multi-hit `Hits:`
   line ride along only when they apply. Checked by `render.test.ts` / `section.test.ts`.
 - ✅ **Own the hit-count model** in `multihit.ts` (`@smogon/calc` collapses multi-hit to
-  `k × one shared roll` and ignores Skill Link / Loaded Dice). Checked by `multihit.test.ts`
-  (distributions + the "independent rolls narrow the distribution" guard) and `damage.test.ts`.
+  `k × one shared roll` and ignores Skill Link / Loaded Dice). This includes the
+  **multiaccuracy trio** (Population Bomb, Triple Axel, Triple Kick): each hit after the
+  first passes its own 90% check or the move stops — the stop-at-miss law, conditioned on
+  hit 1 landing (every damage calc assumes the shown move connects). Loaded Dice DELETES
+  the checks (PS `data/items.ts`); Wide Lens lifts each to 99% with PS's own rounding
+  (the real Maushold/Smeargle item — other accuracy modifiers are a scope decision, no
+  randbats set pairs one with these moves). Checked by `multihit.test.ts` (distributions,
+  stop-at-miss, `perHitChance`, the "independent rolls narrow the distribution" guard)
+  and `damage.test.ts`.
+- ✅ **Variable-power multi-hit is computed per hit, through a stand-in move.** Triple
+  Axel (20/40/60) and Triple Kick (10/20/30) get one calc run per hit's true BP, convolved
+  over the stop-at-miss counts — exact, not the calc's correlated estimate. The trap: the
+  calc special-cases both moves BY NAME, recomputing BP from `move.hits` and **silently
+  ignoring `overrides.basePower`** — so `damage.ts` runs each hit as Pound (plain physical
+  contact, never special-cased) carrying the hit's BP and the real move's type/category.
+  Probe-verified exact vs the real move's `hits: 1` rolls, Technician and Tough Claws
+  included. If a future variable-power move is non-contact or carries a punch/slice/bite
+  flag, Pound stops being a faithful stand-in — revisit. Checked by `damage.test.ts`
+  ("variable-power multi-hit … is computed per hit"; guards watched failing with the law
+  reverted).
 - ✅ **Speed order: arithmetic delegated, ORDER owned, foe hover only.** `core/speed.ts`
   computes each still-possible set's effective Speed with the calc's `getFinalSpeed` (Scarf,
   paralysis incl. Quick Feet, Tailwind, boosts, weather/terrain abilities, Protosynthesis) —

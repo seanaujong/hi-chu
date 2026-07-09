@@ -26,11 +26,8 @@ function mon(over: Partial<ResolvedMon> & {speciesForme: string}): ResolvedMon {
 describe('single-hit move', () => {
   const r = calcDamage(mon({speciesForme: 'Garchomp', ability: 'Rough Skin'}), mon({speciesForme: 'Skarmory'}), 'Earthquake');
 
-  it('is reported as a non-multi-hit, exact calc', () => {
-    expect(r.multiHit).toBe(false);
-    expect(r.approximate).toBe(false);
-    expect(r.perHit).toBeUndefined();
-    expect(r.hits).toBeUndefined();
+  it('is reported as a non-multi-hit calc — no hit breakdown at all', () => {
+    expect(r.multiHit).toBeUndefined();
   });
 
   it('reports a coherent total, percent, and HP', () => {
@@ -106,21 +103,19 @@ describe('uniform-power multi-hit (Bullet Seed, 2-5)', () => {
   );
 
   it('exposes per-hit range and the real 35/35/15/15 hit-count distribution', () => {
-    expect(r.multiHit).toBe(true);
-    expect(r.approximate).toBe(false);
-    expect(r.perHit!.min).toBeLessThan(r.perHit!.max);
-    expect(r.hits!.distribution).toEqual([
+    expect(r.multiHit!.perHit.min).toBeLessThan(r.multiHit!.perHit.max);
+    expect(r.multiHit!.hits.distribution).toEqual([
       [2, 0.35],
       [3, 0.35],
       [4, 0.15],
       [5, 0.15],
     ]);
-    expect(r.hits!.expected).toBeCloseTo(3.1, 10);
+    expect(r.multiHit!.hits.expected).toBeCloseTo(3.1, 10);
   });
 
   it('total spans 2×min-hit to 5×max-hit', () => {
-    expect(r.total.min).toBe(r.perHit!.min * 2);
-    expect(r.total.max).toBe(r.perHit!.max * 5);
+    expect(r.total.min).toBe(r.multiHit!.perHit.min * 2);
+    expect(r.total.max).toBe(r.multiHit!.perHit.max * 5);
   });
 });
 
@@ -131,8 +126,8 @@ describe('hit-count modifiers', () => {
       mon({speciesForme: 'Tyranitar'}),
       'Icicle Spear',
     );
-    expect(r.hits!.distribution).toEqual([[5, 1]]);
-    expect(r.total.min).toBe(r.perHit!.min * 5);
+    expect(r.multiHit!.hits.distribution).toEqual([[5, 1]]);
+    expect(r.total.min).toBe(r.multiHit!.perHit.min * 5);
   });
 
   it('Loaded Dice forces a 50/50 split of four or five hits', () => {
@@ -141,27 +136,83 @@ describe('hit-count modifiers', () => {
       mon({speciesForme: 'Tyranitar'}),
       'Bullet Seed',
     );
-    expect(r.hits!.distribution).toEqual([
+    expect(r.multiHit!.hits.distribution).toEqual([
       [4, 0.5],
       [5, 0.5],
     ]);
-    expect(r.total.min).toBe(r.perHit!.min * 4);
-    expect(r.total.max).toBe(r.perHit!.max * 5);
+    expect(r.total.min).toBe(r.multiHit!.perHit.min * 4);
+    expect(r.total.max).toBe(r.multiHit!.perHit.max * 5);
   });
 });
 
-describe('variable-power multi-hit falls back to the calc total', () => {
-  const r = calcDamage(
-    mon({speciesForme: 'Cinderace', nature: 'Jolly'}),
-    mon({speciesForme: 'Tyranitar'}),
-    'Triple Axel',
-  );
+describe('variable-power multi-hit (Triple Axel 20/40/60) is computed per hit', () => {
+  const weavile = mon({speciesForme: 'Weavile', nature: 'Jolly'});
+  const tyranitar = mon({speciesForme: 'Tyranitar'});
+  const r = calcDamage(weavile, tyranitar, 'Triple Axel');
 
-  it('is marked approximate with no per-hit roll', () => {
-    expect(r.multiHit).toBe(true);
-    expect(r.approximate).toBe(true);
-    expect(r.perHit).toBeUndefined();
-    expect(r.notes.join(' ')).toMatch(/per-hit base power varies/);
+  it('carries the stop-at-miss hit counts: 0.1 / 0.09 / 0.81, ≈2.71 expected', () => {
+    const distribution = r.multiHit!.hits.distribution;
+    expect(distribution.map(([k]) => k)).toEqual([1, 2, 3]);
+    expect(distribution[0]![1]).toBeCloseTo(0.1, 10);
+    expect(distribution[1]![1]).toBeCloseTo(0.09, 10);
+    expect(distribution[2]![1]).toBeCloseTo(0.81, 10);
+    expect(r.multiHit!.hits.expected).toBeCloseTo(2.71, 10);
+  });
+
+  it('total min is ONE min hit (the move can stop at hit 1); max is all three maxed', () => {
+    // The 20 BP hit alone is the worst case, so the reported floor equals the
+    // per-hit floor — the correlated-total model could never produce that.
+    expect(r.total.min).toBe(r.multiHit!.perHit.min);
+    expect(r.total.max).toBeGreaterThan(r.multiHit!.perHit.max * 2); // 20+40+60 ≫ 2×60-hit
+  });
+
+  it('each hit uses its own base power: the mean sits near the 90%-weighted hit sum', () => {
+    // E[total] = E[hit1] + 0.9·E[hit2] + 0.81·E[hit3]; with BP 20/40/60 that is far
+    // above 2.71 × E[hit1] — the check that hit 2 and 3 really got their higher BP.
+    expect(r.total.mean).toBeGreaterThan(2.71 * r.multiHit!.perHit.min * 1.5);
+  });
+
+  it('Loaded Dice deletes the per-hit accuracy checks (Cinccino’s set): all 3 hits', () => {
+    const dice = calcDamage(mon({...weavile, item: 'Loaded Dice'}), tyranitar, 'Triple Axel');
+    expect(dice.multiHit!.hits.distribution).toEqual([[3, 1]]);
+    expect(dice.total.min).toBeGreaterThan(r.total.min); // the 1-hit floor is gone
+  });
+
+  it('Technician boosts every hit — all three BPs are ≤60 (Ambipom’s set)', () => {
+    // Pickup as the explicit no-op baseline: an unset ability would default to the
+    // species' first slot, which for Ambipom is Technician itself.
+    const plain = calcDamage(mon({speciesForme: 'Ambipom', nature: 'Jolly', ability: 'Pickup'}), tyranitar, 'Triple Axel');
+    const tech = calcDamage(mon({speciesForme: 'Ambipom', nature: 'Jolly', ability: 'Technician'}), tyranitar, 'Triple Axel');
+    expect(tech.total.mean / plain.total.mean).toBeCloseTo(1.5, 1);
+  });
+
+  it('Triple Kick shares the law at 10/20/30', () => {
+    const tk = calcDamage(mon({speciesForme: 'Hitmontop', nature: 'Adamant'}), tyranitar, 'Triple Kick');
+    expect(tk.multiHit!.hits.expected).toBeCloseTo(2.71, 10);
+    expect(tk.total.min).toBe(tk.multiHit!.perHit.min);
+  });
+});
+
+describe('Population Bomb checks 90% accuracy before every hit after the first', () => {
+  const maushold = mon({speciesForme: 'Maushold', nature: 'Jolly', ability: 'Technician'});
+  const tyranitar = mon({speciesForme: 'Tyranitar'});
+
+  it('bare: ≈6.51 expected hits, all 10 only at 0.9⁹ — and no all-hits-land caveat', () => {
+    const r = calcDamage(maushold, tyranitar, 'Population Bomb');
+    expect(r.multiHit!.hits.expected).toBeCloseTo((1 - 0.9 ** 10) / 0.1, 10);
+    expect(r.multiHit!.hits.distribution.find(([k]) => k === 10)![1]).toBeCloseTo(0.9 ** 9, 10);
+    expect(r.notes).toEqual([]); // the old "assumes all 10 hits land" note is dead
+  });
+
+  it('Wide Lens (the real Maushold/Smeargle item) lifts each check to 99% — ≈9.56 hits', () => {
+    const r = calcDamage(mon({...maushold, item: 'Wide Lens'}), tyranitar, 'Population Bomb');
+    expect(r.multiHit!.hits.expected).toBeCloseTo((1 - 0.99 ** 10) / 0.01, 10);
+  });
+
+  it('Loaded Dice: uniform 4..10, no accuracy checks — 7 expected hits', () => {
+    const r = calcDamage(mon({...maushold, item: 'Loaded Dice'}), tyranitar, 'Population Bomb');
+    expect(r.multiHit!.hits.expected).toBeCloseTo(7, 10);
+    expect(r.multiHit!.hits.distribution).toHaveLength(7);
   });
 });
 

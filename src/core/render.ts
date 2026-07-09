@@ -43,9 +43,8 @@ export function koText(chance: number): string {
 /** The "≈3.1 hits" / per-hit detail for a multi-hit move. */
 function multiHitDetail(r: DamageReport): string {
   if (!r.multiHit) return '';
-  if (r.approximate || !r.hits || !r.perHit) return 'multi-hit (approx.)';
-  const hits = `≈${Math.round(r.hits.expected * 10) / 10} hits`;
-  const perHit = `${asPercent(r.perHit.min, r.defenderMaxHP)}–${asPercent(r.perHit.max, r.defenderMaxHP)}% per hit`;
+  const hits = `≈${Math.round(r.multiHit.hits.expected * 10) / 10} hits`;
+  const perHit = `${asPercent(r.multiHit.perHit.min, r.defenderMaxHP)}–${asPercent(r.multiHit.perHit.max, r.defenderMaxHP)}% per hit`;
   return `${hits} · ${perHit}`;
 }
 

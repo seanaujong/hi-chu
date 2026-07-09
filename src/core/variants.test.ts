@@ -29,8 +29,6 @@ function report(percentMax: number, koChance = 0, desc = ''): DamageReport {
   return {
     move: 'Surf',
     category: 'Special',
-    multiHit: false,
-    approximate: false,
     total: {min: 100, max: percentMax * 3, mean: 110},
     percent: {min: percentMax - 6, max: percentMax, mean: percentMax - 3},
     koChance,

@@ -20,7 +20,17 @@ export type Pmf = ReadonlyMap<number, number>;
 /** How many times a move hits, before ability/item modifiers. */
 export type HitSpec =
   | {readonly kind: 'single'} //                       an ordinary one-hit move
-  | {readonly kind: 'fixed'; readonly hits: number} // Double Kick (2), Population Bomb (10), …
+  | {
+      readonly kind: 'fixed';
+      readonly hits: number; // Double Kick (2), Population Bomb (10), …
+      /**
+       * PS `multiaccuracy`: the move checks accuracy (this percent, e.g. 90) before every
+       * hit AFTER the first and stops at the first miss — Population Bomb, Triple Axel,
+       * Triple Kick. Absent = only the move's initial accuracy check, which (like every
+       * damage calc) we condition on passing.
+       */
+      readonly accuracyPerHit?: number;
+    }
   | {readonly kind: 'range'; readonly min: number; readonly max: number}; // 2-5 moves
 
 /** Ability/item facts that change the hit-count distribution. */
@@ -29,6 +39,8 @@ export interface HitCountMods {
   readonly skillLink: boolean;
   /** Loaded Dice — see `hitCountPmf` for the exact reshaping it applies. */
   readonly loadedDice: boolean;
+  /** Wide Lens — raises each per-hit accuracy check (×4505/4096, PS rounding: 90 → 99). */
+  readonly wideLens: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -52,6 +64,9 @@ export function pmfFromSamples(samples: readonly number[]): Pmf {
  *   - Loaded Dice on a 2-5 move: the 70% of rolls that would have been 2 or 3 are
  *     reassigned uniformly to {4,5}; the 30% already at 4/5 stay — netting {4:½, 5:½}.
  *   - Loaded Dice on Population Bomb (10): `10 - random(7)` → uniform over {4…10}.
+ *   - `multiaccuracy` (Population Bomb, Triple Axel, Triple Kick): every hit after the
+ *     first must pass its own accuracy check or the move ends — the stop-at-miss law.
+ *     Loaded Dice DELETES the flag (PS `data/items.ts`), so its holder keeps every hit.
  */
 export function hitCountPmf(spec: HitSpec, mods: HitCountMods): Pmf {
   switch (spec.kind) {
@@ -62,6 +77,9 @@ export function hitCountPmf(spec: HitSpec, mods: HitCountMods): Pmf {
       if (spec.hits === 10 && mods.loadedDice) {
         // Population Bomb + Loaded Dice: uniform 4..10 (and never misses a hit).
         return pmfFromSamples([4, 5, 6, 7, 8, 9, 10]);
+      }
+      if (spec.accuracyPerHit !== undefined && !mods.loadedDice) {
+        return stopAtMissPmf(spec.hits, perHitChance(spec.accuracyPerHit, mods));
       }
       return new Map([[spec.hits, 1]]);
 
@@ -92,6 +110,35 @@ function baseRangePmf(min: number, max: number): Pmf {
   const samples: number[] = [];
   for (let h = min; h <= max; h++) samples.push(h);
   return pmfFromSamples(samples);
+}
+
+/**
+ * The chance one per-hit accuracy check passes, as a probability. Wide Lens applies its
+ * 4505/4096 with PS's own round-half-down `modify()` (90 → 99). Other accuracy modifiers
+ * (accuracy/evasion boosts, Compound Eyes, Hustle, No Guard) are deliberately out of
+ * scope — no randbats set pairs one with a multiaccuracy move.
+ */
+export function perHitChance(accuracyPercent: number, mods: HitCountMods): number {
+  const acc = mods.wideLens ? Math.trunc((accuracyPercent * 4505 + 2048 - 1) / 4096) : accuracyPercent;
+  return Math.min(1, acc / 100);
+}
+
+/**
+ * The stop-at-miss hit-count law (PS `multiaccuracy`): hit 1 is certain — damage calcs
+ * always condition on the shown move connecting — and each further hit lands with
+ * probability `p`, the move ending at the first miss. P(k) = p^(k-1)·(1-p) below the
+ * cap, p^(maxHits-1) at it.
+ */
+function stopAtMissPmf(maxHits: number, p: number): Pmf {
+  if (p >= 1) return new Map([[maxHits, 1]]);
+  const pmf = new Map<number, number>();
+  let reach = 1; // probability the move is still going when hit k is attempted
+  for (let k = 1; k < maxHits; k++) {
+    pmf.set(k, reach * (1 - p));
+    reach *= p;
+  }
+  pmf.set(maxHits, reach);
+  return pmf;
 }
 
 /** Loaded Dice reshaping: mass on hit counts <4 is split evenly between 4 and 5. */
@@ -131,16 +178,25 @@ export function convolveN(base: Pmf, n: number): Pmf {
 }
 
 /**
- * Total damage when both the per-hit roll and the hit count are random.
+ * Total damage when both the per-hit rolls and the hit count are random.
  *
- * For each possible hit count k (weighted by `hitCounts`), the total is the sum of
- * k independent per-hit rolls; mixing those by their hit-count probability gives the
- * exact total-damage distribution. This is the corrected replacement for `k × one roll`.
+ * `perHit[i-1]` is hit i's damage distribution; hits past the array's end repeat its
+ * last entry, so a uniform-power move passes ONE element and a variable-power move
+ * (Triple Axel 20/40/60) one per hit. For each possible hit count k (weighted by
+ * `hitCounts`), the total is the sum of the first k hits' independent rolls; mixing
+ * those by their hit-count probability gives the exact total-damage distribution.
+ * This is the corrected replacement for the calc's `k × one shared roll`.
  */
-export function totalDamagePmf(perHit: Pmf, hitCounts: Pmf): Pmf {
+export function totalDamagePmf(perHit: readonly Pmf[], hitCounts: Pmf): Pmf {
   const total = new Map<number, number>();
-  for (const [k, pk] of hitCounts) {
-    for (const [dmg, pd] of convolveN(perHit, k)) {
+  let prefix: Pmf = new Map([[0, 1]]); // distribution of the first `hitsConvolved` hits' sum
+  let hitsConvolved = 0;
+  for (const [k, pk] of [...hitCounts.entries()].sort((a, b) => a[0] - b[0])) {
+    while (hitsConvolved < k) {
+      prefix = convolve(prefix, perHit[Math.min(hitsConvolved, perHit.length - 1)]!);
+      hitsConvolved++;
+    }
+    for (const [dmg, pd] of prefix) {
       total.set(dmg, (total.get(dmg) ?? 0) + pk * pd);
     }
   }

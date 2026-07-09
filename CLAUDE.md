@@ -236,6 +236,19 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   the STONE in its item pool, because Champions keys Mega sets irregularly ("Floette-Mega" for
   a Floette-Eternal holding Floettite). Checked by `randbats.test.ts` ("finds the Mega set by
   its stone").
+- ✅ **The Champions feed's `evs` are STAT POINTS, not EVs — converted at fetch.** Champions
+  has no EVs/IVs: Showdown's mod (`data/mods/champions/scripts.ts`, `statModify`) reads
+  `set.evs` as per-stat points and puts `max(2·points − 1, 0)` where mainline puts
+  `IV + ⌊EV/4⌋` (IVs hardcoded 31). Fed literally to `@smogon/calc`, the feed-wide `11`
+  deflates every stat on BOTH mons — raw damage roughly cancels, but the shown PERCENT
+  inflates because the defender's max HP is the denominator (replay
+  gen9championsrandombattle-2646312545: Poltergeist into Arbok read "min 47%" for a true
+  42.9%). `randbats.championsStatPointsToEvs` converts with `EV = 8·points − 4` (exact:
+  `⌊(8p−4)/4⌋ = 2p−1`), keyed on the format id inside `fetchRandbats` — mainline feeds' `evs`
+  ARE EVs and pass through untouched — and the localStorage cache is versioned
+  (`STORAGE_VERSION`) so a stale unconverted copy can't outlive an update. Checked by
+  `randbats.test.ts` ("champions stat points convert to mainline EVs" pins Arbok's real
+  156 max HP at L54, plus the format-id keying through `fetchRandbats`).
 - ✅ **Four revealed moves = the full moveset; stop speculating.** A Pokémon has four move
   slots, so once `revealedMoves.length >= 4`, `inferSets` drops the role's remaining pool from
   the display (every shown move is a confirmed ✓). Checked by `knowledge.test.ts` ("stops

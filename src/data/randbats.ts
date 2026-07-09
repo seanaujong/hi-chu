@@ -5,11 +5,15 @@
 // memory for the session and in localStorage with a TTL so repeat visits are
 // instant and resilient to the feed being briefly unreachable.
 
-import type {RandbatsData, RandbatsEntry, RandbatsRole, StatsTable} from '../core/types.js';
+import type {RandbatsData, RandbatsEntry, RandbatsRole, StatID, StatsTable} from '../core/types.js';
 
 const BASE_URL = 'https://pkmn.github.io/randbats/data';
 const TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const STORAGE_PREFIX = 'hichu:randbats:';
+// Data-shape version of what writeStorage persists. A mismatch (or absence, for
+// pre-versioning entries) discards the cached copy and refetches, so a shipped
+// change to the conversion below can never serve a stale unconverted feed.
+const STORAGE_VERSION = 2; // v2: Champions stat points arrive converted to mainline EVs
 
 const memory = new Map<string, RandbatsData>();
 const inFlight = new Map<string, Promise<RandbatsData | null>>();
@@ -18,7 +22,8 @@ function readStorage(formatId: string): RandbatsData | null {
   try {
     const raw = localStorage.getItem(STORAGE_PREFIX + formatId);
     if (!raw) return null;
-    const {t, data} = JSON.parse(raw) as {t: number; data: RandbatsData};
+    const {t, v, data} = JSON.parse(raw) as {t: number; v?: number; data: RandbatsData};
+    if (v !== STORAGE_VERSION) return null;
     if (Date.now() - t > TTL_MS) return null;
     return data;
   } catch {
@@ -28,7 +33,7 @@ function readStorage(formatId: string): RandbatsData | null {
 
 function writeStorage(formatId: string, data: RandbatsData): void {
   try {
-    localStorage.setItem(STORAGE_PREFIX + formatId, JSON.stringify({t: Date.now(), data}));
+    localStorage.setItem(STORAGE_PREFIX + formatId, JSON.stringify({t: Date.now(), v: STORAGE_VERSION, data}));
   } catch {
     // Quota or disabled storage — the in-memory cache still serves this session.
   }
@@ -55,7 +60,8 @@ export async function fetchRandbats(formatId: string): Promise<RandbatsData | nu
     try {
       const res = await fetch(`${BASE_URL}/${formatId}.json`);
       if (!res.ok) return null; // unsupported format (e.g. Challenge Cup) → no data
-      const data = (await res.json()) as RandbatsData;
+      const fetched = (await res.json()) as RandbatsData;
+      const data = isChampionsFormat(formatId) ? championsStatPointsToEvs(fetched) : fetched;
       memory.set(formatId, data);
       writeStorage(formatId, data);
       return data;
@@ -92,6 +98,40 @@ interface RawEntry {
   readonly roles?: Readonly<Record<string, RawRole>>;
   readonly evs?: StatsTable;
   readonly ivs?: StatsTable;
+}
+
+// Champions has no EVs or IVs — each stat carries 0+ "stat points", and the feed's
+// `evs` field holds those POINTS, not EVs. Showdown's Champions mod substitutes
+// `max(2·points − 1, 0)` where the mainline stat formula has `IV + ⌊EV/4⌋`, with
+// IVs hardcoded to 31 (data/mods/champions/scripts.ts, statModify). @smogon/calc
+// only speaks the mainline formula, so feeding it points literally deflates every
+// stat on both mons (e.g. the feed-wide `11` reads as ⌊11/4⌋ = 2 formula points
+// instead of the real 2·11 − 1 = 21 ≡ 85 mainline EVs). The conversion that makes
+// both formulas agree exactly, for any point count: EV = 8·points − 4, since
+// ⌊(8p − 4)/4⌋ = 2p − 1. Keyed on the format id — mainline feeds' `evs` ARE EVs
+// and must pass through untouched. fetchRandbats is the only live entry point, so
+// converting there covers every consumer (a captured champions FIXTURE must apply
+// championsStatPointsToEvs itself).
+const isChampionsFormat = (formatId: string): boolean => formatId.includes('champions');
+
+function pointsToEvs(stats: StatsTable): StatsTable {
+  const out: StatsTable = {};
+  for (const [k, points] of Object.entries(stats) as [StatID, number][]) {
+    out[k] = points <= 0 ? 0 : 8 * points - 4;
+  }
+  return out;
+}
+
+/** Convert a Champions feed's stat points to the mainline-EV currency the calc speaks. */
+export function championsStatPointsToEvs(data: RandbatsData): RandbatsData {
+  const raw = data as unknown as Readonly<Record<string, RawEntry>>;
+  const convertRole = (r: RawRole): RawRole => ({...r, ...(r.evs !== undefined ? {evs: pointsToEvs(r.evs)} : {})});
+  const convertEntry = (e: RawEntry): RawEntry => ({
+    ...e,
+    ...(e.evs !== undefined ? {evs: pointsToEvs(e.evs)} : {}),
+    ...(e.roles ? {roles: Object.fromEntries(Object.entries(e.roles).map(([n, r]) => [n, convertRole(r)]))} : {}),
+  });
+  return Object.fromEntries(Object.entries(raw).map(([name, e]) => [name, convertEntry(e)])) as unknown as RandbatsData;
 }
 
 function normalizeRole(r: RawRole): RandbatsRole {

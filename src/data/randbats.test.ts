@@ -1,5 +1,6 @@
-import {describe, it, expect} from 'vitest';
-import {pickEntry, megaEntryForItem} from './randbats.js';
+import {describe, it, expect, vi, afterEach} from 'vitest';
+import {Generations, Pokemon} from '@smogon/calc';
+import {pickEntry, megaEntryForItem, championsStatPointsToEvs, fetchRandbats} from './randbats.js';
 import {inferSets} from '../core/knowledge.js';
 import type {LiveFacts, RandbatsData, RandbatsEntry} from '../core/types.js';
 
@@ -113,6 +114,51 @@ describe('normalizes the loose feed shape (gen9championsrandombattle)', () => {
     expect(dragonite.candidates[0]!.gimmicks).toEqual([]);
   });
 
+  it('champions stat points convert to mainline EVs (EV = 8·points − 4)', () => {
+    // The Champions feed's `evs` are STAT POINTS in Champions' own stat system, not
+    // EVs: its formula puts max(2·points − 1, 0) where mainline puts IV + ⌊EV/4⌋
+    // (IVs hardcoded 31). Fed literally to @smogon/calc, 11 points read as 2 formula
+    // points instead of the real 21 — deflating every stat on BOTH mons. Verbatim
+    // Arbok from the feed, pinned against replay gen9championsrandombattle-2646312545.
+    const championsFeed = {
+      Arbok: {
+        level: 54,
+        abilities: ['Intimidate'],
+        items: ['Leftovers'],
+        evs: {hp: 11, atk: 11, def: 11, spa: 11, spd: 11, spe: 11},
+        roles: {
+          'Bulky Attacker': {
+            abilities: ['Intimidate'],
+            items: ['Leftovers'],
+            moves: ['Earthquake', 'Glare', 'Gunk Shot', 'Knock Off', 'Toxic Spikes'],
+            evs: {hp: 11, atk: 11, def: 11, spa: 11, spd: 11, spe: 11},
+          },
+        },
+      },
+    } as unknown as RandbatsData;
+
+    const arbok = pickEntry(championsStatPointsToEvs(championsFeed), 'Arbok')!;
+    const mainline = {hp: 84, atk: 84, def: 84, spa: 84, spd: 84, spe: 84}; // ⌊84/4⌋ = 21 = 2·11 − 1
+    expect(arbok.evs).toEqual(mainline); // entry-level table
+    expect(arbok.roles!['Bulky Attacker']!.evs).toEqual(mainline); // role-level table
+
+    // The falsifiable link to the replay: the real Arbok showed 156/156 HP at L54.
+    // Converted EVs reproduce it through @smogon/calc; the raw points give 146,
+    // which is exactly what inflated every shown damage percent (47% for a true 43%).
+    // (non-null: the toEqual above just proved the table exists)
+    expect(new Pokemon(Generations.get(9), 'Arbok', {level: 54, evs: arbok.evs!}).maxHP()).toBe(156);
+  });
+
+  it('zero stat points convert to zero EVs, and absent tables stay absent', () => {
+    const feed = {
+      Emolga: {level: 50, abilities: ['Static'], items: [], evs: {hp: 0, spe: 11}},
+      Blissey: {level: 50, abilities: ['Natural Cure'], items: ['Leftovers']}, // no evs key
+    } as unknown as RandbatsData;
+    const converted = championsStatPointsToEvs(feed);
+    expect(pickEntry(converted, 'Emolga')!.evs).toEqual({hp: 0, spe: 84});
+    expect(pickEntry(converted, 'Blissey')!.evs).toBeUndefined(); // the 85-EV baseline still applies downstream
+  });
+
   it('derives a Z-Move gimmick from a Z-crystal item (gen7)', () => {
     // gen7 carries both Mega and Z-move; a crystal item (ends in " Z") is the Z signal.
     const gen7Feed = {
@@ -127,5 +173,26 @@ describe('normalizes the loose feed shape (gen9championsrandombattle)', () => {
     } as unknown as RandbatsData;
     const k = inferSets(facts({speciesForme: 'Aerodactyl'}), pickEntry(gen7Feed, 'Aerodactyl')!);
     expect(k.candidates[0]!.gimmicks).toEqual([{kind: 'zmove', crystal: {name: 'Flyinium Z', known: false}}]);
+  });
+});
+
+describe('fetchRandbats keys the stat-point conversion on the format id', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const serve = (feed: unknown): void => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ok: true, json: async () => feed})));
+  };
+
+  it('converts a champions feed but passes a mainline feed through untouched', async () => {
+    // Same shape, two format ids: only the champions one is in stat points. A
+    // mainline feed's evs ARE EVs (real gen9 sets override single stats), so a
+    // blanket conversion would corrupt them — the format id is the discriminator.
+    serve({Arbok: {level: 54, abilities: ['Intimidate'], items: ['Leftovers'], evs: {hp: 11}}});
+    const champions = await fetchRandbats('gen9championsrandombattle');
+    expect(pickEntry(champions!, 'Arbok')!.evs).toEqual({hp: 84});
+
+    serve({Arbok: {level: 54, abilities: ['Intimidate'], items: ['Leftovers'], evs: {hp: 11}}});
+    const mainline = await fetchRandbats('gen9randombattle');
+    expect(pickEntry(mainline!, 'Arbok')!.evs).toEqual({hp: 11});
   });
 });

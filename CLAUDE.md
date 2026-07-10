@@ -207,9 +207,14 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   don't describe the Mega. Checked by `section.test.ts` ("previews the Mega forme": damage swings,
   the gen-7-vs-gen-6 ⚡ split, and byte-identity for unticked / no-stone / already-Mega / benched —
   each guard watched failing) and `readState.test.ts` (`readMegaToggled`, `readMegaForme` incl. the
-  already-Mega and no-stone guards). 👁 for drift like Tera: the checkbox needs a live game
-  (`npm run player-check`, a mega-capable format — gen 9 randbats has no Megas); `battle.dex.items`
-  IS readable in a spectator replay, so `drift-check` probes the stone→forme map shape.
+  already-Mega and no-stone guards). 👁 for drift like Tera, on a mega-capable format — gen 9
+  randbats has no Megas, so use `node scripts/player-check.mjs gen9championsrandombattle`. It
+  probes `readMegaForme`'s live source (the stone→forme dex map, plus any stone-holder in the
+  private team — verified live: Gengar/Gengarite → Gengar-Mega, Dragonite/Dragoninite →
+  Dragonite-Mega); `battle.dex.items` is also readable in a spectator replay, so `drift-check`
+  guards the map shape too. The checkbox SELECTOR still needs the Mega mon ACTIVE with the move
+  menu open (a random battle rarely obliges) — a team format that forces a Mega lead is the
+  reliable way to exercise it end to end.
 - ✅ **Set narrowing uses every public reveal, nothing private.** Roles are filtered by moves
   used, revealed item (held or `prevItem`), and revealed ability — checked by
   `resolve.test.ts` ("evidence beyond moves narrows the role"). The own-side mirror view is

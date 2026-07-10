@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm run test",
     "drift-check": "node scripts/drift-check.mjs",
-    "player-check": "node scripts/player-check.mjs"
+    "player-check": "node scripts/player-check.mjs",
+    "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
     "@smogon/calc": "^0.10.0"

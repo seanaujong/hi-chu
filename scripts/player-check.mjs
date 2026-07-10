@@ -23,140 +23,18 @@
 // needs no teambuilder, so the assumed-spread path gets a real request JSON):
 //
 //   node scripts/player-check.mjs gen9hackmonscup
+//
+// The two-account battle itself lives in `lib/showdown.mjs`, shared with `screenshots.mjs`.
 
-import {readFileSync} from 'node:fs';
-import puppeteer from 'puppeteer-core';
+import {startBattle, readBundle, sleep} from './lib/showdown.mjs';
 
-function account(envVar) {
-  const raw = process.env[envVar];
-  const [name, password] = (raw ?? '').split(':');
-  if (!name || !password) {
-    console.error(`player-check needs ${envVar}="name:password" (two registered throwaway accounts).`);
-    process.exit(2);
-  }
-  return {name, password};
-}
-const ACC1 = account('PS_ACCOUNT1');
-const ACC2 = account('PS_ACCOUNT2');
 const FORMAT = process.argv[2] || 'gen9randombattle';
-
-const BUNDLE = readFileSync(new URL('../dist/content.js', import.meta.url), 'utf8');
-const launchOpts = process.env.CHROME_PATH ? {executablePath: process.env.CHROME_PATH} : {channel: 'chrome'};
+const BUNDLE = readBundle();
 const problems = [];
 
-/**
- * Log in, tolerating a throttled `act=login`. Showdown rate-limits logins per IP, so the
- * first attempt of a run started soon after a previous one routinely goes nowhere: the
- * client's `passwordRename` resolves, the account silently stays a guest, and a lone wait
- * just times out. Retrying with backoff clears it.
- *
- * The two failures look identical from `user.get('named')`, so they're told apart at the
- * source: `action.php` answers a REFUSAL with `{"actionerror":"Wrong password."}` and a
- * throttle with nothing at all. A refusal fails fast — retrying a bad password only walks
- * into the same wall, and a "throttled, wait a minute" message would be a lie.
- */
-async function login(page, name, password) {
-  const refusals = [];
-  const listen = (res) => {
-    if (!/action\.php/.test(res.url())) return;
-    res
-      .text()
-      .then((body) => {
-        const error = /"actionerror":"([^"]+)"/.exec(body);
-        if (error) refusals.push(error[1]);
-      })
-      .catch(() => {}); // a body we can't read tells us nothing either way
-  };
-  page.on('response', listen);
-  try {
-    for (let attempt = 1; attempt <= 4; attempt++) {
-      // `rename` only fetches an assertion and pops the login form for a registered name;
-      // `passwordRename` is the act=login path the popup's own Log in button calls.
-      await page.evaluate((n, p) => globalThis.app.user.passwordRename(n, p), name, password);
-      try {
-        // Poll on a timer, not rAF: we're waiting on a model field, not a paint.
-        await page.waitForFunction(
-          (id) => {
-            const toId = (s) => (s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
-            return globalThis.app.user.get('named') && toId(globalThis.app.user.get('name')) === id;
-          },
-          {timeout: 15000, polling: 500},
-          name.toLowerCase().replace(/[^a-z0-9]/g, ''),
-        );
-        if (attempt > 1) console.log(`  · login for ${name} took ${attempt} attempts (throttled)`);
-        console.log(`✓ logged in as ${name}`);
-        return;
-      } catch (timeout) {
-        await new Promise((r) => setTimeout(r, 500)); // let a refusal body finish arriving
-        if (refusals.length) throw new Error(`login refused for ${name} — action.php said: ${refusals[0]}`);
-        if (attempt === 4) {
-          throw new Error(
-            `login for ${name} never took after 4 attempts (~60s), and action.php never refused it. ` +
-              `Showdown throttles act=login per IP — wait a minute and rerun.`,
-          );
-        }
-        console.log(`  · login attempt ${attempt} for ${name} timed out; retrying`);
-        await new Promise((r) => setTimeout(r, attempt * 3000)); // back off: 3s, 6s, 9s
-      }
-    }
-  } finally {
-    page.off('response', listen);
-  }
-}
-
-async function client({name, password}) {
-  const browser = await puppeteer.launch({headless: true, ...launchOpts});
-  const page = await browser.newPage();
-  await page.setViewport({width: 1280, height: 900});
-  await page.setBypassCSP(true);
-  await page.goto('https://play.pokemonshowdown.com/', {waitUntil: 'domcontentloaded'});
-  // Handshake done once the server has assigned a Guest name (or restored a login).
-  await page.waitForFunction(() => {
-    const u = globalThis.app?.user;
-    return !!u && (u.get('named') || /^guest/i.test(u.get('name') ?? ''));
-  }, {timeout: 45000});
-  await login(page, name, password);
-  // A previous run that crashed before forfeiting leaves its battle room attached to the
-  // account. Forfeit and leave it, and remember every id that was already here — the room
-  // lookup below waits for a room that ISN'T one of these, so a lingering finished battle
-  // can never be mistaken for the one we're about to start.
-  const stale = await page.evaluate(() => {
-    const ids = Object.keys(globalThis.app.rooms).filter((k) => k.startsWith('battle-'));
-    for (const id of ids) {
-      globalThis.app.send('/forfeit', id);
-      globalThis.app.leaveRoom(id);
-    }
-    return ids;
-  });
-  if (stale.length) console.log(`  · forfeited ${stale.length} stale battle room(s) from an earlier run`);
-  return {browser, page, stale};
-}
-
-/** The id of a battle room that appeared AFTER login (ignoring any stale ones). */
-const battleRoom = ({page, stale}) =>
-  page
-    .waitForFunction(
-      (old) => Object.keys(globalThis.app.rooms).find((k) => k.startsWith('battle-') && !old.includes(k)) ?? false,
-      {timeout: 45000},
-      stale,
-    )
-    .then((h) => h.jsonValue());
-
-const p1 = await client(ACC1);
-let p2;
+const battle = await startBattle({format: FORMAT, viewport: {width: 1280, height: 900}});
 try {
-  p2 = await client(ACC2);
-  await p1.page.evaluate((who, fmt) => globalThis.app.send(`/challenge ${who}, ${fmt}`), ACC2.name, FORMAT);
-  await new Promise((r) => setTimeout(r, 2000)); // let the challenge land
-  await p2.page.evaluate((who) => globalThis.app.send(`/accept ${who}`), ACC1.name);
-  const roomid = await battleRoom(p1);
-  await battleRoom(p2);
-  console.log(`✓ battle room: ${roomid}`);
-
-  await p1.page.waitForFunction((id) => {
-    const room = globalThis.app.rooms[id];
-    return room?.battle?.myPokemon?.length > 0 && room.battle.turn >= 1;
-  }, {timeout: 45000}, roomid);
+  const {p1, roomid} = battle;
 
   // --- 1. the ServerPokemon contract ---------------------------------------
   const team = await p1.page.evaluate((id) =>
@@ -208,7 +86,7 @@ try {
       } catch {
         continue;
       }
-      await new Promise((r) => setTimeout(r, 350));
+      await sleep(350);
       const key = await h.evaluate((el) => el.getAttribute('data-tooltip'));
       perButton.set(key, await p1.page.evaluate(() => document.querySelector('#tooltipwrapper')?.innerHTML ?? ''));
     }
@@ -267,12 +145,8 @@ try {
   }, roomid);
   // Absent is only a soft signal (the active may simply be unable to Tera this game).
   console.log(tera ? '✓ Terastallize checkbox selector matches' : '· Terastallize checkbox absent this battle (soft signal — retry another game before calling drift)');
-
-  await p1.page.evaluate((id) => globalThis.app.send('/forfeit', id), roomid);
-  await new Promise((r) => setTimeout(r, 1500));
 } finally {
-  await p1.browser.close();
-  if (p2) await p2.browser.close();
+  await battle.close();
 }
 
 if (problems.length) {

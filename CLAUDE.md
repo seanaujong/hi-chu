@@ -471,7 +471,11 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   `npm run player-check`: a replay is a spectator view, so `battle.myPokemon` (the
   `ClientServerPokemon` contract, `stats` included), the switch-menu hover, and the
   Terastallize checkbox are
-  invisible to drift-check — player-check logs two throwaway accounts into the real site
+  invisible to drift-check. Run it on BOTH sides of the format split — `npm run
+  player-check` (randbats) and `node scripts/player-check.mjs gen9hackmonscup` (an OPEN
+  format that still needs no teambuilder, so the assumed-spread path gets a real request
+  JSON; this is what caught the open-format switch menu). Player-check logs two throwaway
+  accounts into the real site
   (`PS_ACCOUNT1="name:password" PS_ACCOUNT2=… npm run player-check`; credentials via env,
   never committed), has them battle each other, and probes exactly those reads with the
   shipped bundle, forfeiting when done. Both are 👁 not ✅ because they need a browser + the

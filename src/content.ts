@@ -10,7 +10,7 @@
 
 import {TOOLTIP_STYLE} from './core/render.js';
 import {cachedRandbats, fetchRandbats} from './data/randbats.js';
-import {detectFormat, readTeraToggled, type ClientBattle, type ClientPokemon, type ClientServerPokemon} from './battle/readState.js';
+import {detectFormat, readTeraToggled, readMegaToggled, type ClientBattle, type ClientPokemon, type ClientServerPokemon} from './battle/readState.js';
 import {buildMoveSection, buildPokemonSection, buildSwitchSection} from './section.js';
 
 declare global {
@@ -43,10 +43,14 @@ function sourceFor(battle: ClientBattle): {data: ReturnType<typeof cachedRandbat
   return {data};
 }
 
-/** Pokémon hover: the information-game section (or '' while data warms). */
+/** Pokémon hover: the information-game section (or '' while data warms). The Mega
+ *  Evolution box (DOM-only) previews our active mon's Mega forme on our-view surfaces —
+ *  the ⚡ verdict on a foe hover, the matchup view on our own. */
 export function buildSection(battle: ClientBattle, pokemon: ClientPokemon): string {
   const src = sourceFor(battle);
-  return src ? buildPokemonSection(battle, pokemon, src.data) : '';
+  if (!src) return '';
+  const megaSelected = typeof document !== 'undefined' && readMegaToggled(battle, document);
+  return buildPokemonSection(battle, pokemon, src.data, megaSelected);
 }
 
 /** Switch-menu hover (a ServerPokemon, no battle-view Pokémon): the matchup block. */
@@ -56,13 +60,15 @@ export function buildSwitchPokemonSection(battle: ClientBattle, server: ClientSe
 }
 
 /** Move-button hover: the single-move damage section (or '' while data warms).
- *  The Terastallize checkbox lives only in the DOM (both clients), so this shell
- *  reads it here and hands the pure orchestration a plain flag. */
+ *  The gimmick checkboxes (Terastallize, Mega Evolution) live only in the DOM (both
+ *  clients), so this shell reads them here and hands the pure orchestration plain flags. */
 export function buildMoveButtonSection(battle: ClientBattle, pokemon: ClientPokemon, moveName: string): string {
   const src = sourceFor(battle);
   if (!src) return '';
-  const teraSelected = typeof document !== 'undefined' && readTeraToggled(battle, document);
-  return buildMoveSection(battle, pokemon, moveName, src.data, teraSelected);
+  const hasDom = typeof document !== 'undefined';
+  const teraSelected = hasDom && readTeraToggled(battle, document);
+  const megaSelected = hasDom && readMegaToggled(battle, document);
+  return buildMoveSection(battle, pokemon, moveName, src.data, teraSelected, megaSelected);
 }
 
 function injectStyleOnce(): void {

@@ -14,6 +14,8 @@ import {
   serverStats,
   type ClientServerPokemon,
   readTeraToggled,
+  readMegaToggled,
+  readMegaForme,
   detectFormat,
   findOpposingActive,
   readFieldFacts,
@@ -519,6 +521,78 @@ describe('readTeraToggled (the move panel’s Terastallize checkbox)', () => {
 
   it('is false when no checkbox exists at all (already terastallized, can’t Tera, not choosing)', () => {
     expect(readTeraToggled(battle('battle-x'), doc())).toBe(false);
+  });
+});
+
+describe('readMegaToggled (the move panel’s Mega Evolution checkbox)', () => {
+  const battle = (roomid?: string): ClientBattle =>
+    ({gen: 7, tier: '[Gen 7] Random Battle', sides: [], roomid} as unknown as ClientBattle);
+  const doc = (over: {rooms?: Record<string, {checked: boolean} | null>; global?: {checked: boolean} | null} = {}): ToggleDocument => ({
+    getElementById: (id) => (over.rooms && id in over.rooms ? {querySelector: () => over.rooms![id] ?? null} : null),
+    querySelector: () => over.global ?? null,
+  });
+
+  it('reads the checked box scoped to THIS battle’s room, never another room’s', () => {
+    expect(readMegaToggled(battle('battle-x'), doc({rooms: {'room-battle-x': {checked: true}}}))).toBe(true);
+    expect(readMegaToggled(battle('battle-x'), doc({rooms: {'room-battle-x': {checked: false}}}))).toBe(false);
+    // A scoped miss is false — a second battle's checked box must not leak in.
+    expect(readMegaToggled(battle('battle-x'), doc({rooms: {'room-battle-x': null}, global: {checked: true}}))).toBe(false);
+  });
+
+  it('falls back to a document-wide read when the room element is missing (preact client)', () => {
+    expect(readMegaToggled(battle('battle-x'), doc({global: {checked: true}}))).toBe(true);
+  });
+
+  it('is false when no checkbox exists (already Mega, can’t Mega, not choosing)', () => {
+    expect(readMegaToggled(battle('battle-x'), doc())).toBe(false);
+  });
+});
+
+describe('readMegaForme (a held Mega stone → the forme it unlocks, for the preview)', () => {
+  // A Charizard holding Charizardite X: the private team names the stone; the client dex
+  // maps it to the forme (`megaStone[species.name]`) and serves that forme's data.
+  const megaXData = {exists: true, baseStats: {hp: 78, atk: 130, def: 111, spa: 130, spd: 85, spe: 100}, types: ['Fire', 'Dragon'], abilities: {0: 'Tough Claws'}};
+  const battle = (over: {item?: string; itemsGet?: (id: string) => unknown; speciesGet?: (name: string) => unknown} = {}): ClientBattle =>
+    ({
+      gen: 7,
+      tier: '[Gen 7] Random Battle',
+      sides: [],
+      myPokemon: [{ident: 'p1: Charizard', item: over.item ?? 'charizarditex'}],
+      dex: {
+        items: {get: over.itemsGet ?? ((id: string) => (id === 'charizarditex' ? {megaStone: {Charizard: 'Charizard-Mega-X'}} : undefined))},
+        species: {get: over.speciesGet ?? ((name: string) => (name === 'Charizard-Mega-X' ? megaXData : undefined))},
+      },
+    } as unknown as ClientBattle);
+  const charizard = clientMon({ident: 'p1: Charizard', speciesForme: 'Charizard'});
+
+  it('resolves the forme, its dex data, and its forme-locked ability', () => {
+    expect(readMegaForme(battle(), charizard)).toEqual({
+      speciesForme: 'Charizard-Mega-X',
+      speciesData: {baseStats: megaXData.baseStats, types: ['Fire', 'Dragon'], abilities: ['Tough Claws']},
+      ability: 'Tough Claws',
+    });
+  });
+
+  it('is undefined once ALREADY Mega — there is nothing left to preview', () => {
+    expect(readMegaForme(battle(), clientMon({ident: 'p1: Charizard', speciesForme: 'Charizard-Mega-X'}))).toBeUndefined();
+  });
+
+  it('is undefined when the mon holds no stone (or a non-stone item)', () => {
+    expect(readMegaForme(battle({item: ''}), charizard)).toBeUndefined();
+    expect(readMegaForme(battle({item: 'leftovers'}), charizard)).toBeUndefined();
+  });
+
+  it('falls back to the map’s sole value when the base name doesn’t key it (forme-specific stone)', () => {
+    // A stone whose map keys the base under a name we don't literally hold still resolves,
+    // because a Mega stone maps exactly one base → one forme.
+    const b = battle({itemsGet: () => ({megaStone: {'Some-Other-Key': 'Charizard-Mega-X'}})});
+    expect(readMegaForme(b, charizard)?.speciesForme).toBe('Charizard-Mega-X');
+  });
+
+  it('gives the forme without dex data/ability when the client dex can’t serve the species', () => {
+    // The calc knows a mainline Mega even when this dex lacks it; clearing the ability lets
+    // the calc default to the forme's own (readMegaForme returns just the name).
+    expect(readMegaForme(battle({speciesGet: () => undefined}), charizard)).toEqual({speciesForme: 'Charizard-Mega-X'});
   });
 });
 

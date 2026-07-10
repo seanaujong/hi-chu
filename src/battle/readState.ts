@@ -7,6 +7,7 @@
 // thin and defensive (the client's shape can shift between releases).
 
 import type {FieldFacts, FullStats, LiveFacts, SpeciesData, StatID, StatusName, TerrainName, WeatherName} from '../core/types.js';
+import {isMegaForme} from '../core/facts.js';
 
 export interface ClientPokemon {
   readonly speciesForme: string;
@@ -62,6 +63,16 @@ export interface ClientBattle {
 
 export interface ClientDex {
   readonly species: {get(name: string): ClientSpecies | undefined};
+  /** The client dex's items — read to turn a held Mega stone into the forme it unlocks
+   *  (`readMegaForme`), the same lookup the client's own tooltip does. */
+  readonly items?: {get(name: string): ClientItem | undefined};
+}
+
+/** The client dex's item record. `megaStone` maps a base species NAME to the Mega forme
+ *  its stone unlocks (`{"Charizard": "Charizard-Mega-X"}`) — the client keys it by
+ *  `species.name`, and so do we. */
+export interface ClientItem {
+  readonly megaStone?: Readonly<Record<string, string>>;
 }
 
 /** The client dex's species record, loosely typed — it's reverse-engineered like the rest. */
@@ -506,24 +517,67 @@ export interface ToggleDocument {
   querySelector(selectors: string): unknown;
 }
 
-// The move panel's Terastallize checkbox: `name=terastallize` in the production client,
-// `name=tera` in the preact client. Neither stores the toggle anywhere but the DOM (the
-// production client reads the checkbox with jQuery at choice time), so the DOM is the
-// one honest source. A client rename here can't be caught by drift-check (a spectator
-// replay has no move controls) — verify by hand in a live game after a client update.
+// A move-panel gimmick checkbox lives ONLY in the DOM in both clients (the production
+// client reads it with jQuery at choice time; the preact client tracks it in component
+// state, still rendered as a checked input) — so the DOM is the one honest source. Each
+// gimmick has a production name and a preact name. A client rename here can't be caught
+// by drift-check (a spectator replay has no move controls) — verify by hand in a live
+// game (`npm run player-check`) after a client update.
 const TERA_TOGGLE_SELECTOR = 'input[name=terastallize], input[name=tera]';
+const MEGA_TOGGLE_SELECTOR = 'input[name=megaevo], input[name=mega]';
 
 /**
- * Is the Terastallize checkbox ticked in this battle's move panel? Scoped to the
- * battle's own room element (`#room-<roomid>`) so a second battle's checked box never
- * leaks in; falls back to a document-wide read only when the room element can't be
- * found (the preact client). False whenever the checkbox doesn't exist — already
- * terastallized, can't Tera, not our turn to choose.
+ * Is `selector`'s checkbox ticked in this battle's move panel? Scoped to the battle's own
+ * room element (`#room-<roomid>`) so a second battle's checked box never leaks in; falls
+ * back to a document-wide read only when the room element can't be found (the preact
+ * client). False whenever the checkbox doesn't exist — the gimmick's already been used,
+ * can't be used, or it isn't our turn to choose.
  */
-export function readTeraToggled(battle: ClientBattle, doc: ToggleDocument): boolean {
+function readToggle(battle: ClientBattle, doc: ToggleDocument, selector: string): boolean {
   const room = battle.roomid ? doc.getElementById(`room-${battle.roomid}`) : null;
-  const box = (room ?? doc).querySelector(TERA_TOGGLE_SELECTOR);
+  const box = (room ?? doc).querySelector(selector);
   return (box as {checked?: unknown} | null)?.checked === true;
+}
+
+/** Is the Terastallize checkbox ticked? — the move tooltip previews the pending Tera. */
+export function readTeraToggled(battle: ClientBattle, doc: ToggleDocument): boolean {
+  return readToggle(battle, doc, TERA_TOGGLE_SELECTOR);
+}
+
+/** Is the Mega Evolution checkbox ticked? — our surfaces preview the pending Mega forme
+ *  (its stats/ability/type in damage; its Speed in the ⚡ verdict, gen 7+ only). */
+export function readMegaToggled(battle: ClientBattle, doc: ToggleDocument): boolean {
+  return readToggle(battle, doc, MEGA_TOGGLE_SELECTOR);
+}
+
+/**
+ * The Mega forme our `mon` evolves into this turn, if it's holding the stone for one —
+ * the private-item read (`readOwnItem`) turned into a forme through the client dex's
+ * `megaStone` map, exactly as the client's own tooltip resolves it. Returns the forme's
+ * name plus the dex data the calc needs (base stats/types for a forme it doesn't know —
+ * a Champions-invented Mega — and the forme-locked ability). Undefined when the mon holds
+ * no stone, the dex can't resolve the forme, or it has ALREADY Mega Evolved (its live
+ * forme already carries the "-Mega" suffix, so there's nothing to preview).
+ */
+export function readMegaForme(
+  battle: ClientBattle,
+  mon: ClientPokemon,
+): {speciesForme: string; speciesData?: SpeciesData; ability?: string} | undefined {
+  if (isMegaForme(mon.speciesForme)) return undefined;
+  const stoneId = readOwnItem(battle, mon);
+  const megaStone = stoneId ? battle.dex?.items?.get(stoneId)?.megaStone : undefined;
+  if (!megaStone) return undefined;
+  // The client keys the map by `species.name`; fall back to the sole value when a
+  // forme-specific base (Floette-Eternal → Floettite) keys it under a name we don't hold.
+  const values = Object.values(megaStone);
+  const speciesForme = megaStone[mon.speciesForme] ?? (values.length === 1 ? values[0] : undefined);
+  if (!speciesForme) return undefined;
+  const speciesData = readSpeciesData(battle, {speciesForme});
+  return {
+    speciesForme,
+    ...(speciesData ? {speciesData} : {}),
+    ...(speciesData?.abilities?.[0] ? {ability: speciesData.abilities[0]} : {}),
+  };
 }
 
 /** Every active Pokémon on a side other than `side` — one in singles, both foes in

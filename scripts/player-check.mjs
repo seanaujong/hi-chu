@@ -138,13 +138,18 @@ try {
     ? (zapLines.length > 0 ? `✓ ⚡ speed verdict on the switch menu (${zapLines.length} bench blocks)` : '✗ no ⚡ on any bench block')
     : (zapLines.length === 0 ? '✓ no ⚡ in an open format (no foe pool to read a speed from)' : '✗ ⚡ leaked into an open format'));
 
-  // --- 3. the Terastallize checkbox selector --------------------------------
-  const tera = await p1.page.evaluate((id) => {
-    const room = document.getElementById(`room-${id}`);
-    return !!(room ?? document).querySelector('input[name=terastallize], input[name=tera]');
+  // --- 3. the gimmick checkbox selectors ------------------------------------
+  const gimmick = await p1.page.evaluate((id) => {
+    const scope = document.getElementById(`room-${id}`) ?? document;
+    return {
+      tera: !!scope.querySelector('input[name=terastallize], input[name=tera]'),
+      mega: !!scope.querySelector('input[name=megaevo], input[name=mega]'),
+    };
   }, roomid);
-  // Absent is only a soft signal (the active may simply be unable to Tera this game).
-  console.log(tera ? '✓ Terastallize checkbox selector matches' : '· Terastallize checkbox absent this battle (soft signal — retry another game before calling drift)');
+  // Absent is only a soft signal (the active may simply be unable to Tera/Mega this game —
+  // gen 9 randbats has no Megas at all, so run a mega-capable format to exercise the box).
+  console.log(gimmick.tera ? '✓ Terastallize checkbox selector matches' : '· Terastallize checkbox absent this battle (soft signal — retry another game before calling drift)');
+  console.log(gimmick.mega ? '✓ Mega Evolution checkbox selector matches' : '· Mega Evolution checkbox absent this battle (soft signal — gen 9 randbats has no Megas; try a gen 6/7 or Champions battle)');
 } finally {
   await battle.close();
 }

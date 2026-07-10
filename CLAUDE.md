@@ -183,6 +183,33 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   `drift-check` (a spectator replay has no move controls) — `npm run player-check` (a real
   two-account battle) probes it after a client update. The sets view may LIST possible Tera
   types, but they are display-only `SetKnowledge` — they never reach the calc.
+- ✅ **A ticked Mega Evolution box previews OUR active mon's Mega forme — same footing as the
+  Tera preview, wider reach because Mega swaps the whole forme.** The move-panel Mega box is the
+  user's declared intent, and the stone in hand is our private truth, so it's not speculation.
+  The toggle lives ONLY in the DOM (`input[name=megaevo]` production, `input[name=mega]` preact);
+  `readMegaToggled` reads it room-scoped exactly like `readTeraToggled` (both now share
+  `readToggle`). The forme comes from the held stone through the client dex — `readMegaForme`
+  mirrors the client's own tooltip (`battle.dex.items.get(stone).megaStone[species.name]` →
+  `readSpeciesData` for that forme). `megaPreviewFor` overlays the Mega onto the resolved
+  attacker: **stats and typing** (the forme's own dex record, or `speciesData` when the calc
+  lacks it — a Champions-invented Mega — via the existing `unknownSpeciesOverrides` fallback) and
+  the **forme-locked ability** (replaces the base one; cleared when the dex can't name it so the
+  calc defaults to the Mega's own). The SET is unchanged — a stone-holder already resolves to its
+  Mega SET via `megaEntryForItem`; only the calc-facing identity was still the base forme. **Two
+  reaches, split by mechanic:** the Mega's OFFENSIVE stats hit **damage in every gen** (move
+  tooltip + own-hover matchup), but its **Speed hits the ⚡ verdict only from gen 7** — in gen 6 a
+  Pokémon moved at its BASE Speed the turn it evolved (Showdown defers the move's priority to
+  post-Mega only when `gen === 7`; gen 8/9 keep the same-turn behaviour). `megaSpeedApplies(gen)`
+  owns that split, which is why `ownMovesSection` takes a distinct `speedAttacker`. Applied ONLY
+  to our-view surfaces for our ACTIVE mon (`mon.side.active` guard) — never the foe's variants,
+  the opponent's-knowledge mirror, or a benched mon (the switch menu: it can't Mega the turn it
+  switches in). `knownStats` (an open format's base-forme finals) is dropped under the swap — they
+  don't describe the Mega. Checked by `section.test.ts` ("previews the Mega forme": damage swings,
+  the gen-7-vs-gen-6 ⚡ split, and byte-identity for unticked / no-stone / already-Mega / benched —
+  each guard watched failing) and `readState.test.ts` (`readMegaToggled`, `readMegaForme` incl. the
+  already-Mega and no-stone guards). 👁 for drift like Tera: the checkbox needs a live game
+  (`npm run player-check`, a mega-capable format — gen 9 randbats has no Megas); `battle.dex.items`
+  IS readable in a spectator replay, so `drift-check` probes the stone→forme map shape.
 - ✅ **Set narrowing uses every public reveal, nothing private.** Roles are filtered by moves
   used, revealed item (held or `prevItem`), and revealed ability — checked by
   `resolve.test.ts` ("evidence beyond moves narrows the role"). The own-side mirror view is

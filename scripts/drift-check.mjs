@@ -77,6 +77,15 @@ function probeLiveClient() {
   // The Life Orb recoil inference reads the protocol log; guard its shape too.
   if (!Array.isArray(b.stepQueue)) problems.push(`battle.stepQueue is ${typeof b.stepQueue}, expected an array`);
 
+  // The Mega preview turns a held stone into a forme via `battle.dex.items.get(id).megaStone`
+  // (a {base → Mega forme} map). A spectator replay has no move controls or private team, so
+  // it can't drive `readMegaForme` end-to-end — but the dex item is battle-wide and readable.
+  // A known stone must resolve to that map shape (client change here → readMegaForme goes blind).
+  const stone = b.dex?.items?.get?.('charizarditex');
+  if (!stone || typeof stone.megaStone !== 'object' || !stone.megaStone || typeof stone.megaStone.Charizard !== 'string') {
+    problems.push(`battle.dex.items.get('charizarditex').megaStone = ${JSON.stringify(stone?.megaStone)} (expected {Charizard: "Charizard-Mega-X"})`);
+  }
+
   for (const mon of actives) {
     const f = R.toLiveFacts(mon);
     if (typeof mon.ident !== 'string' || !mon.ident.includes(':')) {

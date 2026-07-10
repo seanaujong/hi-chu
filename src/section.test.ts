@@ -699,3 +699,119 @@ describe('open formats: the own-hover matchup view and the switch menu', () => {
     expect(buildSwitchSection(battle, fainted, null)).toBe('');
   });
 });
+
+// --- Mega Evolution preview (the move panel's Mega box) ----------------------
+//
+// Ticking Mega Evolution previews our ACTIVE mon as its Mega forme: the Mega's stats,
+// ability, and typing hit the damage in every gen; its Speed hits the ⚡ verdict from
+// gen 7 (gen 6 moved at the base Speed the turn it evolved). Hand-built battles — a
+// spectator replay carries no `myPokemon`, and the fixture has no Mega-capable mon.
+
+/** The client dex a Mega preview needs: the stone → forme map, plus the forme's data. */
+function megaDex(stoneId: string, base: string, megaForme: string, megaSpecies: Record<string, unknown>): Record<string, unknown> {
+  return {
+    items: {get: (id: string) => (id === stoneId ? {megaStone: {[base]: megaForme}} : undefined)},
+    species: {get: (name: string) => (name === megaForme ? {exists: true, ...megaSpecies} : undefined)},
+  };
+}
+
+describe('the move tooltip previews the Mega forme when the Mega box is ticked', () => {
+  // Gen 7 open format: the calc knows Charizard-Mega-X natively (Fire/Dragon, Tough
+  // Claws, Atk 84 → 130), so a physical Dragon move swings hugely from base Charizard.
+  const megaXSpecies = {baseStats: {hp: 78, atk: 130, def: 111, spa: 130, spd: 85, spe: 100}, types: ['Fire', 'Dragon'], abilities: {0: 'Tough Claws'}};
+  const zardBattle = (over: {item?: string; forme?: string} = {}): {battle: ClientBattle; zard: ClientPokemon} => {
+    const near = {isFar: false, sideConditions: {}, active: [] as unknown[]};
+    const far = {isFar: true, sideConditions: {}, active: [] as unknown[]};
+    const zard = {speciesForme: over.forme ?? 'Charizard', level: 100, hp: 100, maxhp: 100, status: '', boosts: {}, moveTrack: [], ident: 'p1: Charizard', side: near} as unknown as ClientPokemon;
+    const foe = {speciesForme: 'Tentacruel', level: 100, hp: 100, maxhp: 100, status: '', boosts: {}, moveTrack: [], ident: 'p2: Tentacruel', side: far} as unknown as ClientPokemon;
+    near.active = [zard];
+    far.active = [foe];
+    const battle = {
+      gen: 7,
+      tier: '[Gen 7] OU',
+      sides: [near, far],
+      myPokemon: [{ident: 'p1: Charizard', details: 'Charizard, L100', condition: '297/297', item: over.item ?? 'charizarditex', moves: ['dragonclaw']}],
+      dex: megaDex('charizarditex', 'Charizard', 'Charizard-Mega-X', megaXSpecies),
+    } as unknown as ClientBattle;
+    return {battle, zard};
+  };
+  const dmgMax = (html: string): number => {
+    const m = /Damage[^:]*:<\/small> [\d.]+% - ([\d.]+)%/.exec(html);
+    if (!m) throw new Error(`no damage line in:\n${html}`);
+    return Number(m[1]);
+  };
+
+  it('previews the Mega’s stats/ability/type — a physical Dragon move hits far harder', () => {
+    const {battle, zard} = zardBattle();
+    const base = buildMoveSection(battle, zard, 'Dragon Claw', null, false, false);
+    const mega = buildMoveSection(battle, zard, 'Dragon Claw', null, false, true);
+    // Mega X: STAB Dragon + Tough Claws + 130 Atk vs base Charizard's 84 Atk, no STAB.
+    expect(dmgMax(mega)).toBeGreaterThan(dmgMax(base) * 1.5);
+  });
+
+  it('is byte-identical when the box is unticked, no stone is held, or it has ALREADY Mega’d', () => {
+    const {battle, zard} = zardBattle();
+    const base = buildMoveSection(battle, zard, 'Dragon Claw', null, false, false);
+    // No stone in hand → nothing to preview.
+    const noStone = zardBattle({item: 'leftovers'});
+    expect(buildMoveSection(noStone.battle, noStone.zard, 'Dragon Claw', null, false, true)).toBe(base);
+    // Already the Mega forme → the ticked box is moot (the public forme already drives it).
+    const done = zardBattle({forme: 'Charizard-Mega-X'});
+    const doneOut = buildMoveSection(done.battle, done.zard, 'Dragon Claw', null, false, false);
+    expect(buildMoveSection(done.battle, done.zard, 'Dragon Claw', null, false, true)).toBe(doneOut);
+  });
+
+  it('does NOT preview a Mega for a benched/inactive mon we’re hovering (the box is the active mon’s)', () => {
+    // Same Charizard, but not in its side's active array — it can't Mega this turn.
+    const {battle} = zardBattle();
+    const benched = {speciesForme: 'Charizard', level: 100, hp: 100, maxhp: 100, status: '', boosts: {}, moveTrack: [], ident: 'p1: Charizard', side: {isFar: false, active: [null]}} as unknown as ClientPokemon;
+    const base = buildMoveSection(battle, benched, 'Dragon Claw', null, false, false);
+    expect(buildMoveSection(battle, benched, 'Dragon Claw', null, false, true)).toBe(base);
+  });
+});
+
+describe('the ⚡ verdict previews the Mega’s Speed — but only from gen 7', () => {
+  // Beedrill → Beedrill-Mega is a huge Speed jump (base 75 → 145). Our Beedrill is our
+  // active; hovering the foe leads with the ⚡ verdict for the pair.
+  const feed = {
+    Beedrill: {level: 80, abilities: ['Swarm'], items: ['Beedrillite'], moves: ['X-Scissor']},
+    'Beedrill-Mega': {level: 80, abilities: ['Adaptability'], items: ['Beedrillite'], moves: ['X-Scissor']},
+    Tentacruel: {level: 80, abilities: ['Clear Body'], items: ['Black Sludge'], moves: ['Scald']},
+  } as unknown as RandbatsData;
+  const megaSpecies = {baseStats: {hp: 65, atk: 150, def: 40, spa: 15, spd: 80, spe: 145}, types: ['Bug', 'Poison'], abilities: {0: 'Adaptability'}};
+  const beedrillBattle = (gen: number): {battle: ClientBattle; foe: ClientPokemon} => {
+    const near = {isFar: false, sideConditions: {}, active: [] as unknown[]};
+    const far = {isFar: true, sideConditions: {}, active: [] as unknown[]};
+    const bee = {speciesForme: 'Beedrill', level: 80, hp: 100, maxhp: 100, status: '', boosts: {}, moveTrack: [], ident: 'p1: Beedrill', side: near} as unknown as ClientPokemon;
+    const foe = {speciesForme: 'Tentacruel', level: 80, hp: 100, maxhp: 100, status: '', boosts: {}, moveTrack: [], ident: 'p2: Tentacruel', side: far} as unknown as ClientPokemon;
+    near.active = [bee];
+    far.active = [foe];
+    const battle = {
+      gen,
+      tier: `[Gen ${gen}] Random Battle`,
+      sides: [near, far],
+      myPokemon: [{ident: 'p1: Beedrill', details: 'Beedrill, L80', condition: '100/100', item: 'beedrillite', moves: ['xscissor']}],
+      dex: megaDex('beedrillite', 'Beedrill', 'Beedrill-Mega', megaSpecies),
+    } as unknown as ClientBattle;
+    return {battle, foe};
+  };
+  const ourSpeed = (html: string): number => {
+    const m = /⚡[^—]*— (\d+) vs \d+/.exec(html);
+    if (!m) throw new Error(`no ⚡ line in:\n${html}`);
+    return Number(m[1]);
+  };
+
+  it('gen 7: a ticked Mega raises our side of the ⚡ verdict to the Mega’s Speed', () => {
+    const {battle, foe} = beedrillBattle(7);
+    const base = ourSpeed(buildPokemonSection(battle, foe, feed, false));
+    const mega = ourSpeed(buildPokemonSection(battle, foe, feed, true));
+    expect(mega).toBeGreaterThan(base); // base Spe 75 → Mega Spe 145
+  });
+
+  it('gen 6: the ⚡ verdict keeps the BASE Speed — the Mega’s Speed didn’t count the turn it evolved', () => {
+    const {battle, foe} = beedrillBattle(6);
+    const base = ourSpeed(buildPokemonSection(battle, foe, feed, false));
+    const mega = ourSpeed(buildPokemonSection(battle, foe, feed, true));
+    expect(mega).toBe(base);
+  });
+});

@@ -26,37 +26,43 @@ interface ClientMove {
 }
 
 /**
- * Look up (or start warming) the cached randbats data for this battle's format.
- * Returns null until the fetch lands — the next hover will render.
+ * The set source for this battle: the cached randbats feed in a random format
+ * (warming the fetch on a miss — the next hover renders), or no feed at all in an
+ * open format, where section.ts assumes instead of enumerating. Null means "nothing
+ * to render yet": no battle info, or a feed-backed format whose feed hasn't landed.
  */
-function dataFor(battle: ClientBattle): ReturnType<typeof cachedRandbats> {
+function sourceFor(battle: ClientBattle): {data: ReturnType<typeof cachedRandbats>} | null {
   const format = detectFormat(battle);
   if (!format) return null;
+  if (format.kind === 'open') return {data: null}; // no feed exists — never fetch
   const data = cachedRandbats(format.formatId);
-  if (!data) void fetchRandbats(format.formatId);
-  return data;
+  if (!data) {
+    void fetchRandbats(format.formatId);
+    return null;
+  }
+  return {data};
 }
 
 /** Pokémon hover: the information-game section (or '' while data warms). */
 export function buildSection(battle: ClientBattle, pokemon: ClientPokemon): string {
-  const data = dataFor(battle);
-  return data ? buildPokemonSection(battle, pokemon, data) : '';
+  const src = sourceFor(battle);
+  return src ? buildPokemonSection(battle, pokemon, src.data) : '';
 }
 
 /** Switch-menu hover (a ServerPokemon, no battle-view Pokémon): the matchup block. */
 export function buildSwitchPokemonSection(battle: ClientBattle, server: ClientServerPokemon): string {
-  const data = dataFor(battle);
-  return data ? buildSwitchSection(battle, server, data) : '';
+  const src = sourceFor(battle);
+  return src ? buildSwitchSection(battle, server, src.data) : '';
 }
 
 /** Move-button hover: the single-move damage section (or '' while data warms).
  *  The Terastallize checkbox lives only in the DOM (both clients), so this shell
  *  reads it here and hands the pure orchestration a plain flag. */
 export function buildMoveButtonSection(battle: ClientBattle, pokemon: ClientPokemon, moveName: string): string {
-  const data = dataFor(battle);
-  if (!data) return '';
+  const src = sourceFor(battle);
+  if (!src) return '';
   const teraSelected = typeof document !== 'undefined' && readTeraToggled(battle, document);
-  return buildMoveSection(battle, pokemon, moveName, data, teraSelected);
+  return buildMoveSection(battle, pokemon, moveName, src.data, teraSelected);
 }
 
 function injectStyleOnce(): void {

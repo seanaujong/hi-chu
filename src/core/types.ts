@@ -47,6 +47,9 @@ export interface RandbatsRole {
   readonly moves: readonly string[];
   readonly evs?: StatsTable;
   readonly ivs?: StatsTable;
+  /** Set by pools whose sets have natures (assumed spreads, usage sets). The randbats
+   *  feed never carries one — absent means the randbats baseline (Serious). */
+  readonly nature?: string;
 }
 
 /** A species' full set of possibilities. Gen 9 entries carry per-role `roles`. */
@@ -78,6 +81,10 @@ export interface SpeciesData {
   readonly types: readonly string[];
   /** Needed for weight-based moves (Heavy Slam, Low Kick). */
   readonly weightkg?: number;
+  /** The species' dex ability slots (0/1/H) — the open-format assumption pool when no
+   *  ability has been revealed. Optional and tolerated absent: the species fallback
+   *  above must survive a client dex record that lacks it. */
+  readonly abilities?: readonly string[];
 }
 
 /** Everything the running battle has revealed about one Pokémon. */
@@ -129,6 +136,13 @@ export interface LiveFacts {
    */
   readonly switchedIntoStealthRockUnharmed: boolean;
   readonly gender?: 'M' | 'F' | 'N';
+  /**
+   * OUR OWN mon's exact final stats, as the server reports them in the request JSON
+   * (`myPokemon[i].stats` + `maxhp`). Private truth: only our-view surfaces may set it
+   * (the `myPokemon` principle), and only open formats need it — randbats spreads are
+   * public knowledge, so the calc's own derivation is already exact there.
+   */
+  readonly knownStats?: FullStats;
 }
 
 // --- Inferred set knowledge (the information game) --------------------------
@@ -218,4 +232,8 @@ export interface ResolvedMon {
   readonly possibleMoves: readonly string[];
   /** True when no role was consistent with revealed moves (assumptions are weaker). */
   readonly assumptionsUncertainReason?: string;
+  /** Exact server-reported final stats (see `LiveFacts.knownStats`). When set, the
+   *  damage layer makes the calc reproduce these exactly instead of deriving stats
+   *  from the assumed nature/EVs/IVs. */
+  readonly knownStats?: FullStats;
 }

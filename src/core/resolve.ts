@@ -61,9 +61,12 @@ function possibleMovesFor(facts: LiveFacts, candidates: readonly RandbatsRole[],
  * Assemble one concrete calc-ready mon: known facts (status, boosts, HP, active Tera)
  * always; the given role's spread and the given item/ability for the hidden rest.
  * The single-pick `resolveMon` and the per-variant enumerators all funnel through
- * here, so "known wins, randbats fills the gaps" is written exactly once.
+ * here, so "known wins, the pool fills the gaps" is written exactly once. Exported
+ * because assume.ts (the open-format assumption pool) is the second sanctioned
+ * producer of ResolvedMons — it reuses this writer so the known-wins law can't fork,
+ * while bypassing the narrowing above (there is no evidence law over assumed spreads).
  */
-function buildResolved(
+export function buildResolved(
   facts: LiveFacts,
   role: RandbatsRole | undefined,
   entry: RandbatsEntry,
@@ -76,7 +79,7 @@ function buildResolved(
     speciesForme: facts.speciesForme,
     ...(facts.speciesData ? {speciesData: facts.speciesData} : {}),
     level: facts.level || entry.level,
-    nature: RANDBATS_NATURE,
+    nature: role?.nature ?? RANDBATS_NATURE,
     evs: fillStats(RANDBATS_BASE_EVS, role?.evs ?? entry.evs),
     ivs: fillStats(RANDBATS_BASE_IVS, role?.ivs ?? entry.ivs),
     ability,
@@ -89,6 +92,7 @@ function buildResolved(
     terastallized: facts.terastallized,
     possibleMoves: [...possibleMoves],
     ...(uncertain ? {assumptionsUncertainReason: uncertain} : {}),
+    ...(facts.knownStats ? {knownStats: facts.knownStats} : {}),
   };
 }
 
@@ -173,11 +177,12 @@ function variantSignature(m: ResolvedMon): string {
   return JSON.stringify([
     m.speciesForme, m.level, m.nature, m.evs, m.ivs,
     m.ability ?? null, m.item ?? null, m.status ?? null, m.boosts, m.hpPercent,
-    m.teraType ?? null, m.terastallized,
+    m.teraType ?? null, m.terastallized, m.knownStats ?? null,
   ]);
 }
 
-function dedupeVariants(variants: readonly SetVariant[]): SetVariant[] {
+/** Exported alongside `buildResolved` for assume.ts, the second variant producer. */
+export function dedupeVariants(variants: readonly SetVariant[]): SetVariant[] {
   const seen = new Set<string>();
   const out: SetVariant[] = [];
   for (const v of variants) {

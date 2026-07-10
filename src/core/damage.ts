@@ -8,8 +8,8 @@
 // Kick — and convolve those per-hit rolls over the real hit-count distribution
 // (core/multihit.ts) to get the true total, and from it an exact single-use KO chance.
 
-import {calculate, Generations, Pokemon, Move, Field, toID, type GenerationNum, type State} from '@smogon/calc';
-import type {FieldFacts, ResolvedMon} from './types.js';
+import {calculate, calcStat, Generations, Pokemon, Move, Field, toID, type GenerationNum, type State} from '@smogon/calc';
+import type {FieldFacts, FullStats, ResolvedMon, StatID} from './types.js';
 import {multiHitProfile} from './moves.js';
 import {
   type Pmf,
@@ -94,17 +94,88 @@ function knownItem(gen: Gen, item: string | undefined): string | undefined {
   return gen.items.get(toID(item))?.name;
 }
 
+const STAT_IDS: readonly StatID[] = ['hp', 'atk', 'def', 'spa', 'spd', 'spe'];
+
+/**
+ * A (nature, EVs, IVs) spread that makes the calc's own stat formula land EXACTLY on
+ * the given final stats. This is how our own server-reported finals (`knownStats`)
+ * reach the damage math: `calculate()` clones both mons (calc.js — `attacker.clone()`),
+ * and the clone re-derives `rawStats` from nature/EVs/IVs, so mutating `rawStats` on
+ * the instance we build would silently vanish. A spread survives the clone. Solving is
+ * exact because we verify each candidate against the calc's exported `calcStat` — the
+ * very function the constructor uses — and the true spread that produced the server's
+ * numbers is always in the search space. Returns undefined when nothing solves
+ * (malformed input, forme drift): the caller keeps its assumed spread rather than lie.
+ */
+export function spreadForFinalStats(
+  gen: Gen,
+  baseStats: FullStats,
+  level: number,
+  finals: FullStats,
+): {nature: string; evs: FullStats; ivs: FullStats} | undefined {
+  // 0..94 covers every legal (IV ≤ 31, EV ≤ 252) combination: inner = IV + ⌊EV/4⌋.
+  const solveStat = (stat: StatID, nature: string): {iv: number; ev: number} | undefined => {
+    for (let inner = 0; inner <= 94; inner++) {
+      const iv = Math.min(inner, 31);
+      const ev = 4 * Math.max(0, inner - 31);
+      if (calcStat(gen, stat, baseStats[stat], iv, ev, level, nature) === finals[stat]) return {iv, ev};
+    }
+    return undefined;
+  };
+  for (const nature of gen.natures) {
+    const evs = {} as FullStats;
+    const ivs = {} as FullStats;
+    let solved = true;
+    for (const stat of STAT_IDS) {
+      const s = solveStat(stat, nature.name);
+      if (!s) {
+        solved = false;
+        break;
+      }
+      ivs[stat] = s.iv;
+      evs[stat] = s.ev;
+    }
+    // Any solving nature is equivalent: it reproduces the exact finals, which is all
+    // the mechanics ever read (they never key on the nature itself).
+    if (solved) return {nature: nature.name, evs, ivs};
+  }
+  return undefined;
+}
+
+/** The move's damage category, for choosing which defensive axis an assumed spread
+ *  should invest (core/assume.ts asks before any calc runs). */
+export function moveCategory(gen: number, moveName: string): 'Physical' | 'Special' | 'Status' {
+  return new Move(Generations.get(gen as GenerationNum), moveName).category;
+}
+
+/** The base stats the calc will actually use for this mon: its own dex record when it
+ *  knows the species, else the client-dex fallback riding on `speciesData`. */
+function baseStatsFor(gen: Gen, mon: ResolvedMon): FullStats | undefined {
+  const dex = gen.species.get(toID(mon.speciesForme));
+  return (dex?.baseStats as FullStats | undefined) ?? mon.speciesData?.baseStats;
+}
+
+/** The spread that reproduces `mon.knownStats` exactly, when finals are known and solvable. */
+function solvedSpread(gen: Gen, mon: ResolvedMon): ReturnType<typeof spreadForFinalStats> {
+  if (!mon.knownStats) return undefined;
+  const base = baseStatsFor(gen, mon);
+  return base ? spreadForFinalStats(gen, base, mon.level, mon.knownStats) : undefined;
+}
+
 /** A calc-ready Pokemon from a ResolvedMon, with the Champions safety nets applied
  *  (client-dex overrides for a species the calc lacks, unknown items dropped).
  *  Exported for core/speed.ts, which reads the same Pokemon's effective Speed. */
 export function buildPokemon(gen: Gen, mon: ResolvedMon, curHP?: number): Pokemon {
   const item = knownItem(gen, mon.item);
+  // Exact server-reported finals win over the assumed spread — expressed as an
+  // equivalent spread because that's the only form that survives calculate()'s clone.
+  const solved = solvedSpread(gen, mon);
   return new Pokemon(gen, mon.speciesForme, {
     level: mon.level,
     ...unknownSpeciesOverrides(gen, mon),
-    nature: mon.nature,
-    evs: mon.evs,
-    ivs: mon.ivs,
+    nature: solved?.nature ?? mon.nature,
+    evs: solved?.evs ?? mon.evs,
+    ivs: solved?.ivs ?? mon.ivs,
     ...(mon.ability !== undefined ? {ability: mon.ability} : {}),
     ...(item !== undefined ? {item} : {}),
     ...(mon.status !== undefined ? {status: mon.status} : {}),

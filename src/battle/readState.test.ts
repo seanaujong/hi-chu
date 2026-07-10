@@ -7,8 +7,10 @@ import {
   switchedIntoStealthRockUnharmed,
   readOwnItem,
   readOwnMoves,
+  readOwnStats,
   readOwnTeraType,
   serverPokemonFacts,
+  serverStats,
   type ClientServerPokemon,
   readTeraToggled,
   detectFormat,
@@ -100,8 +102,9 @@ describe('detectFormat', () => {
   const battle = (tier: string, gen = 9): ClientBattle => ({gen, tier, sides: []});
 
   it('builds the feed id for standard random battles, flagging doubles', () => {
-    expect(detectFormat(battle('[Gen 9] Random Battle'))).toEqual({gen: 9, formatId: 'gen9randombattle', doubles: false});
+    expect(detectFormat(battle('[Gen 9] Random Battle'))).toEqual({kind: 'randbats', gen: 9, formatId: 'gen9randombattle', doubles: false});
     expect(detectFormat(battle('[Gen 8] Random Doubles Battle', 8))).toEqual({
+      kind: 'randbats',
       gen: 8,
       formatId: 'gen8randomdoublesbattle',
       doubles: true,
@@ -109,13 +112,14 @@ describe('detectFormat', () => {
   });
 
   it('strips qualifiers like "(Blitz)"', () => {
-    expect(detectFormat(battle('[Gen 9] Random Battle (Blitz)'))?.formatId).toBe('gen9randombattle');
+    expect(detectFormat(battle('[Gen 9] Random Battle (Blitz)'))).toEqual({kind: 'randbats', gen: 9, formatId: 'gen9randombattle', doubles: false});
   });
 
   it('keeps extra words inside the bracket tag ("[Gen 9 Champions] Random Battle")', () => {
     // The feed serves gen9championsrandombattle.json; a prefix-only strip used to
     // mangle this id and silently disable the extension in the format.
     expect(detectFormat(battle('[Gen 9 Champions] Random Battle'))).toEqual({
+      kind: 'randbats',
       gen: 9,
       formatId: 'gen9championsrandombattle',
       doubles: false,
@@ -123,11 +127,21 @@ describe('detectFormat', () => {
   });
 
   it('prepends the gen when the title carries none', () => {
-    expect(detectFormat(battle('Random Battle'))?.formatId).toBe('gen9randombattle');
+    expect(detectFormat(battle('Random Battle'))).toEqual({kind: 'randbats', gen: 9, formatId: 'gen9randombattle', doubles: false});
   });
 
-  it('returns null for non-random formats', () => {
-    expect(detectFormat(battle('[Gen 9] OU'))).toBeNull();
+  it('classifies every non-random format as open — no feed, damage surfaces only', () => {
+    expect(detectFormat(battle('[Gen 9] OU'))).toEqual({kind: 'open', gen: 9, doubles: false});
+    expect(detectFormat(battle('[Gen 9] Custom Game'))).toEqual({kind: 'open', gen: 9, doubles: false});
+  });
+
+  it('reads doubles from the client gameType in open formats (no format id to sniff)', () => {
+    expect(detectFormat({...battle('[Gen 9] VGC 2025 Reg H'), gameType: 'doubles'})).toEqual({kind: 'open', gen: 9, doubles: true});
+    expect(detectFormat({...battle('[Gen 9] OU'), gameType: 'singles'})).toEqual({kind: 'open', gen: 9, doubles: false});
+  });
+
+  it('returns null only when the battle carries no tier yet', () => {
+    expect(detectFormat(battle(''))).toBeNull();
   });
 });
 
@@ -322,6 +336,28 @@ describe('readOwnItem (your private item, for your own move damage only)', () =>
   });
 });
 
+describe('serverStats / readOwnStats (your exact finals, for open-format own damage)', () => {
+  const battle = (myPokemon?: unknown): ClientBattle =>
+    ({gen: 9, tier: '[Gen 9] OU', sides: [], myPokemon} as unknown as ClientBattle);
+  const mon = clientMon({ident: 'p1: Dragonite'});
+  const fiveStats = {atk: 403, def: 226, spa: 212, spd: 236, spe: 197};
+
+  it('assembles hp from maxhp plus the request’s five stats', () => {
+    const own = {ident: 'p1: Dragonite', maxhp: 386, stats: fiveStats};
+    expect(readOwnStats(battle([own]), mon)).toEqual({hp: 386, ...fiveStats});
+  });
+
+  it('is whole-or-nothing: a missing or malformed stat drops the whole reading', () => {
+    expect(serverStats({ident: 'p1: Dragonite', maxhp: 386, stats: {...fiveStats, spe: undefined}} as unknown as ClientServerPokemon)).toBeUndefined();
+    expect(serverStats({ident: 'p1: Dragonite', maxhp: 386} as ClientServerPokemon)).toBeUndefined();
+    expect(serverStats({ident: 'p1: Dragonite', stats: fiveStats} as unknown as ClientServerPokemon)).toBeUndefined();
+  });
+
+  it('is undefined when spectating (no myPokemon)', () => {
+    expect(readOwnStats(battle(undefined), mon)).toBeUndefined();
+  });
+});
+
 describe('readOwnTeraType (your private Tera type, for the selected-Tera preview)', () => {
   const battle = (myPokemon?: unknown): ClientBattle =>
     ({gen: 9, tier: '[Gen 9] Random Battle', sides: [], myPokemon} as unknown as ClientBattle);
@@ -498,5 +534,14 @@ describe('readSpeciesData (the client dex as calc fallback for unknown formes)',
     expect(readSpeciesData(withDex({...fullRecord, baseStats: {...fullRecord.baseStats, hp: 0}}), clientMon())).toBeUndefined();
     expect(readSpeciesData(withDex({...fullRecord, types: []}), clientMon())).toBeUndefined();
     expect(readSpeciesData(withDex({...fullRecord, types: undefined}), clientMon())).toBeUndefined();
+  });
+
+  it('captures the ability slots when present — tolerantly, never costing the record', () => {
+    const slotted = {...fullRecord, abilities: {0: 'Flash Fire', 1: 'Flame Body', H: 'Infiltrator'}};
+    expect(readSpeciesData(withDex(slotted), clientMon())?.abilities).toEqual(['Flash Fire', 'Flame Body', 'Infiltrator']);
+    // Absent or empty slots leave the record intact — the calc fallback doesn't need them.
+    expect(readSpeciesData(withDex(fullRecord), clientMon())?.abilities).toBeUndefined();
+    expect(readSpeciesData(withDex({...fullRecord, abilities: {}}), clientMon())?.abilities).toBeUndefined();
+    expect(readSpeciesData(withDex({...fullRecord, abilities: {0: ''}}), clientMon())?.abilities).toBeUndefined();
   });
 });

@@ -40,6 +40,9 @@ export interface ClientSide {
 export interface ClientBattle {
   readonly gen: number;
   readonly tier: string;
+  /** "singles" | "doubles" | … — the open-format doubles signal (a randbats battle's
+   *  format id already carries it). */
+  readonly gameType?: string;
   readonly sides: ReadonlyArray<ClientSide>;
   /** The battle room's id ("battle-gen9randombattle-123…") — the room's DOM element is
    *  `#room-<roomid>`, which scopes the Tera-toggle read to THIS battle's controls. */
@@ -67,6 +70,8 @@ export interface ClientSpecies {
   readonly baseStats?: Readonly<Record<string, number>>;
   readonly types?: readonly string[];
   readonly weightkg?: number;
+  /** Ability slots keyed "0"/"1"/"H"(/"S") — the open-format assumption pool. */
+  readonly abilities?: Readonly<Record<string, string>>;
 }
 
 /** One entry of `battle.myPokemon`: the player's private view of their own Pokémon
@@ -99,6 +104,10 @@ export interface ClientServerPokemon {
   readonly hp?: number;
   readonly maxhp?: number;
   readonly status?: string;
+  /** The server-computed FINAL stats (no hp — that's `maxhp`), from the request JSON.
+   *  Exact, private, and the only stat truth a team format offers (the request never
+   *  carries EVs/nature). */
+  readonly stats?: Readonly<Record<string, number>>;
 }
 
 const BATTLE_STATUSES = new Set<StatusName>(['brn', 'par', 'psn', 'tox', 'slp', 'frz']);
@@ -133,14 +142,18 @@ export function readSpeciesData(battle: ClientBattle, mon: {speciesForme: string
   const types = species.types;
   if (!baseStats || !Array.isArray(types) || types.length === 0) return undefined;
   if (!types.every((t) => typeof t === 'string' && t.length > 0)) return undefined;
+  // Ability slots ride along TOLERANTLY: the calc fallback above is complete without
+  // them, so a dex record lacking abilities must not cost us the whole reading.
+  const abilities = Object.values(species.abilities ?? {}).filter((a) => typeof a === 'string' && a.length > 0);
   return {
     baseStats,
     types: [...types],
     ...(typeof species.weightkg === 'number' && species.weightkg > 0 ? {weightkg: species.weightkg} : {}),
+    ...(abilities.length > 0 ? {abilities} : {}),
   };
 }
 
-function asFullStats(raw: Readonly<Record<string, number>> | undefined): FullStats | undefined {
+function asFullStats(raw: Readonly<Record<string, number | undefined>> | undefined): FullStats | undefined {
   if (!raw) return undefined;
   const out = {hp: raw.hp, atk: raw.atk, def: raw.def, spa: raw.spa, spd: raw.spd, spe: raw.spe};
   const wellFormed = Object.values(out).every((v) => typeof v === 'number' && Number.isFinite(v) && v > 0);
@@ -377,6 +390,24 @@ export function readOwnMoves(battle: ClientBattle, mon: ClientPokemon): readonly
   return moves && moves.length > 0 ? moves : undefined;
 }
 
+/**
+ * One Pokémon's exact final stats from its private `ServerPokemon`: the request's five
+ * `stats` plus `maxhp` as the HP total. Whole-or-nothing — a partial table would make
+ * the calc half-exact, which is worse than the assumed spread it replaces. Same
+ * principle as `readOwnItem`: private truth, OUR-view surfaces only. Only open formats
+ * consume it (a randbats spread is public knowledge and already exact).
+ */
+export function serverStats(p: ClientServerPokemon): FullStats | undefined {
+  if (!p.stats || typeof p.maxhp !== 'number') return undefined;
+  return asFullStats({hp: p.maxhp, atk: p.stats.atk, def: p.stats.def, spa: p.stats.spa, spd: p.stats.spd, spe: p.stats.spe});
+}
+
+/** `serverStats` for `mon`'s entry in the viewer's private team (absent when spectating). */
+export function readOwnStats(battle: ClientBattle, mon: ClientPokemon): FullStats | undefined {
+  const own = ownServerPokemon(battle, mon);
+  return own ? serverStats(own) : undefined;
+}
+
 /** "Honchkrow, L86, F" → its parts. Level defaults upstream; extra tokens (shiny,
  *  tera:…) are ignored. */
 function parseServerDetails(details: string | undefined): {speciesForme?: string; level?: number; gender?: 'M' | 'F'} {
@@ -495,14 +526,23 @@ export function findOpposingActive(battle: ClientBattle, hovered: ClientPokemon)
 }
 
 /**
- * The randbats format id (e.g. "gen9randombattle") for this battle, or null if it
- * isn't a Random Battle format the feed covers. `doubles` drives the calc's game type
- * (spread moves take a 0.75× hit) and showing damage into both foes.
+ * What kind of battle this is, as a discriminated union the section layer switches on
+ * exhaustively. `randbats` carries the feed id ("gen9randombattle") — the set-inference
+ * surfaces exist only there; `open` is every other format (OU, VGC, Custom Game), where
+ * the foe's set is assumed, not enumerated. Null only when the battle carries no tier
+ * yet. `doubles` drives the calc's game type (spread moves take a 0.75× hit) and
+ * showing damage into both foes; an open format has no id to sniff it from, so it reads
+ * the client's `gameType`.
  */
-export function detectFormat(battle: ClientBattle): {gen: number; formatId: string; doubles: boolean} | null {
+export type BattleFormat =
+  | {readonly kind: 'randbats'; readonly gen: number; readonly formatId: string; readonly doubles: boolean}
+  | {readonly kind: 'open'; readonly gen: number; readonly doubles: boolean};
+
+export function detectFormat(battle: ClientBattle): BattleFormat | null {
   const tier = battle.tier || '';
-  if (!/random/i.test(tier)) return null;
+  if (!tier) return null;
   const gen = battle.gen || 9;
+  if (!/random/i.test(tier)) return {kind: 'open', gen, doubles: battle.gameType === 'doubles'};
   // Derive the id the way PS itself does: toID over the whole title, digits kept.
   // Pattern-matching only a "[Gen 9]" prefix broke tags with extra words —
   // "[Gen 9 Champions] Random Battle" must become "gen9championsrandombattle".
@@ -514,7 +554,7 @@ export function detectFormat(battle: ClientBattle): {gen: number; formatId: stri
     .toLowerCase();
   if (!name) return null;
   const formatId = name.startsWith('gen') ? name : `gen${gen}${name}`;
-  return {gen, formatId, doubles: formatId.includes('doubles')};
+  return {kind: 'randbats', gen, formatId, doubles: formatId.includes('doubles')};
 }
 
 function toId(s: string): string {

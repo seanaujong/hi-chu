@@ -1,5 +1,5 @@
 import {describe, it, expect} from 'vitest';
-import {koText, renderMoveSection, renderOwnMovesSection, renderSetsSection, renderSpeedSection, type MoveRenderModel, type OwnMovesModel, type SetsRenderModel} from './render.js';
+import {koText, renderMoveSection, renderNotes, renderOwnMovesSection, renderSetsSection, renderSpeedSection, type MoveRenderModel, type OwnMovesModel, type SetsRenderModel} from './render.js';
 import type {DamageReport} from './damage.js';
 
 function report(over: Partial<DamageReport> & {move: string}): DamageReport {
@@ -368,5 +368,14 @@ describe('renderOwnMovesSection (own hover: your moves vs the foe active)', () =
     expect(html).toContain('<b>Tentacruel</b>');
     expect(html).not.toContain('<b>Noivern</b>');
     expect(renderOwnMovesSection([])).toBe('');
+  });
+});
+
+describe('renderNotes (tooltip-wide caveats)', () => {
+  it('renders one ⚠ line per note in its own block, and nothing for none', () => {
+    expect(renderNotes(['foe EVs/item assumed'])).toBe(
+      '<div class="hichu-block"><p><span class="hichu-note">⚠ foe EVs/item assumed</span></p></div>',
+    );
+    expect(renderNotes([])).toBe('');
   });
 });

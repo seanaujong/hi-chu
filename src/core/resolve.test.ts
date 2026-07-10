@@ -69,6 +69,23 @@ describe('resolveMon', () => {
     expect(resolveMon(dragoniteFacts({prevItem: 'Heavy-Duty Boots'}), DRAGONITE).item).toBeUndefined();
     expect(resolveMon(dragoniteFacts(), DRAGONITE).item).toBe('Heavy-Duty Boots'); // still assumed when nothing's revealed
   });
+
+  it('takes the nature from a role that carries one; feed roles without one stay Serious', () => {
+    // The randbats feed never sets nature — only assumption/usage pools do. The Serious
+    // default for natureless roles is the randbats byte-identity guard.
+    const natured: RandbatsEntry = {
+      level: 100, abilities: [], items: [],
+      roles: {Bulky: {abilities: [], items: [], teraTypes: [], moves: [], nature: 'Bold'}},
+    };
+    expect(resolveMon(dragoniteFacts(), natured).nature).toBe('Bold');
+    expect(resolveMon(dragoniteFacts(), DRAGONITE).nature).toBe('Serious');
+  });
+
+  it('threads knownStats (our own server-reported finals) through to the resolved mon', () => {
+    const knownStats = {hp: 341, atk: 403, def: 226, spa: 212, spd: 236, spe: 196};
+    expect(resolveMon(dragoniteFacts({knownStats}), DRAGONITE).knownStats).toEqual(knownStats);
+    expect(resolveMon(dragoniteFacts(), DRAGONITE).knownStats).toBeUndefined();
+  });
 });
 
 describe('resolveMon reflects the same narrowing/deductions the display does', () => {

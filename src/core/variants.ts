@@ -33,6 +33,11 @@ const NO_ITEM = 'no item';
 const speciesOf = (bucket: readonly SetVariant[]): string[] => uniqueStrings(bucket.map((v) => v.mon.speciesForme));
 const itemsOf = (bucket: readonly SetVariant[]): string[] => uniqueStrings(bucket.map((v) => v.mon.item ?? NO_ITEM));
 const abilitiesOf = (bucket: readonly SetVariant[]): string[] => uniqueStrings(bucket.map((v) => v.mon.ability ?? ''));
+const rolesOf = (bucket: readonly SetVariant[]): string[] => uniqueStrings(bucket.map((v) => v.role).filter((r) => r.length > 0));
+// Role × ability, for buckets no single axis separates — an assumed spread crossed
+// with a damage-relevant ability (Multiscale) differs on BOTH axes at once.
+const roleAbilityOf = (bucket: readonly SetVariant[]): string[] =>
+  uniqueStrings(bucket.map((v) => [v.role, v.mon.ability].filter(Boolean).join(' · ')));
 
 /**
  * Label each bucket by the values UNIQUE to it on one axis (item, then ability). A
@@ -53,7 +58,11 @@ function labelByAxis(valueSets: readonly (readonly string[])[]): string[] | null
 }
 
 /** Short labels distinguishing the buckets: species axis (a disguised Zoroark is a
- *  DIFFERENT Pokémon — the loudest distinction), else item, else ability, else role name.
+ *  DIFFERENT Pokémon — the loudest distinction), else item, else ability, else role
+ *  name (which is the spread name for open-format assumption variants), else role ×
+ *  ability, else a numbered set. Every separating axis runs through `labelByAxis`, so
+ *  a label is only ever built from values unique to its bucket — the numbered fallback
+ *  is what guarantees distinct labels when nothing meaningful separates them.
  *  Species is null for the usual same-species case, so behaviour is unchanged there. */
 export function labelBuckets(buckets: readonly (readonly SetVariant[])[]): string[] {
   if (buckets.length <= 1) return buckets.map(() => '');
@@ -61,6 +70,8 @@ export function labelBuckets(buckets: readonly (readonly SetVariant[])[]): strin
     labelByAxis(buckets.map(speciesOf)) ??
     labelByAxis(buckets.map(itemsOf)) ??
     labelByAxis(buckets.map(abilitiesOf)) ??
+    labelByAxis(buckets.map(rolesOf)) ??
+    labelByAxis(buckets.map(roleAbilityOf)) ??
     buckets.map((b, i) => b[0]?.role || `set ${i + 1}`)
   );
 }

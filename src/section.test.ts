@@ -394,3 +394,182 @@ describe('buildSwitchSection (the switch menu: a ServerPokemon, NO battle-view P
     expect(buildSwitchSection(battle, server({condition: '0 fnt'}), data)).toBe('');
   });
 });
+
+// --- Open formats: no feed, assumed foe spreads -----------------------------
+//
+// Hand-built stubs rather than the replay fixture: the fixture is a randbats battle,
+// and a spectator replay carries no `myPokemon` to drive the own-side surfaces at all.
+
+/** A Custom Game battle: our Dragonite active vs their Tentacruel, private team wired. */
+function openBattle(over: {tier?: string; gameType?: string; myStats?: Record<string, number>; myItem?: string; myMoves?: string[]; foeItem?: string; foeDexAbilities?: Record<string, string>} = {}): {
+  battle: ClientBattle;
+  active: (name: string) => ClientPokemon;
+} {
+  const mon = (speciesForme: string, sideIndex: number, extra: Record<string, unknown> = {}) => ({
+    speciesForme,
+    level: 100,
+    hp: 100,
+    maxhp: 100,
+    status: '',
+    boosts: {},
+    moveTrack: [],
+    ident: `p${sideIndex + 1}: ${speciesForme}`,
+    ...extra,
+  });
+  const sides = [0, 1].map((i) => {
+    const side = {isFar: i === 1, sideConditions: {}, active: [] as unknown[]};
+    side.active = [
+      i === 0
+        ? {...mon('Dragonite', i), side}
+        : {...mon('Tentacruel', i, {...(over.foeItem !== undefined ? {item: over.foeItem} : {})}), side},
+    ];
+    return side as unknown as ClientSide;
+  });
+  const battle = {
+    gen: 9,
+    tier: over.tier ?? '[Gen 9] Custom Game',
+    ...(over.gameType ? {gameType: over.gameType} : {}),
+    sides,
+    myPokemon: [
+      {
+        ident: 'p1: Dragonite',
+        details: 'Dragonite, L100',
+        condition: '386/386',
+        item: over.myItem ?? '',
+        moves: over.myMoves ?? ['earthquake', 'tripleaxel', 'roost'],
+        maxhp: 386,
+        ...(over.myStats ? {stats: over.myStats} : {}),
+      },
+    ],
+    // The client dex — only consulted for the foe's ability pool here.
+    ...(over.foeDexAbilities
+      ? {dex: {species: {get: () => ({exists: true, baseStats: {hp: 80, atk: 70, def: 65, spa: 80, spd: 120, spe: 100}, types: ['Water', 'Poison'], abilities: over.foeDexAbilities})}}}
+      : {}),
+  } as unknown as ClientBattle;
+  const active = (name: string): ClientPokemon =>
+    sides.flatMap((s) => s.active).find((p): p is ClientPokemon => p?.speciesForme === name)!;
+  return {battle, active};
+}
+
+/** The max-damage % on the "Damage (label): X% - Y%" line for one bucket. */
+function bucketMax(html: string, label: string): number {
+  const m = new RegExp(`Damage \\(${label.replace('/', '\\/')}\\):</small> [\\d.]+% - ([\\d.]+)%`).exec(html);
+  if (!m) throw new Error(`no "${label}" damage line in:\n${html}`);
+  return Number(m[1]);
+}
+
+describe('open formats (no set feed): the move tooltip', () => {
+  it('brackets the foe’s unknown spread with two labelled damage lines and ONE ⚠ note', () => {
+    const {battle, active} = openBattle();
+    const html = buildMoveSection(battle, active('Dragonite'), 'Earthquake', null);
+    expect(html).toContain('Damage (uninvested):');
+    expect(html).toContain('Damage (max HP/Def):');
+    // The bracket is honest: investing bulk always lowers the number.
+    expect(bucketMax(html, 'max HP/Def')).toBeLessThan(bucketMax(html, 'uninvested'));
+    expect(html.match(/⚠ foe EVs\/item assumed/g)).toHaveLength(1);
+  });
+
+  it('picks the defensive axis the move actually attacks', () => {
+    const {battle, active} = openBattle({myMoves: ['surf']});
+    const html = buildMoveSection(battle, active('Dragonite'), 'Surf', null);
+    expect(html).toContain('Damage (max HP/SpD):');
+    expect(html).not.toContain('max HP/Def');
+  });
+
+  it('shows the true multi-hit breakdown for Triple Axel — the Custom Game verification case', () => {
+    // The whole point of open-format support for testing: build the mon, hover the move.
+    // Triple Axel's stop-at-miss law gives a non-integral expected hit count.
+    const {battle, active} = openBattle();
+    const html = buildMoveSection(battle, active('Dragonite'), 'Triple Axel', null);
+    expect(html).toContain('Damage (uninvested):');
+    expect(html).toMatch(/≈2\.7 hits/);
+    expect(html).toContain('per hit');
+  });
+
+  it('gives a status move no section at all (Pain Split included: its swing rests on an assumed max HP)', () => {
+    const {battle, active} = openBattle();
+    expect(buildMoveSection(battle, active('Dragonite'), 'Roost', null)).toBe('');
+    expect(buildMoveSection(battle, active('Dragonite'), 'Pain Split', null)).toBe('');
+  });
+
+  it('uses OUR exact server-reported stats — the number moves when they arrive', () => {
+    // Adamant 252 Atk finals, as the request JSON reports them (pinned in damage.test.ts).
+    const plain = openBattle();
+    const exact = openBattle({myStats: {atk: 403, def: 226, spa: 212, spd: 236, spe: 197}});
+    const assumedMax = bucketMax(buildMoveSection(plain.battle, plain.active('Dragonite'), 'Earthquake', null), 'uninvested');
+    const exactMax = bucketMax(buildMoveSection(exact.battle, exact.active('Dragonite'), 'Earthquake', null), 'uninvested');
+    expect(exactMax).toBeGreaterThan(assumedMax); // 252+ Atk beats the 85-EV randbats default
+  });
+
+  it('uses OUR real item, in the client’s id form', () => {
+    const plain = openBattle();
+    const band = openBattle({myItem: 'choiceband'});
+    expect(bucketMax(buildMoveSection(band.battle, band.active('Dragonite'), 'Earthquake', null), 'uninvested'))
+      .toBeGreaterThan(bucketMax(buildMoveSection(plain.battle, plain.active('Dragonite'), 'Earthquake', null), 'uninvested'));
+  });
+
+  it('keeps the foe-item caveats silent with nothing revealed, but still applies a revealed item', () => {
+    // No item pool → itemStanding finds no holders → no "if Leftovers"/"if Focus Sash".
+    const {battle, active} = openBattle();
+    expect(buildMoveSection(battle, active('Dragonite'), 'Earthquake', null)).not.toContain('Leftovers');
+    // A revealed Assault Vest is a public fact and must reach the calc: the special hit drops.
+    const vest = openBattle({foeItem: 'Assault Vest', myMoves: ['surf']});
+    const plain = openBattle({myMoves: ['surf']});
+    expect(bucketMax(buildMoveSection(vest.battle, vest.active('Dragonite'), 'Surf', null), 'uninvested'))
+      .toBeLessThan(bucketMax(buildMoveSection(plain.battle, plain.active('Dragonite'), 'Surf', null), 'uninvested'));
+  });
+
+  it('labels a spread × ability split distinctly when an ability changes the number', () => {
+    // Solid Rock softens a super-effective hit, so it splits each spread in two: no single
+    // axis separates the four buckets and the compound role · ability labels must.
+    const {battle, active} = openBattle({foeDexAbilities: {0: 'Clear Body', H: 'Solid Rock'}});
+    const html = buildMoveSection(battle, active('Dragonite'), 'Earthquake', null);
+    const labels = [...html.matchAll(/Damage \(([^)]+)\):/g)].map((m) => m[1]);
+    expect(labels).toHaveLength(4);
+    expect(new Set(labels).size).toBe(4); // every label distinct
+    expect(labels.filter((l) => l?.includes('Solid Rock'))).toHaveLength(2);
+  });
+});
+
+describe('open formats: the own-hover matchup view and the switch menu', () => {
+  it('shows our real moves vs the foe, with no sets/mirror/⚡ blocks', () => {
+    const {battle, active} = openBattle();
+    const html = buildPokemonSection(battle, active('Dragonite'), null);
+    expect(html).toContain('<small>vs</small> <b>Tentacruel</b>');
+    expect(html).toMatch(/Earthquake: /);
+    expect(html).not.toContain('Roost:'); // status move
+    expect(html).not.toContain('⚡');
+    expect(html).not.toContain('✓'); // no set knowledge without a pool
+    expect(html.match(/⚠ foe EVs\/item assumed/g)).toHaveLength(1);
+  });
+
+  it('renders nothing on a FOE hover (v1: the information game needs a pool)', () => {
+    const {battle, active} = openBattle();
+    expect(buildPokemonSection(battle, active('Tentacruel'), null)).toBe('');
+  });
+
+  it('builds the switch-menu block from the private ServerPokemon, exact stats included', () => {
+    const {battle} = openBattle();
+    const server = (over: Record<string, unknown> = {}) =>
+      ({ident: 'p1: Garchomp', details: 'Garchomp, L100', condition: '357/357', maxhp: 357,
+        item: 'choiceband', moves: ['earthquake', 'roost'],
+        stats: {atk: 359, def: 236, spa: 176, spd: 196, spe: 306}, ...over}) as never;
+    const html = buildSwitchSection(battle, server(), null);
+    expect(html).toContain('<small>vs</small> <b>Tentacruel</b>');
+    expect(html).toMatch(/Earthquake: /);
+    expect(html).not.toContain('Roost:');
+    expect(html.match(/⚠ foe EVs\/item assumed/g)).toHaveLength(1);
+
+    // A knocked-off item (item: '') is a KNOWN empty slot — the Choice Band must go.
+    const bandMax = /Earthquake: <small>\(uninvested\)<\/small> [\d.]+% - ([\d.]+)%/.exec(html);
+    const gone = buildSwitchSection(battle, server({item: ''}), null);
+    const goneMax = /Earthquake: <small>\(uninvested\)<\/small> [\d.]+% - ([\d.]+)%/.exec(gone);
+    expect(Number(bandMax![1])).toBeGreaterThan(Number(goneMax![1]));
+  });
+
+  it('renders nothing for a fainted benched mon', () => {
+    const {battle} = openBattle();
+    const fainted = {ident: 'p1: Garchomp', details: 'Garchomp, L100', condition: '0 fnt', moves: ['earthquake']} as never;
+    expect(buildSwitchSection(battle, fainted, null)).toBe('');
+  });
+});

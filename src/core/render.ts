@@ -93,11 +93,16 @@ function block(lines: readonly string[]): string {
   return ps ? `<div class="hichu-block">${ps}</div>` : '';
 }
 
-/** A trailing caveat block (form change, data drift), or '' when there are none. */
+/** A trailing caveat block (form change, data drift), or '' when there are none.
+ *  Exported as `renderNotes` for the shell's tooltip-wide notes — the open-format
+ *  "foe EVs/item assumed" line attaches ONCE per tooltip, after the per-foe sections,
+ *  so a doubles hover doesn't repeat it. */
 function notesBlock(notes: readonly string[]): string {
   if (notes.length === 0) return '';
   return block(notes.map((n) => `<span class="hichu-note">⚠ ${esc(n)}</span>`));
 }
+
+export const renderNotes = notesBlock;
 
 // --- Move-button hover: one move vs the current target ----------------------
 

@@ -2,7 +2,7 @@
 // preserves Showdown's own tooltips (Pokémon AND move), never throws, and patches
 // only once. (The data-driven path is covered end-to-end in integration.test.ts.)
 
-import {describe, it, expect} from 'vitest';
+import {describe, it, expect, vi} from 'vitest';
 import {install, buildSection, buildMoveButtonSection} from './content.js';
 
 class FakeTooltips {
@@ -21,12 +21,13 @@ type Patched = {
 };
 
 describe('install (tooltip monkey-patch)', () => {
-  it('leaves both native tooltips untouched for non-random formats', () => {
+  it('preserves the exact native output when our section throws or is empty (open format, bare stubs)', () => {
     const Fake = FakeTooltips as unknown as {prototype: Record<string, unknown>};
     install(Fake);
     const t = new FakeTooltips() as unknown as Patched & {battle: unknown};
     t.battle = {gen: 9, tier: '[Gen 9] OU', sides: []};
-    // detectFormat → null → no augmentation, exact native output preserved.
+    // An open format now takes the assumption path, but these stubs carry no battle-view
+    // fields — the section throws or yields '', and append's guard keeps the native text.
     expect(t.showPokemonTooltip({speciesForme: 'Gengar'})).toBe('NATIVE(Gengar)');
     expect(t.showMoveTooltip({name: 'Shadow Ball'}, '', {speciesForme: 'Gengar'})).toBe('NATIVE-MOVE(Shadow Ball)');
   });
@@ -44,7 +45,7 @@ describe('install (tooltip monkey-patch)', () => {
     const Fake = FakeTooltips as unknown as {prototype: Record<string, unknown>};
     install(Fake);
     const t = new FakeTooltips() as unknown as {showPokemonTooltip: (p: unknown, s?: unknown) => string; battle: unknown};
-    t.battle = {gen: 9, tier: '[Gen 9] OU', sides: []}; // non-random → augmentation is ''
+    t.battle = {gen: 9, tier: '[Gen 9] OU', sides: []}; // open format; no parseable species → ''
     expect(t.showPokemonTooltip(null, {ident: 'p1: Noivern', moves: ['dracometeor']})).toBe('NATIVE(?)');
   });
 
@@ -79,9 +80,36 @@ describe('install (tooltip monkey-patch)', () => {
 });
 
 describe('shell sections', () => {
-  it('return empty strings for a non-random battle', () => {
+  const mon = (over: Record<string, unknown> = {}): never =>
+    ({
+      speciesForme: 'Gengar',
+      level: 100,
+      hp: 100,
+      maxhp: 100,
+      status: '',
+      boosts: {},
+      moveTrack: [],
+      ...over,
+    }) as never;
+
+  it('renders nothing in an open format when there is nothing to show', () => {
     const battle = {gen: 9, tier: '[Gen 9] OU', sides: []};
-    expect(buildSection(battle, {} as never)).toBe('');
-    expect(buildMoveButtonSection(battle, {} as never, 'Surf')).toBe('');
+    // A hover with no side reads as a foe (v1: no foe section), and a move hover with
+    // no opposing active has no target — both stay silent, native tooltip untouched.
+    expect(buildSection(battle, mon())).toBe('');
+    expect(buildMoveButtonSection(battle, mon(), 'Surf')).toBe('');
+  });
+
+  it('never fetches the set feed in an open format — there is nothing to fetch', () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    try {
+      const battle = {gen: 9, tier: '[Gen 9] OU', sides: []};
+      buildSection(battle, mon());
+      buildMoveButtonSection(battle, mon(), 'Surf');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

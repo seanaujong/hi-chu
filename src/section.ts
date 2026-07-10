@@ -11,14 +11,16 @@
 //   buildPokemonSection — a Pokémon hover: the still-possible sets (narrowed by reveals),
 //     with damage numbers attached when the hovered mon is the opponent's.
 
-import {calcDamage, painSplit, type DamageReport} from './core/damage.js';
+import {calcDamage, moveCategory, painSplit, type DamageReport} from './core/damage.js';
 import {resolveByRole, resolveMon, resolveVariants} from './core/resolve.js';
+import {assumeDefenderVariants, type MoveSlant} from './core/assume.js';
 import {inferSets} from './core/knowledge.js';
 import {bucketByDamage, type DamageBucket} from './core/variants.js';
 import {compareSpeed, finalSpeed, speedBuckets} from './core/speed.js';
 import {illusionSuspects, ILLUSION_SPECIES, type IllusionSuspect} from './core/illusion.js';
 import {
   renderMoveSection,
+  renderNotes,
   renderOwnMovesSection,
   renderPainSplit,
   renderSetsSection,
@@ -35,9 +37,11 @@ import {
   readBehaviors,
   readOwnItem,
   readOwnMoves,
+  readOwnStats,
   readOwnTeraType,
   readSpeciesData,
   serverPokemonFacts,
+  serverStats,
   activesOpposing,
   findOpposingActive,
   findOpposingActives,
@@ -48,6 +52,55 @@ import {
   type ClientServerPokemon,
   type ClientSide,
 } from './battle/readState.js';
+
+/** The one honesty caveat an open-format tooltip carries — appended ONCE per tooltip
+ *  (never per foe section), naming exactly what the numbers assume. */
+const OPEN_FORMAT_NOTE = 'foe EVs/item assumed';
+
+/**
+ * The still-possible defending sets for one move, per foe — the seam the two format
+ * kinds plug into. Randbats closes over the feed (every foe's variants are the same
+ * whatever we throw at them); open formats bracket the spread on the axis THIS move
+ * attacks, so the variants depend on the move's category.
+ */
+type DefenderVariantsFor = (defenderFacts: LiveFacts) => (moveName: string) => readonly SetVariant[];
+
+/** The feed-driven supplier: every still-possible set (hidden item/ability fan-out)
+ *  plus any disguised Zoroark the reveals betray — identical for every move. */
+function randbatsVariantsFor(data: RandbatsData): DefenderVariantsFor {
+  return (facts) => {
+    const entry = entryFor(data, facts);
+    const variants = [
+      ...resolveVariants(facts, entryOrMinimal(entry, facts)),
+      ...illusionVariants(facts, entry, data),
+    ];
+    return () => variants;
+  };
+}
+
+/** The assumption-driven supplier: bracketing spreads × dex abilities (assume.ts),
+ *  chosen per move category. Status moves (Pain Split included) get none — with the
+ *  foe's max HP itself assumed, there is no honest number to show. */
+function openVariantsFor(gen: number): DefenderVariantsFor {
+  return (facts) => {
+    const bySlant = new Map<MoveSlant, SetVariant[]>();
+    return (moveName) => {
+      let category: ReturnType<typeof moveCategory>;
+      try {
+        category = moveCategory(gen, moveName);
+      } catch {
+        return []; // a move outside the calc's dex — no line beats a wrong one
+      }
+      if (category === 'Status') return [];
+      let variants = bySlant.get(category);
+      if (!variants) {
+        variants = assumeDefenderVariants(facts, category);
+        bySlant.set(category, variants);
+      }
+      return variants;
+    };
+  };
+}
 
 /** All of one Pokémon's live facts: the snapshot, the log-derived behaviours, and the
  *  client dex's species data (the calc's fallback for formes its own dex lacks). */
@@ -163,19 +216,15 @@ function ownMovesSection(
   ourSide: ClientSide | undefined,
   attacker: ResolvedMon,
   moves: readonly string[],
-  data: RandbatsData,
   format: {gen: number; doubles: boolean},
+  variantsFor: DefenderVariantsFor,
 ): string {
   const sections = activesOpposing(battle, ourSide).map((foe) => {
     const defenderFacts = factsFor(battle, foe);
-    const defenderEntry = entryFor(data, defenderFacts);
-    const defenderVariants = [
-      ...resolveVariants(defenderFacts, entryOrMinimal(defenderEntry, defenderFacts)),
-      ...illusionVariants(defenderFacts, defenderEntry, data),
-    ];
+    const variantsForMove = variantsFor(defenderFacts);
     const field = readFieldFacts(battle, foe.side);
     const rows = moves
-      .map((move) => moveDamageBuckets(attacker, defenderVariants, move, format.gen, field, format.doubles))
+      .map((move) => moveDamageBuckets(attacker, variantsForMove(move), move, format.gen, field, format.doubles))
       .filter((buckets) => buckets.length > 0) // status / unmodellable moves get no line
       // The report's move name is dex-resolved, so the id form ("dracometeor") displays right.
       .map((buckets) => ({name: buckets[0]!.report.move, buckets}));
@@ -201,7 +250,7 @@ function ownHoverMatchup(
   // principle as buildMoveSection's attacker).
   const realItem = ownItemName(battle, pokemon, entry);
   const attacker = resolveMon(realItem ? {...facts, item: realItem} : facts, entry);
-  return ownMovesSection(battle, pokemon.side, attacker, moves, data, format);
+  return ownMovesSection(battle, pokemon.side, attacker, moves, format, randbatsVariantsFor(data));
 }
 
 /**
@@ -215,21 +264,48 @@ function ownHoverMatchup(
  * `server.item === ''` is a KNOWN empty slot (knocked off / consumed) — the resolved
  * item is forced to none rather than letting the resolver assume the set's back on.
  */
-export function buildSwitchSection(battle: ClientBattle, server: ClientServerPokemon, data: RandbatsData): string {
+export function buildSwitchSection(battle: ClientBattle, server: ClientServerPokemon, data: RandbatsData | null): string {
   const format = detectFormat(battle);
   if (!format) return '';
   const moves = server.moves ?? [];
   const facts = serverPokemonFacts(server);
   if (!facts || facts.hpPercent <= 0 || moves.length === 0) return '';
   const speciesData = readSpeciesData(battle, facts);
-  const entry = entryFor(data, facts);
-  if (!entry) return '';
-  // The id-form item narrows the role fine (pools compare by id) and the damage layer
-  // resolves it to the dex name for the calc — no pool mapping needed here.
-  const resolved = resolveMon({...facts, ...(speciesData ? {speciesData} : {})}, entry);
-  const attacker = server.item === '' ? {...resolved, item: undefined} : resolved;
+  const factsWithDex = {...facts, ...(speciesData ? {speciesData} : {})};
   const ourSide = battle.sides.find((s) => s.isFar === false) ?? battle.sides[0];
-  return ownMovesSection(battle, ourSide, attacker, moves, data, format);
+
+  switch (format.kind) {
+    case 'randbats': {
+      if (!data) return ''; // the feed is still warming — same silence as before it loads
+      const entry = entryFor(data, facts);
+      if (!entry) return '';
+      // The id-form item narrows the role fine (pools compare by id) and the damage layer
+      // resolves it to the dex name for the calc — no pool mapping needed here.
+      const resolved = resolveMon(factsWithDex, entry);
+      const attacker = server.item === '' ? {...resolved, item: undefined} : resolved;
+      return ownMovesSection(battle, ourSide, attacker, moves, format, randbatsVariantsFor(data));
+    }
+    case 'open': {
+      // The ServerPokemon already carries the real item/ability in `facts`; its exact
+      // finals come from the request's stats table. An empty item string is a KNOWN
+      // empty slot — `serverPokemonFacts` leaves `item` unset and the minimal entry
+      // assumes nothing, so the gone item stays gone.
+      const knownStats = serverStats(server);
+      const attacker = resolveMon(
+        {...factsWithDex, ...(knownStats ? {knownStats} : {})},
+        entryOrMinimal(undefined, facts),
+      );
+      const html = ownMovesSection(battle, ourSide, attacker, moves, format, openVariantsFor(format.gen));
+      return html ? html + renderNotes([OPEN_FORMAT_NOTE]) : '';
+    }
+    default:
+      return unreachable(format);
+  }
+}
+
+/** Exhaustiveness backstop: a new BattleFormat kind fails the typecheck here. */
+function unreachable(kind: never): never {
+  throw new Error(`unhandled format kind: ${String(kind)}`);
 }
 
 /** True when the hovered Pokémon belongs to the opponent (the far side, from our seat). */
@@ -302,7 +378,7 @@ export function buildMoveSection(
   battle: ClientBattle,
   pokemon: ClientPokemon,
   moveName: string,
-  data: RandbatsData,
+  data: RandbatsData | null,
   teraSelected = false,
 ): string {
   const format = detectFormat(battle);
@@ -313,27 +389,68 @@ export function buildMoveSection(
   if (foes.length === 0) return '';
 
   const publicFacts = factsFor(battle, pokemon);
-  const attackerEntry = entryFor(data, publicFacts);
-  if (!attackerEntry) return '';
-
-  // Your move, your damage: prefer your REAL item over the set's assumed first item, so a
-  // Heavy-Duty Boots Iron Bundle isn't calculated as Choice Specs. Treated like a revealed
-  // fact for resolution — but only here, never in the opponent's-knowledge views.
-  const realItem = ownItemName(battle, pokemon, attackerEntry);
   // Terastallize is ticked for this turn: preview the damage with the Tera active, using
-  // OUR private Tera type (an our-view surface, like realItem). Not speculation — the type
-  // is our own truth and activating it is the user's declared intent. Moot once actually
-  // terastallized (the public facts already carry it); absent when spectating.
+  // OUR private Tera type (an our-view surface, like the real-item read). Not speculation —
+  // the type is our own truth and activating it is the user's declared intent. Moot once
+  // actually terastallized (the public facts already carry it); absent when spectating.
   const pendingTera = teraSelected && !publicFacts.terastallized ? readOwnTeraType(battle, pokemon) : undefined;
-  const attackerFacts = {
-    ...publicFacts,
-    ...(realItem ? {item: realItem} : {}),
-    ...(pendingTera ? {terastallized: true, teraType: pendingTera} : {}),
-  };
-  const attacker = resolveMon(attackerFacts, attackerEntry);
+  const teraFacts = pendingTera ? {terastallized: true, teraType: pendingTera} : {};
 
-  // Name each target only when there's more than one (doubles) — singles keeps native parity.
-  return foes.map((foe) => moveVsFoe(attacker, foe, moveName, format, data, battle, foes.length > 1)).join('');
+  switch (format.kind) {
+    case 'randbats': {
+      if (!data) return ''; // the feed is still warming — same silence as before it loads
+      const attackerEntry = entryFor(data, publicFacts);
+      if (!attackerEntry) return '';
+      // Your move, your damage: prefer your REAL item over the set's assumed first item, so a
+      // Heavy-Duty Boots Iron Bundle isn't calculated as Choice Specs. Treated like a revealed
+      // fact for resolution — but only here, never in the opponent's-knowledge views.
+      const realItem = ownItemName(battle, pokemon, attackerEntry);
+      const attacker = resolveMon({...publicFacts, ...(realItem ? {item: realItem} : {}), ...teraFacts}, attackerEntry);
+      // Name each target only when there's more than one (doubles) — singles keeps native parity.
+      return foes.map((foe) => moveVsFoe(attacker, foe, moveName, format, data, battle, foes.length > 1)).join('');
+    }
+    case 'open': {
+      // No pool to match the item against: the raw id form goes straight in — the damage
+      // layer resolves ids through the calc's dex (`knownItem`). Our exact finals come
+      // from the private team's stats table; the rest of the facts are the public reads.
+      const realItem = readOwnItem(battle, pokemon);
+      const knownStats = readOwnStats(battle, pokemon);
+      const attackerFacts = {
+        ...publicFacts,
+        ...(realItem ? {item: realItem} : {}),
+        ...(knownStats ? {knownStats} : {}),
+        ...teraFacts,
+      };
+      const attacker = resolveMon(attackerFacts, entryOrMinimal(undefined, attackerFacts));
+      const variantsFor = openVariantsFor(format.gen);
+      const sections = foes
+        .map((foe) => openMoveVsFoe(attacker, foe, moveName, format, battle, variantsFor, foes.length > 1))
+        .join('');
+      return sections ? sections + renderNotes([OPEN_FORMAT_NOTE]) : '';
+    }
+    default:
+      return unreachable(format);
+  }
+}
+
+/** One target's open-format damage section: assumed defender variants for this move's
+ *  category. Status moves (Pain Split included) yield '' — `openVariantsFor` returns
+ *  no variants for them, since even Pain Split's HP swing would rest on an assumed max. */
+function openMoveVsFoe(
+  attacker: ResolvedMon,
+  defenderMon: ClientPokemon,
+  moveName: string,
+  format: {gen: number; doubles: boolean},
+  battle: ClientBattle,
+  variantsFor: DefenderVariantsFor,
+  label: boolean,
+): string {
+  const defenderFacts = factsFor(battle, defenderMon);
+  const defenderVariants = variantsFor(defenderFacts)(moveName);
+  if (defenderVariants.length === 0) return '';
+  const field = readFieldFacts(battle, defenderMon.side);
+  const targetLabel = label ? defenderFacts.speciesForme : undefined;
+  return moveSectionHtml(attacker, defenderFacts, defenderVariants, moveName, format, field, targetLabel);
 }
 
 /** One target's damage section: `attacker`'s `moveName` into `defenderMon`. `label` names the
@@ -366,7 +483,25 @@ function moveVsFoe(
     ...illusionVariants(defenderFacts, defenderEntry, data),
   ];
   const field = readFieldFacts(battle, defenderMon.side);
+  return moveSectionHtml(attacker, defenderFacts, defenderVariants, moveName, format, field, targetLabel);
+}
 
+/**
+ * The format-blind tail of a move-vs-target section, shared by the randbats and open
+ * paths: bucket the outcomes over whatever defender variants the caller believes in,
+ * attach the foe-level item caveats, render. The item caveats read the RESOLVED
+ * variants, so an empty pool (open formats, nothing revealed) silences them and a
+ * revealed item still grades 'certain' in either format.
+ */
+function moveSectionHtml(
+  attacker: ResolvedMon,
+  defenderFacts: LiveFacts,
+  defenderVariants: readonly SetVariant[],
+  moveName: string,
+  format: {gen: number; doubles: boolean},
+  field: ReturnType<typeof readFieldFacts>,
+  targetLabel: string | undefined,
+): string {
   const buckets = moveDamageBuckets(attacker, defenderVariants, moveName, format.gen, field, format.doubles, 3);
   if (buckets.length === 0) return ''; // status / unmodellable move
 
@@ -423,11 +558,43 @@ function toBlock(c: CandidateSet, species: string | undefined, damage: Map<strin
  * hovering our own Pokémon shows the mirror — what the opponent can deduce from
  * what we've made public. Returns '' when the format or species isn't covered.
  */
-export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon, data: RandbatsData): string {
+export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon, data: RandbatsData | null): string {
   const format = detectFormat(battle);
   if (!format) return '';
 
   const facts = factsFor(battle, pokemon);
+
+  switch (format.kind) {
+    case 'randbats':
+      return data ? randbatsPokemonSection(battle, pokemon, facts, data, format) : '';
+    case 'open': {
+      // No sets/mirror view (nothing to infer without a pool) and nothing on a FOE
+      // hover in v1; our own mon gets the matchup view — the switch-decision answer —
+      // built from the private team, exactly like the move tooltip's attacker.
+      if (isFoe(battle, pokemon)) return '';
+      const moves = readOwnMoves(battle, pokemon);
+      if (!moves || facts.hpPercent <= 0) return '';
+      const realItem = readOwnItem(battle, pokemon);
+      const knownStats = readOwnStats(battle, pokemon);
+      const attackerFacts = {...facts, ...(realItem ? {item: realItem} : {}), ...(knownStats ? {knownStats} : {})};
+      const attacker = resolveMon(attackerFacts, entryOrMinimal(undefined, attackerFacts));
+      const html = ownMovesSection(battle, pokemon.side, attacker, moves, format, openVariantsFor(format.gen));
+      return html ? html + renderNotes([OPEN_FORMAT_NOTE]) : '';
+    }
+    default:
+      return unreachable(format);
+  }
+}
+
+/** The randbats Pokémon hover, exactly as it has always been: the still-possible sets
+ *  (narrowed by reveals), the ⚡ verdict on a foe, the matchup view + mirror on our own. */
+function randbatsPokemonSection(
+  battle: ClientBattle,
+  pokemon: ClientPokemon,
+  facts: LiveFacts,
+  data: RandbatsData,
+  format: {gen: number; doubles: boolean},
+): string {
   const entry = entryFor(data, facts);
   if (!entry) return ''; // not a tracked randbats Pokémon
 

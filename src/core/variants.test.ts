@@ -81,6 +81,34 @@ describe('labelBuckets', () => {
     ]);
     expect(labels).toEqual(['Bulky Support', 'Fast Attacker']);
   });
+
+  it('labels an open-format spread split by its assumed-spread names', () => {
+    // Two assumed spreads, each bucket holding both dex abilities (they didn't change
+    // the number) — the role axis is the spread name and must separate them.
+    const labels = labelBuckets([
+      [variant({ability: 'Inner Focus', role: 'uninvested'}), variant({ability: 'Multiscale', role: 'uninvested'})],
+      [variant({ability: 'Inner Focus', role: 'max HP/Def'}), variant({ability: 'Multiscale', role: 'max HP/Def'})],
+    ]);
+    expect(labels).toEqual(['uninvested', 'max HP/Def']);
+  });
+
+  it('gives a four-way spread × ability split four DISTINCT labels', () => {
+    // A damage-relevant ability (Multiscale) crossed with two spreads: no single axis
+    // separates all four buckets, so the compound role · ability axis must.
+    const labels = labelBuckets([
+      [variant({ability: 'Inner Focus', role: 'uninvested'})],
+      [variant({ability: 'Multiscale', role: 'uninvested'})],
+      [variant({ability: 'Inner Focus', role: 'max HP/Def'})],
+      [variant({ability: 'Multiscale', role: 'max HP/Def'})],
+    ]);
+    expect(labels).toEqual([
+      'uninvested · Inner Focus',
+      'uninvested · Multiscale',
+      'max HP/Def · Inner Focus',
+      'max HP/Def · Multiscale',
+    ]);
+    expect(new Set(labels).size).toBe(4);
+  });
 });
 
 describe('bucketByDamage', () => {

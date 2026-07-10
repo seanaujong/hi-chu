@@ -1,6 +1,7 @@
 import {describe, it, expect} from 'vitest';
-import {calcDamage, painSplit} from './damage.js';
-import type {FieldFacts, ResolvedMon} from './types.js';
+import {calcStat, Generations, type GenerationNum} from '@smogon/calc';
+import {buildPokemon, calcDamage, moveCategory, painSplit, spreadForFinalStats} from './damage.js';
+import type {FieldFacts, FullStats, ResolvedMon, StatID} from './types.js';
 
 const noField: FieldFacts = {defenderScreens: {reflect: false, lightScreen: false, auroraVeil: false}};
 
@@ -103,6 +104,63 @@ describe('a species the calc dex does not know (a Champions-invented Mega)', () 
     const without = calcDamage(arbok, mega, 'Crunch', {gen: 9, field: noField});
     expect(withDex.total).toEqual(without.total);
     expect(withDex.percent).toEqual(without.percent);
+  });
+});
+
+describe('knownStats — our own server-reported finals reach the calc exactly', () => {
+  // The mechanism is a SOLVED equivalent spread, not a rawStats mutation: calculate()
+  // clones both mons and the clone re-derives stats from nature/EVs/IVs, so only a
+  // spread survives. These pins were probed against @smogon/calc directly.
+  const gen9 = Generations.get(9 as GenerationNum);
+  const STAT_IDS: readonly StatID[] = ['hp', 'atk', 'def', 'spa', 'spd', 'spe'];
+  const dragoniteBase: FullStats = {hp: 91, atk: 134, def: 95, spa: 100, spd: 100, spe: 80};
+  // Adamant, 252 HP / 252 Atk / 4 Spe, 31 IVs, L100 — as the server would report them.
+  const adamantFinals: FullStats = {hp: 386, atk: 403, def: 226, spa: 212, spd: 236, spe: 197};
+
+  const roundTrips = (base: FullStats, level: number, finals: FullStats) => {
+    const spread = spreadForFinalStats(gen9, base, level, finals);
+    expect(spread).toBeDefined();
+    if (!spread) return;
+    for (const stat of STAT_IDS) {
+      expect(calcStat(gen9, stat, base[stat], spread.ivs[stat], spread.evs[stat], level, spread.nature)).toBe(finals[stat]);
+    }
+  };
+
+  it('solves a spread the calc’s own formula maps back to the exact finals', () => {
+    roundTrips(dragoniteBase, 100, adamantFinals);
+  });
+
+  it('solves a stat below the neutral floor (needs a minus nature)', () => {
+    // Bold with 0 Atk IVs/EVs: Atk 245 < 273, the lowest any neutral nature can reach.
+    roundTrips(dragoniteBase, 100, {hp: 386, atk: 245, def: 317, spa: 236, spd: 236, spe: 197});
+  });
+
+  it('solves at level 50 (VGC rounding)', () => {
+    // Incineroar, Adamant 252 HP / 252 Atk / 4 SpD at L50.
+    roundTrips({hp: 95, atk: 115, def: 90, spa: 80, spd: 90, spe: 60}, 50, {hp: 202, atk: 183, def: 110, spa: 90, spd: 111, spe: 80});
+  });
+
+  it('changes the damage to the real numbers (pinned) and the max HP to the real max', () => {
+    const withKnown = calcDamage(mon({speciesForme: 'Dragonite', knownStats: adamantFinals}), mon({speciesForme: 'Tentacruel'}), 'Earthquake');
+    const assumed = calcDamage(mon({speciesForme: 'Dragonite'}), mon({speciesForme: 'Tentacruel'}), 'Earthquake');
+    expect({min: withKnown.total.min, max: withKnown.total.max}).toEqual({min: 310, max: 366});
+    expect({min: assumed.total.min, max: assumed.total.max}).toEqual({min: 248, max: 294});
+    expect(buildPokemon(gen9, mon({speciesForme: 'Dragonite', knownStats: adamantFinals})).maxHP()).toBe(386);
+  });
+
+  it('unsolvable finals fall back to the assumed spread without throwing (never crash a hover)', () => {
+    const nonsense: FullStats = {hp: 1, atk: 9999, def: 1, spa: 1, spd: 1, spe: 1};
+    const fallback = calcDamage(mon({speciesForme: 'Dragonite', knownStats: nonsense}), mon({speciesForme: 'Tentacruel'}), 'Earthquake');
+    const assumed = calcDamage(mon({speciesForme: 'Dragonite'}), mon({speciesForme: 'Tentacruel'}), 'Earthquake');
+    expect(fallback.total).toEqual(assumed.total);
+  });
+});
+
+describe('moveCategory', () => {
+  it('reads the dex category', () => {
+    expect(moveCategory(9, 'Earthquake')).toBe('Physical');
+    expect(moveCategory(9, 'Shadow Ball')).toBe('Special');
+    expect(moveCategory(9, 'Protect')).toBe('Status');
   });
 });
 

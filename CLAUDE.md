@@ -524,7 +524,11 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   accounts into the real site
   (`PS_ACCOUNT1="name:password" PS_ACCOUNT2=… npm run player-check`; credentials via env,
   never committed), has them battle each other, and probes exactly those reads with the
-  shipped bundle, forfeiting when done. Both are 👁 not ✅ because they need a browser + the
+  shipped bundle, forfeiting when done. **Showdown throttles `act=login` per IP**, so a run
+  started soon after another routinely has its first attempt silently go nowhere — `login()`
+  retries with backoff and says so. A real refusal is told apart at the source (`action.php`
+  answers `{"actionerror":"Wrong password."}`; a throttle answers nothing) and fails fast,
+  so a bad password never hides behind the retry loop. Both are 👁 not ✅ because they need a browser + the
   live site, so they can't run in `npm run check`/CI — run them by hand after a client
   update. If either flags drift (or a calc looks wrong), re-derive from the PS source below
   and update `readState.ts` and its tests in lockstep.

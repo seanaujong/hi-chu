@@ -44,6 +44,66 @@ const BUNDLE = readFileSync(new URL('../dist/content.js', import.meta.url), 'utf
 const launchOpts = process.env.CHROME_PATH ? {executablePath: process.env.CHROME_PATH} : {channel: 'chrome'};
 const problems = [];
 
+/**
+ * Log in, tolerating a throttled `act=login`. Showdown rate-limits logins per IP, so the
+ * first attempt of a run started soon after a previous one routinely goes nowhere: the
+ * client's `passwordRename` resolves, the account silently stays a guest, and a lone wait
+ * just times out. Retrying with backoff clears it.
+ *
+ * The two failures look identical from `user.get('named')`, so they're told apart at the
+ * source: `action.php` answers a REFUSAL with `{"actionerror":"Wrong password."}` and a
+ * throttle with nothing at all. A refusal fails fast — retrying a bad password only walks
+ * into the same wall, and a "throttled, wait a minute" message would be a lie.
+ */
+async function login(page, name, password) {
+  const refusals = [];
+  const listen = (res) => {
+    if (!/action\.php/.test(res.url())) return;
+    res
+      .text()
+      .then((body) => {
+        const error = /"actionerror":"([^"]+)"/.exec(body);
+        if (error) refusals.push(error[1]);
+      })
+      .catch(() => {}); // a body we can't read tells us nothing either way
+  };
+  page.on('response', listen);
+  try {
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      // `rename` only fetches an assertion and pops the login form for a registered name;
+      // `passwordRename` is the act=login path the popup's own Log in button calls.
+      await page.evaluate((n, p) => globalThis.app.user.passwordRename(n, p), name, password);
+      try {
+        // Poll on a timer, not rAF: we're waiting on a model field, not a paint.
+        await page.waitForFunction(
+          (id) => {
+            const toId = (s) => (s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            return globalThis.app.user.get('named') && toId(globalThis.app.user.get('name')) === id;
+          },
+          {timeout: 15000, polling: 500},
+          name.toLowerCase().replace(/[^a-z0-9]/g, ''),
+        );
+        if (attempt > 1) console.log(`  · login for ${name} took ${attempt} attempts (throttled)`);
+        console.log(`✓ logged in as ${name}`);
+        return;
+      } catch (timeout) {
+        await new Promise((r) => setTimeout(r, 500)); // let a refusal body finish arriving
+        if (refusals.length) throw new Error(`login refused for ${name} — action.php said: ${refusals[0]}`);
+        if (attempt === 4) {
+          throw new Error(
+            `login for ${name} never took after 4 attempts (~60s), and action.php never refused it. ` +
+              `Showdown throttles act=login per IP — wait a minute and rerun.`,
+          );
+        }
+        console.log(`  · login attempt ${attempt} for ${name} timed out; retrying`);
+        await new Promise((r) => setTimeout(r, attempt * 3000)); // back off: 3s, 6s, 9s
+      }
+    }
+  } finally {
+    page.off('response', listen);
+  }
+}
+
 async function client({name, password}) {
   const browser = await puppeteer.launch({headless: true, ...launchOpts});
   const page = await browser.newPage();
@@ -55,14 +115,7 @@ async function client({name, password}) {
     const u = globalThis.app?.user;
     return !!u && (u.get('named') || /^guest/i.test(u.get('name') ?? ''));
   }, {timeout: 45000});
-  // `rename` only fetches an assertion and pops the login form for a registered name;
-  // `passwordRename` is the act=login path the popup's own Log in button calls.
-  await page.evaluate((n, p) => globalThis.app.user.passwordRename(n, p), name, password);
-  await page.waitForFunction((n) => {
-    const toId = (s) => (s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    return globalThis.app.user.get('named') && toId(globalThis.app.user.get('name')) === toId(n);
-  }, {timeout: 20000}, name);
-  console.log(`✓ logged in as ${name}`);
+  await login(page, name, password);
   // A previous run that crashed before forfeiting leaves its battle room attached to the
   // account. Forfeit and leave it, and remember every id that was already here — the room
   // lookup below waits for a room that ISN'T one of these, so a lingering finished battle

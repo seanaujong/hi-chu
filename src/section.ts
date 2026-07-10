@@ -37,6 +37,7 @@ import {
   readBehaviors,
   readOwnItem,
   readOwnMoves,
+  readOwnServerPokemon,
   readOwnStats,
   readOwnTeraType,
   readSpeciesData,
@@ -45,6 +46,7 @@ import {
   activesOpposing,
   findOpposingActive,
   findOpposingActives,
+  nearSide,
   detectFormat,
   readFieldFacts,
   type ClientBattle,
@@ -142,6 +144,44 @@ function ownItemName(battle: ClientBattle, pokemon: ClientPokemon, entry: Randba
 }
 
 /**
+ * Our own Pokémon as WE know it: its public battle state (HP, status, boosts, the live
+ * ability a Trace may have changed, an active Tera) with the private team's IDENTITY
+ * laid over it.
+ *
+ * Illusion is why this exists. The sim sends the disguise's details to the disguised
+ * Pokémon's own side too, so our battle-view Zoroark really is a Noivern to the client:
+ * wrong species, wrong base stats, wrong types, wrong level. Every calc we are the
+ * SUBJECT of — our move's damage, the matchup view, our side of the ⚡ verdict, and the
+ * foe's damage into us — has to run on the Pokémon that is really standing there. The
+ * opponent's-knowledge views must NOT use this: the disguise is exactly what they see.
+ *
+ * The battle view is trusted whenever it agrees with the private team on the BASE
+ * species, so a live forme change it knows about first (Aegislash-Blade, Mimikyu-Busted,
+ * Terapagos-Terastal) still wins. Only a different Pokémon entirely — which nothing but
+ * Illusion can produce — hands the decision to the private team.
+ */
+function ownTruth(battle: ClientBattle, mon: ClientPokemon, facts: LiveFacts): LiveFacts {
+  const own = readOwnServerPokemon(battle, mon);
+  const truth = own ? serverPokemonFacts(own) : undefined;
+  if (!truth || baseSpecies(truth.speciesForme) === baseSpecies(facts.speciesForme)) return facts;
+  // A different species means different dex data: the disguise's must not ride along.
+  const {speciesData: _disguise, ...battleState} = facts;
+  const speciesData = readSpeciesData(battle, truth);
+  return {
+    ...battleState,
+    speciesForme: truth.speciesForme,
+    level: truth.level,
+    ...(truth.gender ? {gender: truth.gender} : {}),
+    ...(speciesData ? {speciesData} : {}),
+  };
+}
+
+/** "Zoroark-Hisui" → "Zoroark": the forme suffix dropped, so formes of one Pokémon compare equal. */
+function baseSpecies(speciesForme: string): string {
+  return toId(speciesForme.split('-')[0] ?? speciesForme);
+}
+
+/**
  * If a revealed move betrays that the defender might be a disguised Zoroark (see
  * illusion.ts), a resolution of that Zoroark as an extra defender — so the move tooltip
  * shows a second "vs Zoroark-Hisui" damage line rather than one confidently-wrong number.
@@ -186,7 +226,7 @@ function speedSection(
 ): string {
   if (foeVariants.length === 0) return '';
   const lines = ourActives.map((our): SpeedLineModel => {
-    const publicFacts = factsFor(battle, our);
+    const publicFacts = ownTruth(battle, our, factsFor(battle, our));
     const ourEntry = entryFor(data, publicFacts);
     const realItem = ourEntry ? ownItemName(battle, our, ourEntry) : undefined;
     const ourFacts = realItem ? {...publicFacts, item: realItem} : publicFacts;
@@ -235,17 +275,20 @@ function ownMovesSection(
 
 /** The matchup block for an own-side hover that carries a battle-view Pokémon (the
  *  active, or a sidebar icon of a revealed mon). Empty when spectating (no private
- *  team) or fainted (it can't switch in). */
+ *  team) or fainted (it can't switch in). The attacker is the Pokémon that is really
+ *  there (`ownTruth`) and so is its set — a disguised Zoroark's moves are Zoroark's,
+ *  and they must not be calculated off the disguise's species. */
 function ownHoverMatchup(
   battle: ClientBattle,
   pokemon: ClientPokemon,
-  facts: LiveFacts,
-  entry: RandbatsEntry,
+  publicFacts: LiveFacts,
   data: RandbatsData,
   format: {gen: number; doubles: boolean},
 ): string {
   const moves = readOwnMoves(battle, pokemon);
-  if (!moves || facts.hpPercent <= 0) return '';
+  const facts = ownTruth(battle, pokemon, publicFacts);
+  const entry = entryFor(data, facts);
+  if (!moves || !entry || facts.hpPercent <= 0) return '';
   // Your Pokémon, your damage: your real item beats the set's assumed one (same
   // principle as buildMoveSection's attacker).
   const realItem = ownItemName(battle, pokemon, entry);
@@ -272,7 +315,7 @@ export function buildSwitchSection(battle: ClientBattle, server: ClientServerPok
   if (!facts || facts.hpPercent <= 0 || moves.length === 0) return '';
   const speciesData = readSpeciesData(battle, facts);
   const factsWithDex = {...facts, ...(speciesData ? {speciesData} : {})};
-  const ourSide = battle.sides.find((s) => s.isFar === false) ?? battle.sides[0];
+  const ourSide = nearSide(battle);
 
   switch (format.kind) {
     case 'randbats': {
@@ -388,7 +431,8 @@ export function buildMoveSection(
   const foes = findOpposingActives(battle, pokemon);
   if (foes.length === 0) return '';
 
-  const publicFacts = factsFor(battle, pokemon);
+  // Our attacker: public battle state, private identity (Illusion disguises us to us too).
+  const publicFacts = ownTruth(battle, pokemon, factsFor(battle, pokemon));
   // Terastallize is ticked for this turn: preview the damage with the Tera active, using
   // OUR private Tera type (an our-view surface, like the real-item read). Not speculation —
   // the type is our own truth and activating it is the user's declared intent. Moot once
@@ -576,7 +620,8 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
       if (!moves || facts.hpPercent <= 0) return '';
       const realItem = readOwnItem(battle, pokemon);
       const knownStats = readOwnStats(battle, pokemon);
-      const attackerFacts = {...facts, ...(realItem ? {item: realItem} : {}), ...(knownStats ? {knownStats} : {})};
+      const ourFacts = ownTruth(battle, pokemon, facts);
+      const attackerFacts = {...ourFacts, ...(realItem ? {item: realItem} : {}), ...(knownStats ? {knownStats} : {})};
       const attacker = resolveMon(attackerFacts, entryOrMinimal(undefined, attackerFacts));
       const html = ownMovesSection(battle, pokemon.side, attacker, moves, format, openVariantsFor(format.gen));
       return html ? html + renderNotes([OPEN_FORMAT_NOTE]) : '';
@@ -616,7 +661,8 @@ function randbatsPokemonSection(
   // aren't hoverable for us). The own-side mirror carries no damage — public info only.
   const foe = isFoe(battle, pokemon);
   const ourMon = foe ? findOpposingActive(battle, pokemon) : null;
-  const ourFacts = ourMon ? factsFor(battle, ourMon) : null;
+  // The threat lands on the Pokémon really standing there, not on the disguise we're wearing.
+  const ourFacts = ourMon ? ownTruth(battle, ourMon, factsFor(battle, ourMon)) : null;
   const defender = ourFacts ? resolveMon(ourFacts, entryOrMinimal(entryFor(data, ourFacts), ourFacts)) : null;
   const field = ourMon ? readFieldFacts(battle, ourMon.side) : undefined;
 
@@ -648,7 +694,7 @@ function randbatsPokemonSection(
   // Own view's at-a-glance answer: OUR moves' damage into the current foe (private
   // moveset — an our-view surface). Leads the tooltip like ⚡ does on a foe hover;
   // the mirror blocks below remain strictly public.
-  const ownMovesHtml = foe ? '' : ownHoverMatchup(battle, pokemon, facts, entry, data, format);
+  const ownMovesHtml = foe ? '' : ownHoverMatchup(battle, pokemon, facts, data, format);
 
   return speedHtml + ownMovesHtml + renderSetsSection({candidates: blocks, extraNotes: notes});
 }

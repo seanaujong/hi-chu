@@ -26,7 +26,7 @@ const data = fixture.randbats as unknown as RandbatsData;
  * The client's classes are untyped and cyclic, so the reconstruction casts through
  * `unknown` — the shapes match readState's structural interfaces.
  */
-function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; fullHp?: boolean} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
+function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
   const sides: ClientSide[] = fixture.battle.sides.map((s, i) => {
     const side = {isFar: i === 1, sideConditions: {...s.sideConditions}, active: [] as (ClientPokemon | null)[]};
     side.active = s.active.map((p) => {
@@ -58,8 +58,11 @@ function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: strin
     weather: fixture.battle.weather,
     pseudoWeather: fixture.battle.pseudoWeather,
     sides,
-    // Our private team view — the item, Tera type, and moveset the opponent can't see. Only Noivern.
-    ...(over.myNoivernItem !== undefined || over.myNoivernTera !== undefined || over.myNoivernMoves !== undefined
+    // Our private team view — the item, Tera type, and moveset the opponent can't see. Only
+    // Noivern, unless `myPokemon` supplies the whole array (the Illusion case, where the
+    // Pokémon in our active slot is NOT the one the battle view shows).
+    ...(over.myPokemon !== undefined ? {myPokemon: over.myPokemon} : {}),
+    ...(over.myPokemon === undefined && (over.myNoivernItem !== undefined || over.myNoivernTera !== undefined || over.myNoivernMoves !== undefined)
       ? {myPokemon: [{
           ident: 'p1: Noivern',
           ...(over.myNoivernItem !== undefined ? {item: over.myNoivernItem} : {}),
@@ -151,6 +154,65 @@ describe('buildMoveSection uses YOUR real item for your own attacker (via myPoke
     // real name for both.
     expect(dm(loadBattle({...untera, myNoivernItem: 'heavydutyboots'})))
       .toBeLessThan(dm(loadBattle({...untera, myNoivernItem: 'choicespecs'})));
+  });
+});
+
+describe('an Illusion disguise on OUR side (the Pokémon in the slot is not the one shown)', () => {
+  // The sim sends the disguise's details to the disguised Pokémon's OWN side too, so the
+  // battle view calls our active "Noivern" while `myPokemon[0]` — the private team, indexed
+  // by active slot — knows a Zoroark-Hisui is standing there. Its ident names the real
+  // Pokémon, so the old ident lookup found our benched Noivern instead: wrong item, wrong
+  // moveset, and a damage number computed off the wrong species entirely.
+  const zoroark = {
+    ident: 'p1: Zoroark-Hisui',
+    details: 'Zoroark-Hisui, L80, M',
+    condition: '218/218',
+    item: 'lifeorb',
+    ability: 'illusion',
+    baseAbility: 'illusion',
+    teraType: 'Fighting',
+    moves: ['flamethrower', 'focusblast', 'hypervoice', 'uturn'],
+  };
+  const noivern = {ident: 'p1: Noivern', item: 'heavydutyboots', moves: ['dracometeor', 'flamethrower', 'hurricane', 'roost']};
+  // Slot 0 is the disguised Zoroark; the Noivern it is imitating sits on the bench.
+  const disguised = {noivernTerastallized: '', myPokemon: [zoroark, noivern]};
+  const undisguised = {noivernTerastallized: '', myPokemon: [noivern]};
+
+  it('calculates OUR move from the Zoroark that is really there, not from the disguise', () => {
+    const real = loadBattle(disguised);
+    const shown = loadBattle(undisguised);
+    const html = buildMoveSection(real.battle, real.active('Noivern'), 'Flamethrower', data);
+    // Zoroark-Hisui (L80, 125 base SpA, Life Orb) hits half again as hard as Boots
+    // Noivern (L82, 97 base SpA) — pinned against a real run, not arithmetic. Both
+    // numbers are small because Tentacruel resists Fire.
+    expect(maxPercent(html)).toBe(14.7);
+    expect(maxPercent(buildMoveSection(shown.battle, shown.active('Noivern'), 'Flamethrower', data))).toBe(9.6);
+  });
+
+  it('reads the private item/Tera type off the SLOT, not the ident the disguise borrows', () => {
+    // Ticking Terastallize must preview Zoroark's Fighting, never the bench Noivern's.
+    const {battle, active} = loadBattle(disguised);
+    expect(buildMoveSection(battle, active('Noivern'), 'Focus Blast', data, true)).toContain('Tera Fighting');
+  });
+
+  it('leads our own hover with the real Zoroark’s moves, and keeps the mirror on the disguise', () => {
+    const {battle, active} = loadBattle(disguised);
+    const html = buildPokemonSection(battle, active('Noivern'), data);
+    expect(html).toMatch(/Focus Blast: [\d.]+% - [\d.]+%/); // Zoroark's kit, not Noivern's
+    expect(html).not.toContain('Draco Meteor:');
+    // The mirror is what THEY can deduce, and they see a Noivern.
+    const mirror = html.slice(html.indexOf('hichu-block'));
+    expect(mirror).toContain('Fast Support'); // a Noivern role
+    expect(mirror).not.toContain('Wallbreaker'); // Zoroark's role never leaks in
+  });
+
+  it('judges the ⚡ verdict and the threat into us on the real Zoroark', () => {
+    // A foe hover reads our side of both lines: our speed, and their damage into us.
+    const real = loadBattle(disguised);
+    const shown = loadBattle(undisguised);
+    const line = (b: ReturnType<typeof loadBattle>) => /⚡[^<]*/.exec(buildPokemonSection(b.battle, b.active('Tentacruel'), data))![0];
+    expect(line(real)).toContain('222'); // Zoroark-Hisui L80's Speed
+    expect(line(shown)).toContain('249'); // Noivern L82's
   });
 });
 

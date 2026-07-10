@@ -6,6 +6,7 @@ import {
   tookEntryHazardDamage,
   switchedIntoStealthRockUnharmed,
   readOwnItem,
+  readOwnServerPokemon,
   readOwnMoves,
   readOwnStats,
   readOwnTeraType,
@@ -333,6 +334,47 @@ describe('readOwnItem (your private item, for your own move damage only)', () =>
 
   it('treats an empty item string as no item', () => {
     expect(readOwnItem(battle([{ident: 'p1: Iron Bundle', item: ''}]), mon)).toBeUndefined();
+  });
+});
+
+describe('readOwnServerPokemon (which private entry is this Pokémon?)', () => {
+  // Illusion: the battle view shows a Noivern in our active slot, but the Pokémon really
+  // standing there is the Zoroark-Hisui at myPokemon[0] — the slot the client itself
+  // indexes. The Noivern whose face it wears is the bench entry with the matching ident.
+  const zoroark = {ident: 'p1: Zoroark-Hisui', item: 'lifeorb'};
+  const noivern = {ident: 'p1: Noivern', item: 'heavydutyboots'};
+  const load = (): {battle: ClientBattle; disguised: ClientPokemon; foe: ClientPokemon} => {
+    const near = {isFar: false, active: [] as (ClientPokemon | null)[]};
+    const far = {isFar: true, active: [] as (ClientPokemon | null)[]};
+    const disguised = clientMon({ident: 'p1: Noivern', speciesForme: 'Noivern', side: near as unknown as ClientSide});
+    const foe = clientMon({ident: 'p2: Noivern', speciesForme: 'Noivern', side: far as unknown as ClientSide});
+    near.active = [disguised];
+    far.active = [foe];
+    const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far], myPokemon: [zoroark, noivern]} as unknown as ClientBattle;
+    return {battle, disguised, foe};
+  };
+
+  it('finds an ACTIVE Pokémon by its slot — its ident names only the disguise', () => {
+    const {battle, disguised} = load();
+    expect(readOwnServerPokemon(battle, disguised)).toBe(zoroark);
+    expect(readOwnItem(battle, disguised)).toBe('lifeorb');
+  });
+
+  it('finds a benched Pokémon by ident — it holds no slot, and can wear no disguise', () => {
+    const {battle} = load();
+    const benched = clientMon({ident: 'p1: Noivern', speciesForme: 'Noivern'});
+    expect(readOwnServerPokemon(battle, benched)).toBe(noivern);
+  });
+
+  it("never reads a foe's slot as ours", () => {
+    const {battle, foe} = load();
+    expect(readOwnServerPokemon(battle, foe)).toBeUndefined();
+  });
+
+  it('is undefined when spectating (no private team)', () => {
+    const {disguised} = load();
+    const spectating = {gen: 9, tier: '[Gen 9] Random Battle', sides: []} as unknown as ClientBattle;
+    expect(readOwnServerPokemon(spectating, disguised)).toBeUndefined();
   });
 });
 

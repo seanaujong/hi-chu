@@ -187,7 +187,8 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   honest only because client `Pokemon` objects carry public info exclusively (the private
   team lives in `battle.myPokemon`).
 - 👁 **`battle.myPokemon` feeds OUR-view surfaces only — four reads (`readOwnItem`,
-  `readOwnTeraType`, `readOwnMoves`, `readOwnStats`), never the set/mirror views.** The
+  `readOwnTeraType`, `readOwnMoves`, `readOwnStats`), all through `readOwnServerPokemon`
+  (slot-keyed for an active mon — see the Illusion bullet below), never the set/mirror views.** The
   principle: private facts (you know your own item even when it's *silent* to the opponent —
   Heavy-Duty Boots never reveals itself) may inform what WE see, and must never leak into the
   opponent's-knowledge views, which stay strictly public — that separation is the whole
@@ -295,7 +296,30 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   species axis in `variants.ts`) and an extra candidate block ("⚠ … if Illusion") in the sets
   view. Silent when no move betrays it (a Zoroark mimicking only shared moves is genuinely
   undetectable — honest). Checked by `illusion.test.ts`, `variants.test.ts` ("labels by
-  SPECIES first"), and `render.test.ts` ("flags an Illusion candidate").
+  SPECIES first"), and `render.test.ts` ("flags an Illusion candidate"). That bullet is about
+  THEIR Zoroark, which we can only suspect; ours we can simply look up — next bullet.
+- ✅ **Our OWN disguised Zoroark is seen through, because the private team names it.** The sim
+  sends the disguise's details to the disguised Pokémon's OWN side too (`Pokemon.getFullDetails`
+  swaps `details` before splitting secret/shared), so the battle view calls our active a
+  Noivern: wrong species, base stats, types, level. The one law: **whenever WE are the subject
+  of a calc, our identity comes from the private team** — `section.ownTruth` overlays
+  `serverPokemonFacts` on the public battle state, and the four our-view calc sites use it (the
+  move tooltip's attacker, the own-hover matchup view, our side of the ⚡ verdict, and the foe's
+  threat damage INTO us). The opponent's-knowledge views must NOT: the disguise is exactly what
+  they see, so the mirror still shows Noivern's sets, and a foe hover still only *suspects* a
+  Zoroark. The battle view wins whenever it agrees on the BASE species, so a forme change it
+  learns first (Aegislash-Blade, Mimikyu-Busted, Terapagos-Terastal) is never overridden by a
+  request that predates it — only a different Pokémon entirely, which nothing but Illusion
+  produces, hands the decision to the private team. **The enabling fix is one layer down:**
+  `readOwnServerPokemon` finds an ACTIVE Pokémon by its SLOT (`myPokemon[i]` is whoever really
+  occupies active slot `i` — how the client's own tooltips index it), because `ident` names
+  only what the battle view SHOWS there; matching a disguised Zoroark on ident returns the
+  bench teammate it's imitating, and every private read (item, Tera type, moveset, stats) then
+  answers for the wrong Pokémon. A benched mon has no slot and wears no disguise, so it still
+  matches on ident. Checked by `section.test.ts` ("an Illusion disguise on OUR side": the
+  attacker's damage, the Tera preview, the matchup view vs. the still-public mirror, the ⚡
+  speed — guards watched failing with `ownTruth` neutered and with the slot lookup reverted to
+  ident) and `readState.test.ts` (`readOwnServerPokemon`: slot, bench, no foe slot).
 - ✅ **Set inference keys on the INNATE ability (`baseAbility`), not the live one.** Trace,
   Skill Swap, Worry Seed, Entrainment, Simple Beam, Gastro Acid, and Mummy/Wandering Spirit
   all change or suppress the current `ability`; the randbats set is keyed to what the mon was

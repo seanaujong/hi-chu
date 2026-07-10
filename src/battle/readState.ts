@@ -356,14 +356,38 @@ export function readBehaviors(battle: ClientBattle, mon: ClientPokemon): Behavio
  * opponent's-knowledge views, which stay strictly public.
  */
 export function readOwnItem(battle: ClientBattle, mon: ClientPokemon): string | undefined {
-  return ownServerPokemon(battle, mon)?.item || undefined;
+  return readOwnServerPokemon(battle, mon)?.item || undefined;
 }
 
-/** `mon`'s entry in the viewer's private team view (absent when spectating). */
-function ownServerPokemon(battle: ClientBattle, mon: ClientPokemon): ClientServerPokemon | undefined {
+/**
+ * `mon`'s entry in the viewer's private team view (absent when spectating, or when `mon`
+ * isn't ours).
+ *
+ * An ACTIVE Pokémon is found by its SLOT: `battle.myPokemon[i]` is whoever really occupies
+ * active slot `i`, which is how the client's own tooltips index it. Its `ident` names only
+ * what the battle view SHOWS in that slot — and under Illusion those differ, because the
+ * sim sends the disguise's details to the disguised Pokémon's OWN side too. Matching a
+ * disguised Zoroark on ident finds the teammate it is imitating, and every private read
+ * (item, Tera type, moveset, stats) then answers for the wrong Pokémon. A benched Pokémon
+ * has no slot and can wear no disguise, so it matches on ident.
+ */
+export function readOwnServerPokemon(battle: ClientBattle, mon: ClientPokemon): ClientServerPokemon | undefined {
+  const team = battle.myPokemon;
+  if (!team) return undefined;
+  const side = mon.side;
+  // The slot index is only ours to read on our own side; a foe's slot 0 is not our slot 0.
+  if (side && side === nearSide(battle)) {
+    const slot = side.active.indexOf(mon);
+    if (slot >= 0) return team[slot];
+  }
   const me = identKey(mon.ident);
   if (!me) return undefined;
-  return (battle.myPokemon ?? []).find((p) => identKey(p.ident) === me);
+  return team.find((p) => identKey(p.ident) === me);
+}
+
+/** The viewer's own side — the one rendered at the bottom of the screen. */
+export function nearSide(battle: ClientBattle): ClientSide | undefined {
+  return battle.sides.find((s) => s.isFar === false) ?? battle.sides[0];
 }
 
 /**
@@ -374,7 +398,7 @@ function ownServerPokemon(battle: ClientBattle, mon: ClientPokemon): ClientServe
  * opponent's-knowledge views. Undefined when spectating.
  */
 export function readOwnTeraType(battle: ClientBattle, mon: ClientPokemon): string | undefined {
-  return ownServerPokemon(battle, mon)?.teraType || undefined;
+  return readOwnServerPokemon(battle, mon)?.teraType || undefined;
 }
 
 /**
@@ -386,7 +410,7 @@ export function readOwnTeraType(battle: ClientBattle, mon: ClientPokemon): strin
  * spectating or when the private team doesn't know this Pokémon.
  */
 export function readOwnMoves(battle: ClientBattle, mon: ClientPokemon): readonly string[] | undefined {
-  const moves = ownServerPokemon(battle, mon)?.moves;
+  const moves = readOwnServerPokemon(battle, mon)?.moves;
   return moves && moves.length > 0 ? moves : undefined;
 }
 
@@ -404,7 +428,7 @@ export function serverStats(p: ClientServerPokemon): FullStats | undefined {
 
 /** `serverStats` for `mon`'s entry in the viewer's private team (absent when spectating). */
 export function readOwnStats(battle: ClientBattle, mon: ClientPokemon): FullStats | undefined {
-  const own = ownServerPokemon(battle, mon);
+  const own = readOwnServerPokemon(battle, mon);
   return own ? serverStats(own) : undefined;
 }
 

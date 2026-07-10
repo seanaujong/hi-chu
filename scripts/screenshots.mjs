@@ -13,8 +13,9 @@
 //
 // It plays both sides for a few turns first, so the tooltips have something to say: moves
 // come back ✓ confirmed, HP bars are dented, and the foe's set pool has narrowed. Then it
-// shoots each surface twice — a full 1280×800 window (the Chrome Web Store's required
-// size) and a 2× crop of the tooltip alone (the README's framing).
+// shoots each surface twice — a full shot framed to the battle (battle scene + log, with
+// Showdown's top banner and the right-hand chat-rooms pane cropped out), and a 2× crop of
+// the tooltip alone (the README's framing).
 //
 // Output is gitignored and nothing is placed for you: a random battle can deal a dull
 // matchup, and which shot deserves to be the README hero is a judgement call. Read the
@@ -26,7 +27,7 @@ import {startBattle, readBundle, sleep, evaluate} from './lib/showdown.mjs';
 const FORMAT = process.argv[2] || 'gen9randombattle';
 const TURNS = Number(process.env.TURNS ?? 6);
 const OUT = new URL('../screenshots/', import.meta.url);
-const VIEWPORT = {width: 1280, height: 800}; // the Chrome Web Store's required size
+const VIEWPORT = {width: 1280, height: 800}; // wide enough for Showdown's full desktop layout
 
 /** hi-chu's own markup. Its absence means the native tooltip rendered alone. */
 const isOurs = (html) => html.includes('hichu-block');
@@ -144,10 +145,11 @@ async function playTo(players, roomid, turns) {
 
 /**
  * Hover `handle` and, if hi-chu rendered into the tooltip, save the shot. A null `dir`
- * hovers without saving — how the feed gets warmed. Returns the tooltip HTML (or null),
- * so callers can report what a surface actually said.
+ * hovers without saving — how the feed gets warmed. With a `frame` rect the shot is clipped
+ * to it (the full pass, framed to the battle); without one it crops to the tooltip (the
+ * README pass). Returns the tooltip HTML (or null), so callers can report what it said.
  */
-async function shoot(page, handle, {name, dir, clip}) {
+async function shoot(page, handle, {name, dir, frame}) {
   const readTooltip = () => page.evaluate(() => document.querySelector('#tooltipwrapper')?.innerHTML ?? '');
   let html = '';
   // The first hover after a relayout (a viewport change, a finished animation) is routinely
@@ -171,43 +173,55 @@ async function shoot(page, handle, {name, dir, clip}) {
   if (!dir) return html;
 
   const path = new URL(`${dir}/${name}.png`, OUT).pathname;
-  if (!clip) {
-    await page.screenshot({path});
+  const box = await tooltipBox(page);
+  if (!box) return html; // rendered, but gone before we could measure it — a later pass retries
+  if (process.env.DEBUG) console.log(`    [debug] ${name} box: ${JSON.stringify(box)}`);
+
+  if (frame) {
+    // Full shot, framed to the battle: `frame` is the battle-room box (banner above and the
+    // chat-rooms pane to the right both fall outside it). Extend only the TOP up to the
+    // tooltip, so a tall tooltip that clamps toward the header is never sliced — left, right
+    // and bottom stay on the room so the chat pane can't creep back in.
+    const pad = 6;
+    const top = Math.max(0, Math.min(frame.y, box.y - pad));
+    await page.screenshot({path, clip: {x: frame.x, y: top, width: frame.width, height: frame.y + frame.height - top}});
     return html;
   }
-  const box = await page.evaluate(() => {
-    // Measure the `.tooltip` itself, not `#tooltipwrapper`: Showdown absolutely-positions
-    // the tooltip inside the wrapper, so the wrapper (and `.tooltipinner`) collapse to a
-    // near-empty sliver while `.tooltip` carries the real painted rect. Union all of them,
-    // since a Pokémon tooltip can stack two `.tooltip` boxes (buff/species panels).
-    const els = [...document.querySelectorAll('#tooltipwrapper .tooltip')];
-    if (!els.length) return null;
-    const rects = els.map((el) => el.getBoundingClientRect());
-    const left = Math.min(...rects.map((r) => r.left));
-    const top = Math.min(...rects.map((r) => r.top));
-    return {
-      x: left,
-      y: top,
-      width: Math.max(...rects.map((r) => r.right)) - left,
-      height: Math.max(...rects.map((r) => r.bottom)) - top,
-    };
-  });
-  if (!box) return html;
-  if (process.env.DEBUG) console.log(`    [debug] ${name} box: ${JSON.stringify(box)}`);
-  // A few pixels of margin so the tooltip's border and drop shadow aren't shaved off,
-  // clamped to the viewport — `clip` outside it screenshots blank pixels.
+
+  // Tooltip crop (README framing): a few px of margin so the border and drop shadow aren't
+  // shaved off, clamped to the viewport — a `clip` past the edge shoots blank pixels.
+  const view = page.viewport();
   const pad = 6;
+  const x = Math.max(0, box.x - pad);
+  const y = Math.max(0, box.y - pad);
   await page.screenshot({
     path,
-    clip: {
-      x: Math.max(0, box.x - pad),
-      y: Math.max(0, box.y - pad),
-      width: Math.min(VIEWPORT.width - Math.max(0, box.x - pad), box.width + pad * 2),
-      height: Math.min(VIEWPORT.height - Math.max(0, box.y - pad), box.height + pad * 2),
-    },
+    clip: {x, y, width: Math.min(view.width - x, box.width + pad * 2), height: Math.min(view.height - y, box.height + pad * 2)},
   });
   return html;
 }
+
+/**
+ * The tooltip's painted rect, or null if it isn't up. Measures the `.tooltip` elements, not
+ * `#tooltipwrapper`: Showdown absolutely-positions the tooltip inside the wrapper, so the
+ * wrapper (and `.tooltipinner`) collapse to a near-empty sliver while `.tooltip` carries the
+ * real box. Unions them, since a Pokémon tooltip can stack two `.tooltip` panels.
+ */
+const tooltipBox = (page) =>
+  page.evaluate(() => {
+    const rects = [...document.querySelectorAll('#tooltipwrapper .tooltip')].map((el) => el.getBoundingClientRect());
+    if (!rects.length) return null;
+    const left = Math.min(...rects.map((r) => r.left));
+    const top = Math.min(...rects.map((r) => r.top));
+    return {x: left, y: top, width: Math.max(...rects.map((r) => r.right)) - left, height: Math.max(...rects.map((r) => r.bottom)) - top};
+  });
+
+/** The battle-room box: battle + log, with the top banner and the right chat pane outside it. */
+const battleFrame = (page, roomid) =>
+  page.evaluate((id) => {
+    const {x, y, width, height} = document.getElementById(`room-${id}`).getBoundingClientRect();
+    return {x: Math.max(0, Math.round(x)), y: Math.round(y), width: Math.round(width + Math.min(0, x)), height: Math.round(height)};
+  }, roomid);
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
@@ -256,11 +270,11 @@ async function teraSurfaces(page, roomid, on) {
   return list;
 }
 
-async function capturePass(page, roomid, {dir, clip}) {
+async function capturePass(page, roomid, {dir, frame}) {
   const shots = [];
   const run = async (list) => {
     for (const {name, handle} of list) {
-      const html = await shoot(page, handle, {name, dir, clip});
+      const html = await shoot(page, handle, {name, dir, frame});
       if (html) shots.push({name, text: html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()});
       else console.log(`  · ${dir}/${name}: no hi-chu section (skipped)`);
     }
@@ -300,7 +314,7 @@ try {
   let warm = false;
   for (let attempt = 0; attempt < 12 && !warm; attempt++) {
     for (const canary of canaries) {
-      if (await shoot(p1.page, canary, {name: 'warm', dir: null, clip: false})) {
+      if (await shoot(p1.page, canary, {name: 'warm', dir: null})) {
         warm = true;
         break;
       }
@@ -309,13 +323,19 @@ try {
   }
   if (!warm) console.log('  · nothing rendered yet after warm-up; shooting anyway');
 
-  console.log('\nshooting full 1280×800 windows (store size)…');
-  const full = await capturePass(p1.page, roomid, {dir: 'full', clip: false});
+  // A little extra height so a tall tooltip opens downward instead of clamping up into the
+  // header — then the frame clip below never has to reach into the banner to keep it whole.
+  console.log('\nshooting full windows, framed to the battle (no banner, no chat pane)…');
+  await p1.page.setViewport({...VIEWPORT, height: 900});
+  await sleep(800); // the scene relays out on resize
+  const frame = await battleFrame(p1.page, roomid);
+  if (process.env.DEBUG) console.log(`  [debug] battle frame: ${JSON.stringify(frame)}`);
+  const full = await capturePass(p1.page, roomid, {dir: 'full', frame});
 
   console.log('\nshooting 2× tooltip crops (README framing)…');
   await p1.page.setViewport({...VIEWPORT, deviceScaleFactor: 2});
   await sleep(800); // the battle scene relays out on resize
-  const crop = await capturePass(p1.page, roomid, {dir: 'crop', clip: true});
+  const crop = await capturePass(p1.page, roomid, {dir: 'crop'});
 
   const index = {battle: roomid, format: FORMAT, turn: reached, full: full.map((s) => s.name), crop: crop.map((s) => s.name)};
   writeFileSync(new URL('index.json', OUT).pathname, JSON.stringify({...index, tooltips: crop}, null, 2));

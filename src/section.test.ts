@@ -26,9 +26,12 @@ const data = fixture.randbats as unknown as RandbatsData;
  * The client's classes are untyped and cyclic, so the reconstruction casts through
  * `unknown` — the shapes match readState's structural interfaces.
  */
-function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
+function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; nearTailwind?: boolean} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
   const sides: ClientSide[] = fixture.battle.sides.map((s, i) => {
-    const side = {isFar: i === 1, sideConditions: {...s.sideConditions}, active: [] as (ClientPokemon | null)[]};
+    // Tailwind blows on OUR side (index 0) only — the asymmetry is the point: it must
+    // double our speed and leave the foe's alone, whichever side a caller orients on.
+    const sideConditions = {...s.sideConditions, ...(i === 0 && over.nearTailwind ? {tailwind: ['tailwind', 1]} : {})};
+    const side = {isFar: i === 1, sideConditions, active: [] as (ClientPokemon | null)[]};
     side.active = s.active.map((p) => {
       const terastallized = p.speciesForme === 'Noivern' && over.noivernTerastallized !== undefined
         ? over.noivernTerastallized
@@ -372,7 +375,7 @@ describe('buildPokemonSection hovering OUR Noivern (their read on us)', () => {
     expect(html).not.toMatch(/\(\d+(\.\d+)?–\d+(\.\d+)?%\)/);
   });
 
-  it('carries no speed line either — judging it would use private facts, and the mirror stays public', () => {
+  it('carries no speed line either — a spectator has no private team to read our speed from', () => {
     expect(html).not.toContain('⚡');
   });
 });
@@ -454,6 +457,64 @@ describe('buildSwitchSection (the switch menu: a ServerPokemon, NO battle-view P
 
   it('renders nothing for a fainted mon — it cannot switch in', () => {
     expect(buildSwitchSection(battle, server({condition: '0 fnt'}), data)).toBe('');
+  });
+
+  it('answers "if I send this in, do I outspeed?" — the only surface a bench mon\'s speed appears on', () => {
+    expect(buildSwitchSection(battle, server(), data)).toContain('⚡ you move first — 249 vs 216');
+  });
+
+  it('reads the bench mon\'s speed off its PRIVATE facts: an id-form Scarf, and its status', () => {
+    // The private team names an item the calc only honours by display name; if the id
+    // form were passed through raw the Scarf would apply nothing and this would stay 249.
+    expect(buildSwitchSection(battle, server({item: 'choicescarf'}), data)).toContain('⚡ you move first — 373 vs 216');
+    // A paralyzed mon really is slower on the turn it comes in — half of 249.
+    expect(buildSwitchSection(battle, server({condition: '272/272 par'}), data))
+      .toContain('<span class="hichu-ko">they move first</span> — 124 vs 216');
+  });
+
+  it('gives a bench mon no boosts — it enters with none, whatever is standing there now', () => {
+    // Tentacruel at +2 Spe outruns us; our benched Noivern is unaffected by the foe's boost,
+    // and carries no boost of its own (a bench mon has none to carry).
+    const {battle: b} = loadBattle({tentacruelBoosts: {spe: 2}});
+    expect(buildSwitchSection(b, server(), data)).toContain('— 249 vs 432');
+  });
+});
+
+describe('the ⚡ line on OUR side of the pair (matchup view + switch menu)', () => {
+  const mine = {myNoivernItem: 'heavydutyboots', myNoivernMoves: ['dracometeor', 'flamethrower', 'hurricane', 'roost']};
+
+  it('sits under the "vs <foe>" header, above the move lines', () => {
+    const {battle, active} = loadBattle(mine);
+    const html = buildPokemonSection(battle, active('Noivern'), data);
+    expect(html).toContain('⚡ you move first — 249 vs 216');
+    expect(html.indexOf('<b>Tentacruel</b>')).toBeLessThan(html.indexOf('⚡'));
+    expect(html.indexOf('⚡')).toBeLessThan(html.indexOf('Draco Meteor:'));
+  });
+
+  it('reads the same verdict as the foe hover — one truth per pair, two places to find it', () => {
+    const {battle, active} = loadBattle(mine);
+    const zap = (html: string) => /⚡.*?(?=<\/p>)/.exec(html)![0];
+    expect(zap(buildPokemonSection(battle, active('Noivern'), data)))
+      .toBe(zap(buildPokemonSection(battle, active('Tentacruel'), data)));
+  });
+
+  it('orients Tailwind on the right side of the pair, on both surfaces', () => {
+    // Tailwind blows on OUR side only. `ownMovesSection` reads the field with the FOE as
+    // defender, so ours is `attackerTailwind` — the mirror image of `speedSection`'s read.
+    // Swap the two and our 249 stays put while the foe's 216 doubles to 432.
+    const {battle, active} = loadBattle({...mine, nearTailwind: true});
+    const server = {ident: 'p1: Noivern', details: 'Noivern, L82, F', condition: '272/272',
+      item: 'heavydutyboots', baseAbility: 'infiltrator', moves: ['dracometeor', 'roost']} as never;
+    expect(buildPokemonSection(battle, active('Noivern'), data)).toContain('⚡ you move first — 498 vs 216');
+    expect(buildSwitchSection(battle, server, data)).toContain('⚡ you move first — 498 vs 216');
+    expect(buildPokemonSection(battle, active('Tentacruel'), data)).toContain('⚡ you move first — 498 vs 216');
+  });
+
+  it('never reaches the mirror blocks — their read on us stays strictly public', () => {
+    const {battle, active} = loadBattle(mine);
+    const html = buildPokemonSection(battle, active('Noivern'), data);
+    expect(html).toContain('⚡'); // in the matchup block, an our-view surface
+    expect(html.slice(html.indexOf('Fast Support'))).not.toContain('⚡');
   });
 });
 
@@ -621,6 +682,9 @@ describe('open formats: the own-hover matchup view and the switch menu', () => {
     expect(html).toMatch(/Earthquake: /);
     expect(html).not.toContain('Roost:');
     expect(html.match(/⚠ foe EVs\/item assumed/g)).toHaveLength(1);
+    // No feed, no honest foe speed: an assumed spread brackets the axis a MOVE attacks,
+    // and nothing falls out of it that could name a Speed stat.
+    expect(html).not.toContain('⚡');
 
     // A knocked-off item (item: '') is a KNOWN empty slot — the Choice Band must go.
     const bandMax = /Earthquake: <small>\(uninvested\)<\/small> [\d.]+% - ([\d.]+)%/.exec(html);

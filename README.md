@@ -27,14 +27,19 @@ Random-Battle-only, and every other format (OU, VGC, Custom Game) gets the damag
   private team, so the numbers are exact; if the foe's hidden item would change a number
   (an Assault Vest they may or may not hold), the line splits into labelled outcomes
   instead of guessing.
-- **Who moves first.** *(Random Battles.)* Hovering an opponent leads with a ⚡ speed-order
-  verdict — your
-  active's effective Speed against theirs. Randbats makes the numbers *exact* (the level is
-  public and the spread is fixed), so the only real unknowns are the ones the set inference
-  already tracks: a still-possible Choice Scarf or weather ability shows up as an
-  "if Choice Scarf: they do" aside, and only when it genuinely survives the evidence.
-  Paralysis, stat stages, Tailwind, and weather all feed the number; Trick Room flips the
-  verdict. In doubles you get one line per active of yours.
+- **Who moves first.** *(Random Battles.)* Speed order is a fact about a *pair*, so the ⚡
+  verdict appears on both halves of it. Hovering an opponent leads with your active's
+  effective Speed against theirs. Hovering one of your own Pokémon — **including a benched
+  one in the switch menu** — heads its "vs \<foe\>" block with the same verdict, so you can
+  ask "do I outspeed if I send this in?" before committing to the switch. Randbats makes the
+  numbers *exact* (the level is public and the spread is fixed), so the only real unknowns
+  are the ones the set inference already tracks: a still-possible Choice Scarf or weather
+  ability shows up as an "if Choice Scarf: they do" aside, and only when it genuinely
+  survives the evidence. Paralysis, stat stages, Tailwind, and weather all feed the number;
+  Trick Room flips the verdict. Your own side is read from your private team, so a Scarf
+  you're holding counts — and a benched Pokémon carries no stat stages, because it enters
+  with none. In doubles, a foe hover gives one line per active of yours, and your own hover
+  one per foe.
 - **Honest numbers where the sets aren't published.** In a format with no set list, the
   opponent's EVs are genuinely unknowable — so instead of guessing one number, hi-chu shows
   the two that *bracket* the truth: `uninvested` and `max HP/Def` (or `max HP/SpD` against a

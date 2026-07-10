@@ -16,7 +16,7 @@ import {resolveByRole, resolveMon, resolveVariants} from './core/resolve.js';
 import {assumeDefenderVariants, type MoveSlant} from './core/assume.js';
 import {inferSets} from './core/knowledge.js';
 import {bucketByDamage, type DamageBucket} from './core/variants.js';
-import {compareSpeed, finalSpeed, speedBuckets} from './core/speed.js';
+import {compareSpeed, finalSpeed, speedBuckets, type SpeedOrder} from './core/speed.js';
 import {illusionSuspects, ILLUSION_SPECIES, type IllusionSuspect} from './core/illusion.js';
 import {
   renderMoveSection,
@@ -30,7 +30,15 @@ import {
   type SetsRenderModel,
   type SpeedLineModel,
 } from './core/render.js';
-import type {CandidateSet, LiveFacts, RandbatsData, RandbatsEntry, ResolvedMon, SetVariant} from './core/types.js';
+import type {
+  CandidateSet,
+  FieldFacts,
+  LiveFacts,
+  RandbatsData,
+  RandbatsEntry,
+  ResolvedMon,
+  SetVariant,
+} from './core/types.js';
 import {pickEntry, megaEntryForItem} from './data/randbats.js';
 import {
   toLiveFacts,
@@ -67,18 +75,31 @@ const OPEN_FORMAT_NOTE = 'foe EVs/item assumed';
  */
 type DefenderVariantsFor = (defenderFacts: LiveFacts) => (moveName: string) => readonly SetVariant[];
 
-/** The feed-driven supplier: every still-possible set (hidden item/ability fan-out)
- *  plus any disguised Zoroark the reveals betray — identical for every move. */
+/** Every still-possible set for a foe: the hidden item/ability fan-out, plus any
+ *  disguised Zoroark the reveals betray. Move-independent — the same pool answers
+ *  "how hard does it get hit" and "how fast is it". */
+function randbatsFoeVariants(data: RandbatsData, facts: LiveFacts): readonly SetVariant[] {
+  const entry = entryFor(data, facts);
+  return [...resolveVariants(facts, entryOrMinimal(entry, facts)), ...illusionVariants(facts, entry, data)];
+}
+
+/** The feed-driven supplier: every still-possible set, identical for every move. */
 function randbatsVariantsFor(data: RandbatsData): DefenderVariantsFor {
   return (facts) => {
-    const entry = entryFor(data, facts);
-    const variants = [
-      ...resolveVariants(facts, entryOrMinimal(entry, facts)),
-      ...illusionVariants(facts, entry, data),
-    ];
+    const variants = randbatsFoeVariants(data, facts);
     return () => variants;
   };
 }
+
+/**
+ * The pool a foe's possible SPEEDS are read from, for the ⚡ line in the matchup
+ * block. A separate seam from `DefenderVariantsFor` because speed is move-independent
+ * and, crucially, because only a feed can supply it: `assume.ts` brackets a spread on
+ * the axis a MOVE attacks, and no honest speed falls out of that. An open format
+ * passes nothing here, so the ⚡ line is randbats-only by construction rather than by
+ * an `if` inside the shared block builder.
+ */
+type FoeSpeedVariantsFor = (defenderFacts: LiveFacts) => readonly SetVariant[];
 
 /** The assumption-driven supplier: bracketing spreads × dex abilities (assume.ts),
  *  chosen per move category. Status moves (Pain Split included) get none — with the
@@ -250,6 +271,13 @@ function speedSection(
  * The foe's hidden item/ability splits a line into labelled outcomes exactly as the
  * move tooltip does — never one confidently-wrong number. Callers resolve the
  * attacker (they differ in how they know its item); this folds it over the foes.
+ *
+ * `foeSpeedVariants` adds the ⚡ verdict to each block: speed order is a fact about
+ * the (ours, theirs) PAIR, so it reads the same on this surface as on a foe hover —
+ * and here it is the ONLY way to learn a benched Pokémon's speed matchup, since a
+ * bench mon appears on no other tooltip. Absent in open formats (no pool to read a
+ * foe speed from). Our speed is honest on both entry paths: an active carries its
+ * live boosts, and a bench mon has none to carry.
  */
 function ownMovesSection(
   battle: ClientBattle,
@@ -258,19 +286,45 @@ function ownMovesSection(
   moves: readonly string[],
   format: {gen: number; doubles: boolean},
   variantsFor: DefenderVariantsFor,
+  foeSpeedVariants?: FoeSpeedVariantsFor,
 ): string {
   const sections = activesOpposing(battle, ourSide).map((foe) => {
     const defenderFacts = factsFor(battle, foe);
     const variantsForMove = variantsFor(defenderFacts);
+    // The FOE is the defender here, so `defenderTailwind` is theirs and `attackerTailwind`
+    // is ours — the mirror image of speedSection's read, which orients on our own side.
     const field = readFieldFacts(battle, foe.side);
     const rows = moves
       .map((move) => moveDamageBuckets(attacker, variantsForMove(move), move, format.gen, field, format.doubles))
       .filter((buckets) => buckets.length > 0) // status / unmodellable moves get no line
       // The report's move name is dex-resolved, so the id form ("dracometeor") displays right.
       .map((buckets) => ({name: buckets[0]!.report.move, buckets}));
-    return {foeName: defenderFacts.speciesForme, defenderHpPercent: defenderFacts.hpPercent, moves: rows};
+    const speed = foeSpeedVariants
+      ? speedOrderVs(attacker, foeSpeedVariants(defenderFacts), field, format.gen)
+      : undefined;
+    return {
+      foeName: defenderFacts.speciesForme,
+      defenderHpPercent: defenderFacts.hpPercent,
+      moves: rows,
+      ...(speed ? {speed} : {}),
+    };
   });
   return renderOwnMovesSection(sections);
+}
+
+/** Our resolved Pokémon's speed judged against a foe's still-possible speeds, with
+ *  `field` oriented so the FOE is the defender (as `ownMovesSection` reads it).
+ *  Undefined when no set survives — a verdict needs something to compare against. */
+function speedOrderVs(
+  ours: ResolvedMon,
+  foeVariants: readonly SetVariant[],
+  field: FieldFacts,
+  gen: number,
+): SpeedOrder | undefined {
+  if (foeVariants.length === 0) return undefined;
+  const ourSpeed = finalSpeed(ours, {gen, field, tailwind: Boolean(field.attackerTailwind)});
+  const foe = speedBuckets(foeVariants, {gen, field, tailwind: Boolean(field.defenderTailwind)});
+  return compareSpeed(ourSpeed, foe, Boolean(field.trickRoom));
 }
 
 /** The matchup block for an own-side hover that carries a battle-view Pokémon (the
@@ -293,7 +347,10 @@ function ownHoverMatchup(
   // principle as buildMoveSection's attacker).
   const realItem = ownItemName(battle, pokemon, entry);
   const attacker = resolveMon(realItem ? {...facts, item: realItem} : facts, entry);
-  return ownMovesSection(battle, pokemon.side, attacker, moves, format, randbatsVariantsFor(data));
+  // Our real item feeds the ⚡ line too: a Scarf we are holding is our own private
+  // truth, and showing US our own speed as uncertain would be absurd.
+  const speedFor = (foeFacts: LiveFacts): readonly SetVariant[] => randbatsFoeVariants(data, foeFacts);
+  return ownMovesSection(battle, pokemon.side, attacker, moves, format, randbatsVariantsFor(data), speedFor);
 }
 
 /**
@@ -326,7 +383,12 @@ export function buildSwitchSection(battle: ClientBattle, server: ClientServerPok
       // resolves it to the dex name for the calc — no pool mapping needed here.
       const resolved = resolveMon(factsWithDex, entry);
       const attacker = server.item === '' ? {...resolved, item: undefined} : resolved;
-      return ownMovesSection(battle, ourSide, attacker, moves, format, randbatsVariantsFor(data));
+      // A benched mon's ⚡ line answers "if I send this in, do I outspeed?" — the whole
+      // reason speed belongs on our side of the pair. Its item comes from the private
+      // team (an id-form Choice Scarf; the damage layer resolves ids through the dex),
+      // and it carries no boosts, because it enters with none.
+      const speedFor = (foeFacts: LiveFacts): readonly SetVariant[] => randbatsFoeVariants(data, foeFacts);
+      return ownMovesSection(battle, ourSide, attacker, moves, format, randbatsVariantsFor(data), speedFor);
     }
     case 'open': {
       // The ServerPokemon already carries the real item/ability in `facts`; its exact
@@ -679,9 +741,11 @@ function randbatsPokemonSection(
   }
   if (blocks.every((b) => b.moves.length === 0)) return '';
 
-  // The at-a-glance verdict, above the set blocks. Foe view only: putting a speed
-  // read on our own tooltip would mean judging it with private facts, and the
-  // mirror's honesty rests on staying strictly public.
+  // The at-a-glance verdict, above the set blocks — where the "if Choice Scarf" aside
+  // sits directly over the candidate sets that produce that Scarf. Our own hover gets
+  // its ⚡ line inside the matchup block instead (same pair, read from our side); what
+  // stays foe-only is this placement, not the fact. The mirror below never gets one:
+  // its honesty rests on carrying nothing but public info.
   const speedHtml = foe
     ? speedSection(
         battle,

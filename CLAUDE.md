@@ -11,9 +11,11 @@ the **matchup view**: our real moves' damage into the foe active, read from the 
 team. In a **Random Battle** those surfaces sit atop the information game — hovering a
 **Pokémon** shows which randbats sets are still possible given every public reveal (moves
 used, item incl. consumed/knocked-off, ability), with damage vs our active attached on
-the opponent's tooltip and the mirror ("their read on you") on our own; a foe hover leads
-with a **⚡ speed-order verdict** (exact randbats speeds, a surviving Scarf set as an
-"if …" aside, Trick Room flipping the verdict). In an **open format** (OU, VGC, Custom
+the opponent's tooltip and the mirror ("their read on you") on our own; a **⚡ speed-order
+verdict** (exact randbats speeds, a surviving Scarf set as an "if …" aside, Trick Room
+flipping the verdict) leads a foe hover and heads each "vs \<foe\>" block of the matchup
+view — including the **switch menu**, so a benched mon answers "do I outspeed if I send
+this in?" before you commit. In an **open format** (OU, VGC, Custom
 Game) there is no feed to enumerate, so the foe's spread is **bracketed, not guessed**
 (`core/assume.ts`): two labelled damage lines, `uninvested` and `max HP/Def` (mirrored to
 SpD for a special move), one ⚠ note naming the assumption — while OUR side stays exact,
@@ -220,7 +222,9 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   Illusion variants; open: `assume.ts`'s bracketing spreads), bucketed by distinct outcome
   exactly like the move tooltip — a hidden
   Assault Vest splits the line into labelled outcomes, never one confidently-wrong number
-  (`renderOwnMovesSection`; no nHKO ladder — the compact view skips the survival sim).
+  (`renderOwnMovesSection`; no nHKO ladder — the compact view skips the survival sim). In a
+  randbats format each "vs \<foe\>" block leads with the ⚡ speed verdict for that pair (see
+  the speed-order bullet), so the switch menu answers "do I outspeed if I send this in?"
   **Two entry paths, split by what the client hands the tooltip.** (1) A battle-view Pokémon
   (your active's hover, a revealed mon's sidebar icon) → `ownHoverMatchup` inside
   `buildPokemonSection`: public facts + `readOwnMoves`/`ownItemName`, mirror blocks below.
@@ -391,7 +395,7 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   flag, Pound stops being a faithful stand-in — revisit. Checked by `damage.test.ts`
   ("variable-power multi-hit … is computed per hit"; guards watched failing with the law
   reverted).
-- ✅ **Speed order: arithmetic delegated, ORDER owned, foe hover only.** `core/speed.ts`
+- ✅ **Speed order: arithmetic delegated, ORDER owned, a fact about the PAIR.** `core/speed.ts`
   computes each still-possible set's effective Speed with the calc's `getFinalSpeed` (Scarf,
   paralysis incl. Quick Feet, Tailwind, boosts, weather/terrain abilities, Protosynthesis) —
   never hand-applied, same rule as damage. That function is a **deep import**
@@ -402,14 +406,28 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   (`speedBuckets` reuses `labelBuckets`; a speed-inert item never splits the line) with the
   lead outcome the one most surviving sets share, Scarf/Zoroark as "if …" asides. **Trick
   Room is ours**: an order INVERSION — `compareSpeed` flips the verdict, ties stay ties,
-  numbers never change (guard watched failing with the flip removed). Rendered only on a FOE
-  hover (one ⚡ line per our active in doubles), never on the own-side mirror — our side of
-  the pair uses our REAL item (the `myPokemon` principle above). Priority is deliberately
+  numbers never change (guard watched failing with the flip removed). The verdict describes
+  an ordered (ours, theirs) PAIR, so it renders on **both halves**: leading a FOE hover (one
+  ⚡ per our active in doubles), where the "if Choice Scarf" aside sits directly above the
+  candidate sets that produce that Scarf; and inside each "vs \<foe\>" block of the matchup
+  view — which is what puts it on the SWITCH MENU, the only surface a benched Pokémon's speed
+  can appear on at all (`buildSwitchSection`, exactly the argument that justifies the matchup
+  view's damage). Our side of the pair always uses our REAL item (the `myPokemon` principle
+  above), so a bench mon's id-form Choice Scarf applies, its paralysis halves it, and it
+  carries no boosts — it enters with none. **Never the own-side mirror**: that view's honesty
+  rests on staying strictly public. **Randbats-only by construction**: `ownMovesSection`
+  is shared with the open arm, so the pool is passed in as a `FoeSpeedVariantsFor` seam that
+  only the randbats callers supply — an assumed spread (`assume.ts`) brackets the axis a MOVE
+  attacks and yields no honest Speed, so the open arm structurally cannot render a ⚡ line.
+  **Tailwind orientation is the trap**: `speedSection` reads the field with US as defender,
+  `ownMovesSection` with the FOE as defender, so the two tailwind flags are swapped between
+  the call sites (guard watched failing with the orientation flipped). Priority is deliberately
   out of scope: speed order, not turn order. New client reads (`tailwind` in
   `sideConditions`, `trickroom` in `pseudoWeather`) → probed by `npm run drift-check`.
-  Checked by `speed.test.ts`, `render.test.ts` (verdict/aside/Trick Room/tie lines), and
-  `section.test.ts` (real fixture: "⚡ you move first — 249 vs 216" leads the foe tooltip;
-  the mirror has no ⚡).
+  Checked by `speed.test.ts`, `render.test.ts` (verdict/aside/Trick Room/tie lines; the ⚡
+  between header and move lines), and `section.test.ts` (real fixture: "⚡ you move first —
+  249 vs 216" leads the foe tooltip AND the matchup block, byte-identical; the switch menu's
+  Scarf/paralysis/no-boosts reads; the mirror and the open format have no ⚡).
 - 👁 **Where we correct @smogon/calc** (things it should arguably handle but doesn't, that we
   own): `multihit.ts` (the multi-hit model above) and the **item id→name quirk** — the calc
   silently *ignores* an item passed in id form (`heavydutyboots`), applying nothing. Fixed at

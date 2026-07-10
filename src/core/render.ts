@@ -296,6 +296,10 @@ export interface OwnMovesModel {
   /** Foe current HP as a fraction in [0,1] — KO chances are relative to it. */
   readonly defenderHpPercent: number;
   readonly moves: readonly OwnMoveLineModel[];
+  /** Who moves first between OUR Pokémon and this foe. Present only where a pool of
+   *  foe sets exists to read a speed from (randbats); an assumed spread has no
+   *  honest speed, so an open format leaves it unset and no ⚡ line renders. */
+  readonly speed?: SpeedOrder;
 }
 
 /** "Draco Meteor: 62.5% - 74.1% · 43% to KO" — one line per damaging move, each
@@ -318,13 +322,22 @@ function ownMoveLine(row: OwnMoveLineModel, model: OwnMovesModel): string {
  * buttons aren't hoverable, so this is where its numbers live, mirroring how the
  * foe view attaches threat numbers to their unhoverable moves). One block per foe,
  * headed "vs <name>" — the tooltip is about OUR Pokémon, so the target needs
- * naming even in singles. Status moves never reach the model; a foe with no
+ * naming even in singles. The ⚡ verdict rides directly under that header: speed
+ * order is a fact about the PAIR, so it belongs beside the damage rather than only
+ * on the foe's own tooltip — and it is the only way a benched Pokémon's speed
+ * matchup can be read at all. Status moves never reach the model; a foe with no
  * modellable move yields no block.
  */
 export function renderOwnMovesSection(sections: readonly OwnMovesModel[]): string {
   return sections
     .filter((s) => s.moves.length > 0)
-    .map((s) => block([targetHeader(s.foeName), ...s.moves.map((row) => ownMoveLine(row, s))]))
+    .map((s) =>
+      block([
+        targetHeader(s.foeName),
+        ...(s.speed ? [speedLine({order: s.speed})] : []),
+        ...s.moves.map((row) => ownMoveLine(row, s)),
+      ]),
+    )
     .join('');
 }
 

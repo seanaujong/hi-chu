@@ -369,6 +369,32 @@ describe('renderOwnMovesSection (own hover: your moves vs the foe active)', () =
     expect(html).not.toContain('<b>Noivern</b>');
     expect(renderOwnMovesSection([])).toBe('');
   });
+
+  it('puts the ⚡ verdict between the target header and the move lines', () => {
+    const html = renderOwnMovesSection([
+      section({speed: {ourSpeed: 249, trickRoom: false, outcomes: [{speed: 216, label: '', first: 'ours'}]}}),
+    ]);
+    expect(html).toContain('⚡ you move first — 249 vs 216');
+    expect(html.indexOf('<b>Tentacruel</b>')).toBeLessThan(html.indexOf('⚡'));
+    expect(html.indexOf('⚡')).toBeLessThan(html.indexOf('Draco Meteor:'));
+  });
+
+  it("carries the foe's 'if …' asides, exactly as the foe hover's line does", () => {
+    const html = renderOwnMovesSection([
+      section({
+        speed: {
+          ourSpeed: 249,
+          trickRoom: false,
+          outcomes: [{speed: 216, label: '', first: 'ours'}, {speed: 324, label: 'Choice Scarf', first: 'theirs'}],
+        },
+      }),
+    ]);
+    expect(html).toContain('<small>if Choice Scarf:</small> <span class="hichu-ko">they do</span> (324)');
+  });
+
+  it('omits the ⚡ line when there is no speed — an open format has no foe pool to read one from', () => {
+    expect(renderOwnMovesSection([section()])).not.toContain('⚡');
+  });
 });
 
 describe('renderNotes (tooltip-wide caveats)', () => {

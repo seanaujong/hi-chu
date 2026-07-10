@@ -56,7 +56,11 @@ Random-Battle-only, and every other format (OU, VGC, Custom Game) gets the damag
   the defender's screens** all feed the calc. Tick the **Terastallize** checkbox in the
   move panel and your move damage previews the Tera as already active (your own Tera type,
   read from your private team) — so Tera Dark + Knock Off shows the boosted number before
-  you commit. The math is delegated to `@smogon/calc`, so
+  you commit. Tick **Mega Evolution** and it previews your active Pokémon's Mega forme the
+  same way: the Mega's stats, ability, and typing feed the damage (so Charizard-Mega-X's
+  Tough Claws and 130 Attack show *before* you evolve), and its Speed feeds the ⚡ speed
+  verdict too — except in Gen 6, where a Pokémon kept its base Speed the turn it Mega
+  Evolved. The math is delegated to `@smogon/calc`, so
   interactions resolve correctly — e.g. a *burn* normally halves a physical attacker's damage,
   but the ability **Guts** ignores that, and the calc gets it right.
 
@@ -168,9 +172,12 @@ is *where the foe's possibilities come from* — everything below that seam is s
   (20/40/60) and Triple Kick (10/20/30), the only two — each hit's own base power.
 - **`resolve.ts`** — merges known live facts over assumed randbats possibilities into
   the one concrete set we calculate with. Revealed facts always win; a Tera type is
-  only ever applied when the Pokémon has actually terastallized. (The one preview:
-  ticking the move panel's Terastallize checkbox makes *your own* move damage
-  calculate as if your Tera — your private, known type — were already active.)
+  only ever applied when the Pokémon has actually terastallized. (Two previews, both for
+  *your own* active Pokémon and its pending move: ticking the move panel's Terastallize
+  checkbox calculates as if your Tera — your private, known type — were already active;
+  ticking Mega Evolution overlays your active mon's Mega forme, read from the stone it's
+  holding via the client dex. The Mega's stats feed the damage; its Speed feeds the ⚡
+  speed verdict from Gen 7 on — Gen 6 moved at base Speed the turn it evolved.)
 - **`assume.ts`** — the same job where no set feed exists. It brackets the foe's unknown
   defensive investment with its two extremes (uninvested, and maxed on whichever defence
   the move attacks) crossed with the species' possible abilities, and reuses `resolve.ts`'s

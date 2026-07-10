@@ -62,8 +62,13 @@ function probeLiveClient() {
   const facts = [];
 
   const format = R.detectFormat(b);
-  if (!format || !/^gen\d+random/.test(format.formatId)) {
-    problems.push(`detectFormat returned ${JSON.stringify(format)} (expected a gen*random* id)`);
+  if (!format || format.kind !== 'randbats' || !/^gen\d+random/.test(format.formatId)) {
+    problems.push(`detectFormat returned ${JSON.stringify(format)} (expected kind:"randbats" + a gen*random* id)`);
+  }
+  // `gameType` is what an OPEN format's doubles flag reads (a randbats id carries its
+  // own). A replay is always one or the other, so only its presence/shape is provable.
+  if (b.gameType !== undefined && typeof b.gameType !== 'string') {
+    problems.push(`battle.gameType is ${typeof b.gameType}, expected a string ("singles"/"doubles") or absent`);
   }
 
   const actives = b.sides.flatMap((s) => (s.active || []).filter(Boolean));
@@ -96,6 +101,12 @@ function probeLiveClient() {
     const sd = R.readSpeciesData(b, mon);
     if (!sd || typeof sd.baseStats?.hp !== 'number' || !Array.isArray(sd.types) || sd.types.length === 0) {
       problems.push(`readSpeciesData(${f.speciesForme || '?'}) = ${JSON.stringify(sd)} (battle.dex.species.get drifted?)`);
+    }
+    // The open-format ability pool: every species has at least one dex ability slot. The
+    // reading is tolerant (an absent slot table costs only the pool, never the record),
+    // so a miss here is drift worth knowing about, not a crash.
+    if (sd && (!Array.isArray(sd.abilities) || sd.abilities.length === 0)) {
+      problems.push(`readSpeciesData(${f.speciesForme || '?'}).abilities = ${JSON.stringify(sd.abilities)} (dex species.abilities drifted?)`);
     }
     const fieldFacts = R.readFieldFacts(b, mon.side);
     const screens = fieldFacts?.defenderScreens;

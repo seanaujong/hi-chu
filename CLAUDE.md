@@ -1,22 +1,27 @@
 # CLAUDE.md — hi-chu
 
 ## At a glance
-An MV3 browser extension that augments Pokémon Showdown **Random Battle** tooltips
-on two surfaces: hovering one of **our move buttons** shows that move's damage into
-the opposing active (with **granular multi-hit damage** — a true KO% that integrates
-over the random 2–5 hit count, not `k × one roll`); hovering a **Pokémon** shows the
-**information game** — which randbats sets are still possible given every public
-reveal (moves used, item incl. consumed/knocked-off, ability), with damage vs our
-active attached on the opponent's tooltip, and the mirror ("their read on you") on
-our own — led, on our own (benched included), by the **matchup view**: our real
-moves' damage into the foe active, read from the private team. A foe hover leads
-with a **⚡ speed-order verdict** — exact randbats speeds,
-a surviving Scarf set as an "if …" aside, Trick Room flipping the verdict. Calcs are
-**reality-aware** (active Tera — incl. a ticked-but-not-yet-used Terastallize box
-previewing YOUR move damage — status, boosts, current HP,
-weather/terrain/screens/Tailwind) and delegated to `@smogon/calc` so interactions
-resolve correctly. This file is the orientation map; `README.md` has the full prose and
-diagrams.
+An MV3 browser extension that augments Pokémon Showdown tooltips. **Damage works in
+every format**; the **information game** needs a set feed, so it is Random-Battle-only.
+
+Hovering one of **our move buttons** shows that move's damage into the opposing active
+(with **granular multi-hit damage** — a true KO% that integrates over the random 2–5 hit
+count, not `k × one roll`); hovering **our own Pokémon** (benched included) leads with
+the **matchup view**: our real moves' damage into the foe active, read from the private
+team. In a **Random Battle** those surfaces sit atop the information game — hovering a
+**Pokémon** shows which randbats sets are still possible given every public reveal (moves
+used, item incl. consumed/knocked-off, ability), with damage vs our active attached on
+the opponent's tooltip and the mirror ("their read on you") on our own; a foe hover leads
+with a **⚡ speed-order verdict** (exact randbats speeds, a surviving Scarf set as an
+"if …" aside, Trick Room flipping the verdict). In an **open format** (OU, VGC, Custom
+Game) there is no feed to enumerate, so the foe's spread is **bracketed, not guessed**
+(`core/assume.ts`): two labelled damage lines, `uninvested` and `max HP/Def` (mirrored to
+SpD for a special move), one ⚠ note naming the assumption — while OUR side stays exact,
+built from the server's own final stats. Calcs are **reality-aware** (active Tera — incl.
+a ticked-but-not-yet-used Terastallize box previewing YOUR move damage — status, boosts,
+current HP, weather/terrain/screens/Tailwind) and delegated to `@smogon/calc` so
+interactions resolve correctly. This file is the orientation map; `README.md` has the full
+prose and diagrams.
 
 ## Build, test, run
 ```sh
@@ -62,6 +67,10 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
     - `illusion.ts` — Zoroark detection: `illusionSuspects` flags when a revealed move fits
       a Zoroark set but not the shown species (the Illusion tell), so `section.ts` can add
       that Zoroark as an extra defender variant (move view) and candidate block (sets view).
+  - `assume.ts` — the OPEN-format assumption law (no feed): the foe's unknown spread
+    bracketed by its two honest extremes on the axis the move attacks, crossed with the
+    species' dex abilities. A second producer of `SetVariant`s, reusing `resolve`'s
+    `buildResolved` writer but never `narrow` (see the invariant below).
   - `variants.ts` — the distinct-outcome law: run the calc per `resolveVariants` result,
     then `bucketByDamage` collapses identical rolls into the few DISTINCT outcomes and
     names each bucket by the axis that differs (an Assault Vest that changes the number).
@@ -77,11 +86,16 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
   `buildMoveSection(battle, pokemon, moveName, data)` for move-button hovers and
   `buildPokemonSection(battle, pokemon, data)` for Pokémon hovers (foe → possible sets
   + damage vs our active; own → what the opponent can deduce, decided by `side.isFar`).
+  Each builder switches exhaustively on `detectFormat(battle).kind` — the randbats arm is
+  the feed-driven code, the open arm the assumption-driven one — and takes `data:
+  RandbatsData | null` (null in an open format; there is no feed). The `DefenderVariantsFor`
+  supplier is the seam the two arms plug into: what the foe could still be, per move.
   No DOM/cache, so the real-battle fixture test (`section.test.ts`) drives the exact
   path a live hover runs.
-- `src/content.ts` — thin shell; resolves the format, looks up/warms the cached feed, hands off to
-  `section.ts`, and monkey-patches BOTH tooltip renderers, `showPokemonTooltip` and
-  `showMoveTooltip` (runs in MAIN world).
+- `src/content.ts` — thin shell; resolves the format, looks up/warms the cached feed (only
+  for a randbats format — an open one never fetches), hands off to `section.ts`, and
+  monkey-patches BOTH tooltip renderers, `showPokemonTooltip` and `showMoveTooltip` (runs
+  in MAIN world).
 
 Tests come in two flavours: colocated `*.test.ts` with hand-built stubs, plus two driven by **real
 captured data** — `integration.test.ts` (real feed, synthetic mons) and `section.test.ts` (a real
@@ -101,6 +115,51 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
 
 - 👁 **Tests are the authority.** For any new invariant, add a falsifiable test and watch it
   fail before trusting it. (This is the meta-rule the tags below grade against.)
+- ✅ **`detectFormat` is a discriminated union; the surfaces split on `kind`, not on a
+  feed's presence.** `{kind:'randbats', formatId, …} | {kind:'open', …} | null` (null only
+  for an empty `tier`). The set-inference surfaces — sets view, mirror, ⚡ speed line,
+  Illusion, Pain Split — are **randbats-only**: each needs a pool to infer over, and a foe
+  hover in an open format renders NOTHING rather than a guess. The damage surfaces (move
+  tooltip, own-hover matchup, switch menu) run in both. An open format's `doubles` reads
+  the client's `gameType` (a randbats id carries its own); it never fetches a feed. Checked
+  by `readState.test.ts` (the union, incl. `[Gen 9] OU` → open), `content.test.ts` (no
+  fetch in an open format), and `section.test.ts` (the foe hover is silent). The exhaustive
+  `switch (format.kind)` + `unreachable(never)` in `section.ts` is what fails the *build*
+  when a third kind appears.
+- ✅ **An unknown foe spread is BRACKETED, never guessed.** With no feed, `core/assume.ts`
+  gives the defender its two honest extremes on the axis THIS move attacks — `uninvested`
+  (0 EVs, Serious) and `max HP/Def` (252/252 Bold), mirrored to `max HP/SpD` (Calm) for a
+  special move — crossed with the species' dex ability slots (`SpeciesData.abilities`,
+  a tolerant new dex read). The real spread lies between the two lines. The same
+  `bucketByDamage` machinery collapses and labels them, so a defensively-inert ability
+  never splits the line. Item: nothing is ever assumed (a revealed one still applies);
+  ONE ⚠ "foe EVs/item assumed" note per tooltip, appended after the per-foe sections via
+  `renderNotes` — never per section, so doubles doesn't repeat it. Checked by
+  `assume.test.ts`, `variants.test.ts` (the compound `role · ability` label axis, watched
+  failing), and `section.test.ts` (two labelled lines, the axis follows the category, one
+  note, Leftovers/Sash asides silent with no pool).
+- ✅ **`assume.ts` reuses the `buildResolved` WRITER but never the `narrow` matcher.** The
+  known-facts-win law lives in one place (`resolve.buildResolved`, now exported alongside
+  `dedupeVariants`) — forking it would be the real cost. But `narrow.roleMatches` rejects
+  any role whose move pool lacks a revealed move, and an assumed spread has NO move pool:
+  running it would falsely report "matched no known set" the moment a foe reveals a move.
+  Narrowing is an *evidence law over feed roles*; there is nothing to narrow here. `nature`
+  is optional on `RandbatsRole` for the same reason the assumption pool needs it and the
+  feed never sets one (`role?.nature ?? 'Serious'` keeps randbats byte-identical — checked
+  by `resolve.test.ts`).
+- ✅ **OUR OWN side is exact in open formats: the server's final stats, via a SOLVED
+  equivalent spread.** The request JSON ships `myPokemon[i].stats` (the five finals;
+  `maxhp` is HP) but no EVs/nature, so `readState.serverStats` reads them whole-or-nothing
+  into `LiveFacts.knownStats` and `damage.spreadForFinalStats` solves the (nature, EVs,
+  IVs) that reproduce them exactly, verified against the calc's own exported `calcStat`.
+  **Not a `rawStats` mutation:** `calculate()` clones both mons (`calc.js`) and the clone
+  re-derives stats from nature/EVs/IVs, so a mutation silently vanishes — a spread
+  survives. Unsolvable finals fall back to the assumed spread rather than crash the hover.
+  `knownStats` is populated ONLY by open-mode section paths (randbats spreads are public
+  and already exact), which is what makes randbats byte-identity structural. Same
+  `myPokemon` privacy principle as `readOwnItem`: our-view surfaces only. Checked by
+  `damage.test.ts` (pinned numbers, the L50/VGC and minus-nature cases, the fallback) and
+  `readState.test.ts`. 👁 for drift: `myPokemon` needs a player → `npm run player-check`.
 - ◐ **Delegate damage interactions to `@smogon/calc`; never hand-apply status/ability
   modifiers.** Guarded for the known case by `damage.test.ts` ("Guts negates burn"), but
   nothing stops a new hand-rolled modifier — keep this on review.
@@ -127,12 +186,14 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   `resolve.test.ts` ("evidence beyond moves narrows the role"). The own-side mirror view is
   honest only because client `Pokemon` objects carry public info exclusively (the private
   team lives in `battle.myPokemon`).
-- 👁 **`battle.myPokemon` feeds OUR-view surfaces only — three reads (`readOwnItem`,
-  `readOwnTeraType`, `readOwnMoves`), never the set/mirror views.** The principle: private
-  facts (you know your own item even when it's *silent* to the opponent — Heavy-Duty Boots
-  never reveals itself) may inform what WE see, and must never leak into the
+- 👁 **`battle.myPokemon` feeds OUR-view surfaces only — four reads (`readOwnItem`,
+  `readOwnTeraType`, `readOwnMoves`, `readOwnStats`), never the set/mirror views.** The
+  principle: private facts (you know your own item even when it's *silent* to the opponent —
+  Heavy-Duty Boots never reveals itself) may inform what WE see, and must never leak into the
   opponent's-knowledge views, which stay strictly public — that separation is the whole
-  reason the "their read on you" mirror is honest. Four consumers. Two go through
+  reason the "their read on you" mirror is honest. `readOwnStats` (the exact finals, open
+  formats only) is the newest member and obeys the same rule; see its own bullet above.
+  Five consumers. Two go through
   `ownItemName` (which maps the client's id
   form `heavydutyboots` to the set's display name; `@smogon/calc` silently ignores the id
   form, so the id→name map is load-bearing): (1) your own attacker's item on the move tooltip,
@@ -153,8 +214,10 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   numbers live (the exact mirror of why the foe view attaches threat damage to THEIR
   unhoverable moves). `section.ownMovesSection` takes the resolved attacker + the private
   moveset (id form — `calcDamage` resolves ids through the dex, so `report.move` is always
-  the display name) and computes per-move damage against the foe's `resolveVariants` +
-  Illusion variants, bucketed by distinct outcome exactly like the move tooltip — a hidden
+  the display name) and computes per-move damage against whatever the format's
+  `DefenderVariantsFor` supplier believes the foe could be (randbats: `resolveVariants` +
+  Illusion variants; open: `assume.ts`'s bracketing spreads), bucketed by distinct outcome
+  exactly like the move tooltip — a hidden
   Assault Vest splits the line into labelled outcomes, never one confidently-wrong number
   (`renderOwnMovesSection`; no nHKO ladder — the compact view skips the survival sim).
   **Two entry paths, split by what the client hands the tooltip.** (1) A battle-view Pokémon
@@ -384,7 +447,8 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   the display (every shown move is a confirmed ✓). Checked by `knowledge.test.ts` ("stops
   speculating once all four move slots are revealed").
 - ◐ **Doubles: the calc's game type is set and both foes are shown.** `detectFormat.doubles`
-  (feed id contains "doubles") flows to `damage.buildField` as `gameType: 'Doubles'` so
+  (a randbats feed id containing "doubles", else the client's `gameType`) flows to
+  `damage.buildField` as `gameType: 'Doubles'` so
   `@smogon/calc` applies the spread-move 0.75× (single-target moves unchanged); and
   `buildMoveSection` folds over `findOpposingActives` (both foes), a `renderMoveSection` per
   target with a "vs <name>" header. Checked by `damage.test.ts` ("spread moves take their
@@ -402,9 +466,11 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   interfaces in `readState.ts` are the contract; the stubbed `readState` tests check *our*
   parsing, not client drift. `npm run drift-check` is the live guard — it bundles the current
   `readState` source, runs it against a real replay's `window.battle` in headless Chrome, and
-  exits non-zero if a field we read is gone or malformed. Its player-side twin is
+  exits non-zero if a field we read is gone or malformed (it now also probes `battle.gameType`
+  and the dex's species `abilities`). Its player-side twin is
   `npm run player-check`: a replay is a spectator view, so `battle.myPokemon` (the
-  `ClientServerPokemon` contract), the switch-menu hover, and the Terastallize checkbox are
+  `ClientServerPokemon` contract, `stats` included), the switch-menu hover, and the
+  Terastallize checkbox are
   invisible to drift-check — player-check logs two throwaway accounts into the real site
   (`PS_ACCOUNT1="name:password" PS_ACCOUNT2=… npm run player-check`; credentials via env,
   never committed), has them battle each other, and probes exactly those reads with the

@@ -85,6 +85,7 @@ try {
     globalThis.app.rooms[id].battle.myPokemon.map((p) => ({
       ident: p.ident, details: p.details, condition: p.condition,
       item: p.item, teraType: p.teraType, moves: p.moves,
+      maxhp: p.maxhp, stats: p.stats,
     })), roomid);
   for (const p of team) {
     if (typeof p.ident !== 'string' || !p.ident.includes(':')) problems.push(`myPokemon ident = ${JSON.stringify(p.ident)}`);
@@ -94,6 +95,13 @@ try {
     if (typeof p.teraType !== 'string' || !p.teraType) problems.push(`${p.ident}.teraType = ${JSON.stringify(p.teraType)}`);
     if (!Array.isArray(p.moves) || p.moves.length === 0 || !p.moves.every((m) => /^[a-z0-9]+$/.test(m))) {
       problems.push(`${p.ident}.moves = ${JSON.stringify(p.moves)} (expected non-empty id-form list)`);
+    }
+    // The request's exact finals — how an OPEN format's own-side damage stops assuming a
+    // spread (readState.serverStats). `maxhp` is the HP total; `stats` carries the other five.
+    if (typeof p.maxhp !== 'number' || p.maxhp <= 0) problems.push(`${p.ident}.maxhp = ${JSON.stringify(p.maxhp)}`);
+    const five = ['atk', 'def', 'spa', 'spd', 'spe'];
+    if (!p.stats || five.some((s) => typeof p.stats[s] !== 'number' || p.stats[s] <= 0)) {
+      problems.push(`${p.ident}.stats = ${JSON.stringify(p.stats)} (expected the five final stats)`);
     }
   }
   console.log(problems.length ? '✗ myPokemon contract drifted' : `✓ myPokemon contract holds (${team.length} mons)`);

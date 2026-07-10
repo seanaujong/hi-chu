@@ -7,11 +7,16 @@
        alt="Hovering an opponent in a Showdown Random Battle reveals its still-possible sets and each move's damage into the active Pokémon">
 </p>
 
-Random Battle helpers, one hover away. hi-chu is a small browser extension that enriches
+Battle helpers, one hover away. hi-chu is a small browser extension that enriches
 Pokémon Showdown's in-battle tooltips — hover a Pokémon or one of your move buttons and it
 fills in what you'd otherwise tab out to a calculator or a set dump for:
 
-- **Which sets are still possible.** Hovering a Pokémon narrows the randbats sets it could
+**Damage works in every format.** The set-inference features below need a published list of
+what a Pokémon might be running, which exists only for Random Battles — so those are
+Random-Battle-only, and every other format (OU, VGC, Custom Game) gets the damage surfaces.
+
+- **Which sets are still possible.** *(Random Battles.)* Hovering a Pokémon narrows the
+  randbats sets it could
   still be running, using *only* what the battle has made public — moves used, revealed item
   (held, consumed, or knocked off), ability, and any active Terastallization. On the opponent
   it answers "what could they still have?"; on your own it mirrors "what have they figured out
@@ -22,13 +27,21 @@ fills in what you'd otherwise tab out to a calculator or a set dump for:
   private team, so the numbers are exact; if the foe's hidden item would change a number
   (an Assault Vest they may or may not hold), the line splits into labelled outcomes
   instead of guessing.
-- **Who moves first.** Hovering an opponent leads with a ⚡ speed-order verdict — your
+- **Who moves first.** *(Random Battles.)* Hovering an opponent leads with a ⚡ speed-order
+  verdict — your
   active's effective Speed against theirs. Randbats makes the numbers *exact* (the level is
   public and the spread is fixed), so the only real unknowns are the ones the set inference
   already tracks: a still-possible Choice Scarf or weather ability shows up as an
   "if Choice Scarf: they do" aside, and only when it genuinely survives the evidence.
   Paralysis, stat stages, Tailwind, and weather all feed the number; Trick Room flips the
   verdict. In doubles you get one line per active of yours.
+- **Honest numbers where the sets aren't published.** In a format with no set list, the
+  opponent's EVs are genuinely unknowable — so instead of guessing one number, hi-chu shows
+  the two that *bracket* the truth: `uninvested` and `max HP/Def` (or `max HP/SpD` against a
+  special move). The real answer is between them. Your own side stays exact — Showdown tells
+  your client your Pokémon's real stats, and hi-chu uses them. A ⚠ note says plainly what's
+  assumed. This is also the easiest way to check a specific interaction: build the Pokémon
+  you care about in a Custom Game and hover the move.
 - **Granular multi-hit damage.** Some moves (Bullet Seed, Rock Blast) hit a *random* 2–5
   times, each hit rolling its own damage. The tooltip shows the per-hit damage range, the
   expected number of hits, and a *true* KO chance (probability of knocking the target out)
@@ -42,9 +55,9 @@ fills in what you'd otherwise tab out to a calculator or a set dump for:
   interactions resolve correctly — e.g. a *burn* normally halves a physical attacker's damage,
   but the ability **Guts** ignores that, and the calc gets it right.
 
-It works across most Random Battle formats — standard Gen 9, older gens, and variants like
-**[Gen 9] Champions** (with Mega / Z-Move sets surfaced where a format has them) — and it's
-built to keep growing to cover more.
+The set inference works across most Random Battle formats — standard Gen 9, older gens, and
+variants like **[Gen 9] Champions** (with Mega / Z-Move sets surfaced where a format has
+them). The damage surfaces work anywhere.
 
 hi-chu grew out of the excellent, closed-source [Randbats Tooltip][orig] — a tool worth
 leaning on that had gone a while without updates and tripped on a few formats. This is a
@@ -74,24 +87,64 @@ reverse):
 │ → one ResolvedMon      │   │ → DamageReport         │   │ tooltip HTML           │
 └────────────────────────┘   └────────────────────────┘   └────────────────────────┘
 ┌────────────────────────┐   ┌────────────────────────┐   ┌────────────────────────┐
+│ core/assume.ts         │   │ core/variants.ts       │   │ core/speed.ts          │
+│ no feed: bracket the   │   │ collapse + label the   │   │ effective Speed →      │
+│ foe's spread           │   │ distinct outcomes      │   │ who moves first        │
+└────────────────────────┘   └────────────────────────┘   └────────────────────────┘
+┌────────────────────────┐   ┌────────────────────────┐   ┌────────────────────────┐
 │ core/multihit.ts       │   │ core/moves.ts          │   │ core/types.ts          │
 │ PMF convolution,       │   │ multi-hit table        │   │ shared vocabulary:     │
 │ KO% & E[damage]        │   │ (from PS data)         │   │ Live/Randbats/Resolved │
 └────────────────────────┘   └────────────────────────┘   └────────────────────────┘
 ```
 
-At runtime those modules fold together left to right:
+At runtime those modules fold together top to bottom. The only thing the format changes
+is *where the foe's possibilities come from* — everything below that seam is shared:
 
 ```
-               ┌────────────┐     ┌────────────┐     ┌─────────────┐     ┌────────────────────┐
-               │ toLiveFacts│     │ resolveMon │     │ calcDamage  │     │ renderDamageSection│
-client Pokemon │ LiveFacts  │ ──▶ │ ResolvedMon│ ──▶ │ DamageReport│ ──▶ │ HTML string        │ ──▶ tooltip
-               └────────────┘     └────────────┘     └─────────────┘     └────────────────────┘
-                                         ▲
-                                         │
-                           ┌───────────────────────────┐
-                           │ randbats set possibilities│
-                           └───────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│ battle/readState.ts                                                      │
+│ client Pokemon objects → LiveFacts:                                      │
+│ only what the battle has made public                                     │
+└──────────────────────────────────────────────────────────────────────────┘
+                                      │ what we KNOW
+                                      ▼
+──────────────── what the foe COULD be — exactly one source ────────────────
+┌──────────────────────────────────┐    ┌──────────────────────────────────┐
+│ core/resolve.ts             feed │    │ core/assume.ts           no feed │
+│ every set the species can run,   │    │ the two spreads that BRACKET it: │
+│ narrowed by public reveals       │    │ uninvested / max HP+Def          │
+└──────────────────────────────────┘    └──────────────────────────────────┘
+                  └───────────────────┬───────────────────┘
+                                      │ what we ASSUME
+                                      ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│ buildResolved                                                ResolvedMon │
+│ known facts win; the source fills the gaps                               │
+│ → the concrete set(s) we calculate with                                  │
+└──────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│ core/damage.ts                                              DamageReport │
+│ wrap @smogon/calc; own the multi-hit law                                 │
+│ → one DamageReport per possible set                                      │
+└──────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│ core/variants.ts                                            DamageBucket │
+│ collapse identical numbers, name what differs                            │
+│ → one line per DISTINCT outcome                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│ core/render.ts                                                      HTML │
+│ model → tooltip HTML string                                              │
+└──────────────────────────────────────────────────────────────────────────┘
+                                      │ tooltip
+                                      ▼
 ```
 
 ### The pure core (`src/core`)
@@ -113,9 +166,16 @@ client Pokemon │ LiveFacts  │ ──▶ │ ResolvedMon│ ──▶ │ Dam
   only ever applied when the Pokémon has actually terastallized. (The one preview:
   ticking the move panel's Terastallize checkbox makes *your own* move damage
   calculate as if your Tera — your private, known type — were already active.)
+- **`assume.ts`** — the same job where no set feed exists. It brackets the foe's unknown
+  defensive investment with its two extremes (uninvested, and maxed on whichever defence
+  the move attacks) crossed with the species' possible abilities, and reuses `resolve.ts`'s
+  "revealed facts always win" writer so that law is written once. It deliberately skips the
+  set-narrowing step: there are no candidate sets to narrow.
 - **`damage.ts`** — wraps `@smogon/calc`. For multi-hit moves it asks the calc for one
   hit at a time — one run for a uniform-power move, one per hit's true base power for
-  Triple Axel/Triple Kick — and runs the convolution over those per-hit rolls.
+  Triple Axel/Triple Kick — and runs the convolution over those per-hit rolls. It also
+  turns your Pokémon's server-reported final stats into an equivalent EV/nature spread,
+  which is the only form of them that survives the calc's internal copy of each Pokémon.
 - **`speed.ts`** — the speed-order law. Effective Speed per still-possible set — the
   arithmetic (Scarf, paralysis, Tailwind, boosts, weather abilities) delegated to
   `@smogon/calc`'s `getFinalSpeed` — with identical numbers collapsed into distinct
@@ -191,8 +251,9 @@ npm run watch     # rebuild on save
 1. Download `hi-chu-<version>.zip` from the [latest release][releases] and unzip it.
 2. Visit `chrome://extensions`, enable **Developer mode** (top-right).
 3. **Load unpacked** → select the unzipped folder.
-4. Open a Random Battle on `play.pokemonshowdown.com` and hover a Pokémon or one of your
-   move buttons — the extra lines appear at the bottom of the tooltip.
+4. Open a battle on `play.pokemonshowdown.com` and hover a Pokémon or one of your
+   move buttons — the extra lines appear at the bottom of the tooltip. (A Random Battle
+   gets everything; any other format gets the damage lines.)
 
 *(Firefox: `about:debugging` → **This Firefox** → **Load Temporary Add-on** → pick the
 `manifest.json` inside the unzipped folder.)*
@@ -237,6 +298,16 @@ additionally signed by Google — but these two checks are what tie it back to h
 
 ## Known limitations (v1)
 
+- **Outside Random Battles, only the damage surfaces run.** The information game (possible
+  sets, the mirror, the ⚡ speed line, the Illusion tell) needs a published list of what a
+  Pokémon might be running; without one there is nothing to narrow, so hovering an opponent
+  in, say, OU shows nothing rather than a guess. Two things could change that: a set pool
+  built from Smogon usage statistics, and the deductions that need no pool at all (a landed
+  hit with no item revealed still rules out Life Orb; taking Stealth Rock damage still rules
+  out Heavy-Duty Boots).
+- **Assumed foe spreads bracket rather than pin.** In an open format the two damage lines
+  span uninvested to fully invested; a real spread lands between them. The foe's item is
+  never assumed either — only a revealed one applies.
 - **Per-hit accuracy modifiers stop at Wide Lens.** The multiaccuracy moves (Population
   Bomb, Triple Axel, Triple Kick) model their 90%-per-hit checks exactly, including
   Wide Lens (→99%) and Loaded Dice (deletes the checks) — but accuracy/evasion boosts,

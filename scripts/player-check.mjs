@@ -6,7 +6,8 @@
 // has one privately challenge the other, and — as an actual player — verifies:
 //
 //   1. every myPokemon entry carries ident / details / condition / item / teraType /
-//      moves (id form) — the ServerPokemon contract serverPokemonFacts parses;
+//      moves (id form) / maxhp / stats — the ServerPokemon contract serverPokemonFacts
+//      and serverStats parse;
 //   2. a REAL mouse hover on a benched mon in the switch menu renders our matchup
 //      block through the shipped bundle (dist/content.js — build first);
 //   3. the move panel's Terastallize checkbox still matches TERA_TOGGLE_SELECTOR.
@@ -16,6 +17,12 @@
 //
 //   PS_ACCOUNT1="name:password" PS_ACCOUNT2="name:password" npm run player-check
 //   (CHROME_PATH=/path/to/chrome to override the installed-Chrome default)
+//
+// A format id may follow, and it's worth running BOTH sides of the format split —
+// `gen9randombattle` (the feed path) and `gen9hackmonscup` (an OPEN format that still
+// needs no teambuilder, so the assumed-spread path gets a real request JSON):
+//
+//   node scripts/player-check.mjs gen9hackmonscup
 
 import {readFileSync} from 'node:fs';
 import puppeteer from 'puppeteer-core';
@@ -56,12 +63,30 @@ async function client({name, password}) {
     return globalThis.app.user.get('named') && toId(globalThis.app.user.get('name')) === toId(n);
   }, {timeout: 20000}, name);
   console.log(`✓ logged in as ${name}`);
-  return {browser, page};
+  // A previous run that crashed before forfeiting leaves its battle room attached to the
+  // account. Forfeit and leave it, and remember every id that was already here — the room
+  // lookup below waits for a room that ISN'T one of these, so a lingering finished battle
+  // can never be mistaken for the one we're about to start.
+  const stale = await page.evaluate(() => {
+    const ids = Object.keys(globalThis.app.rooms).filter((k) => k.startsWith('battle-'));
+    for (const id of ids) {
+      globalThis.app.send('/forfeit', id);
+      globalThis.app.leaveRoom(id);
+    }
+    return ids;
+  });
+  if (stale.length) console.log(`  · forfeited ${stale.length} stale battle room(s) from an earlier run`);
+  return {browser, page, stale};
 }
 
-const battleRoom = (page) =>
+/** The id of a battle room that appeared AFTER login (ignoring any stale ones). */
+const battleRoom = ({page, stale}) =>
   page
-    .waitForFunction(() => Object.keys(globalThis.app.rooms).find((k) => k.startsWith('battle-')) ?? false, {timeout: 45000})
+    .waitForFunction(
+      (old) => Object.keys(globalThis.app.rooms).find((k) => k.startsWith('battle-') && !old.includes(k)) ?? false,
+      {timeout: 45000},
+      stale,
+    )
     .then((h) => h.jsonValue());
 
 const p1 = await client(ACC1);
@@ -71,8 +96,8 @@ try {
   await p1.page.evaluate((who, fmt) => globalThis.app.send(`/challenge ${who}, ${fmt}`), ACC2.name, FORMAT);
   await new Promise((r) => setTimeout(r, 2000)); // let the challenge land
   await p2.page.evaluate((who) => globalThis.app.send(`/accept ${who}`), ACC1.name);
-  const roomid = await battleRoom(p1.page);
-  await battleRoom(p2.page);
+  const roomid = await battleRoom(p1);
+  await battleRoom(p2);
   console.log(`✓ battle room: ${roomid}`);
 
   await p1.page.waitForFunction((id) => {
@@ -114,12 +139,22 @@ try {
   await p1.page.addScriptTag({content: BUNDLE});
   const benchSel = '.switchmenu button[data-tooltip^="switchpokemon"]:not(.disabled)';
   await p1.page.waitForSelector(benchSel, {timeout: 30000});
-  const isMatchup = (html) => /<small>vs<\/small> <b>/.test(html) && /: [\d.]+% - [\d.]+%/.test(html);
+  // A damage line reads "Draco Meteor: 41% - 49%" in a randbats battle, where the foe's
+  // set pins one outcome — and "Burn Up: (uninvested) 55.4% - 65.2% · (max HP/SpD) …"
+  // in an open format, where the assumed spreads label each bucket. Match the number,
+  // not what precedes it, so this check works in both.
+  const isMatchup = (html) => /<small>vs<\/small> <b>/.test(html) && /[\d.]+% - [\d.]+%/.test(html);
   const perButton = new Map(); // data-tooltip → latest tooltip html
   const capturePass = async () => {
     for (const h of await p1.page.$$(benchSel)) {
       await p1.page.mouse.move(0, 0); // leave, so re-hover re-renders
-      await h.hover();
+      // The switch menu is hidden while the move menu is up (and mid-animation), so a
+      // button can exist yet not be hoverable. Skip it; a later pass will catch it.
+      try {
+        await h.hover();
+      } catch {
+        continue;
+      }
       await new Promise((r) => setTimeout(r, 350));
       const key = await h.evaluate((el) => el.getAttribute('data-tooltip'));
       perButton.set(key, await p1.page.evaluate(() => document.querySelector('#tooltipwrapper')?.innerHTML ?? ''));

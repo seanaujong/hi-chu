@@ -48,7 +48,12 @@ try {
     if (typeof p.details !== 'string' || !p.details) problems.push(`${p.ident}.details = ${JSON.stringify(p.details)}`);
     if (typeof p.condition !== 'string' || !p.condition) problems.push(`${p.ident}.condition = ${JSON.stringify(p.condition)}`);
     if (typeof p.item !== 'string') problems.push(`${p.ident}.item = ${JSON.stringify(p.item)}`);
-    if (typeof p.teraType !== 'string' || !p.teraType) problems.push(`${p.ident}.teraType = ${JSON.stringify(p.teraType)}`);
+    // teraType is a per-format CAPABILITY, not a universal contract field: standard randbats
+    // assigns every mon one, but Champions ships none (it has its own gimmick), and
+    // readOwnTeraType treats absent as "no Tera preview" gracefully. So require it only where
+    // the format actually Terastallizes; elsewhere an absent value is expected, not drift.
+    const teraExpected = !/champions/i.test(FORMAT);
+    if (teraExpected && (typeof p.teraType !== 'string' || !p.teraType)) problems.push(`${p.ident}.teraType = ${JSON.stringify(p.teraType)}`);
     if (!Array.isArray(p.moves) || p.moves.length === 0 || !p.moves.every((m) => /^[a-z0-9]+$/.test(m))) {
       problems.push(`${p.ident}.moves = ${JSON.stringify(p.moves)} (expected non-empty id-form list)`);
     }
@@ -150,6 +155,33 @@ try {
   // gen 9 randbats has no Megas at all, so run a mega-capable format to exercise the box).
   console.log(gimmick.tera ? '✓ Terastallize checkbox selector matches' : '· Terastallize checkbox absent this battle (soft signal — retry another game before calling drift)');
   console.log(gimmick.mega ? '✓ Mega Evolution checkbox selector matches' : '· Mega Evolution checkbox absent this battle (soft signal — gen 9 randbats has no Megas; try a gen 6/7 or Champions battle)');
+
+  // --- 4. the Mega-forme dex read (readMegaForme's live source) --------------
+  // The preview turns a held stone into a forme via `battle.dex.items.get(id).megaStone`
+  // (a {base → Mega forme} map) — replicated here against the LIVE client dex. A known
+  // stone must keep that shape, and any stone-holder in our private team must resolve to
+  // its Mega forme (the read a random battle can only exercise when it rolls a Mega mon).
+  const mega = await p1.page.evaluate((id) => {
+    const b = globalThis.app.rooms[id].battle;
+    const megaStoneOf = (item) => b.dex?.items?.get?.(item)?.megaStone;
+    const known = megaStoneOf('charizarditex');
+    const base = (p) => (p.details || p.ident || '').split(',')[0].split(': ').pop();
+    const held = (b.myPokemon ?? [])
+      .map((p) => ({mon: p.ident, item: p.item, map: megaStoneOf(p.item)}))
+      .filter((x) => x.map)
+      .map((x) => ({mon: x.mon, item: x.item, forme: x.map[base(b.myPokemon.find((p) => p.ident === x.mon))] ?? Object.values(x.map)[0]}));
+    return {knownForme: known && typeof known === 'object' ? Object.values(known)[0] : null, held};
+  }, roomid);
+  if (mega.knownForme !== 'Charizard-Mega-X') {
+    problems.push(`battle.dex.items.get('charizarditex').megaStone drifted (got forme ${JSON.stringify(mega.knownForme)}, expected "Charizard-Mega-X")`);
+  } else {
+    console.log('✓ Mega stone→forme dex map holds (charizarditex → Charizard-Mega-X)');
+  }
+  if (mega.held.length > 0) {
+    for (const h of mega.held) console.log(`  ✓ readMegaForme source: ${h.mon} holding ${h.item} → ${h.forme}`);
+  } else {
+    console.log('· no Mega stone in our team this battle (soft signal — the end-to-end forme read needs a Mega mon; build one via a team format to force it)');
+  }
 } finally {
   await battle.close();
 }

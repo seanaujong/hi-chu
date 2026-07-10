@@ -423,7 +423,10 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   `ownMovesSection` with the FOE as defender, so the two tailwind flags are swapped between
   the call sites (guard watched failing with the orientation flipped). Priority is deliberately
   out of scope: speed order, not turn order. New client reads (`tailwind` in
-  `sideConditions`, `trickroom` in `pseudoWeather`) → probed by `npm run drift-check`.
+  `sideConditions`, `trickroom` in `pseudoWeather`) → probed by `npm run drift-check`. The
+  BENCH ⚡ needs a private team, so a spectator replay can't reach it: `npm run player-check`
+  probes it on both sides of the format split (randbats must render one per bench block, an
+  open format none), verified live — five bench mons, each its own speed vs the foe active.
   Checked by `speed.test.ts`, `render.test.ts` (verdict/aside/Trick Room/tie lines; the ⚡
   between header and move lines), and `section.test.ts` (real fixture: "⚡ you move first —
   249 vs 216" leads the foe tooltip AND the matchup block, byte-identical; the switch menu's
@@ -511,7 +514,8 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   exits non-zero if a field we read is gone or malformed (it now also probes `battle.gameType`
   and the dex's species `abilities`). Its player-side twin is
   `npm run player-check`: a replay is a spectator view, so `battle.myPokemon` (the
-  `ClientServerPokemon` contract, `stats` included), the switch-menu hover, and the
+  `ClientServerPokemon` contract, `stats` included), the switch-menu hover (its matchup
+  block and its ⚡ bench verdict — present in randbats, absent in an open format), and the
   Terastallize checkbox are
   invisible to drift-check. Run it on BOTH sides of the format split — `npm run
   player-check` (randbats) and `node scripts/player-check.mjs gen9hackmonscup` (an OPEN

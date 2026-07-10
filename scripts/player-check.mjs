@@ -186,6 +186,27 @@ try {
     ? `✓ switch-menu hover renders the matchup block (${withBlock}/${perButton.size} bench mons; all-status kits correctly get none)`
     : '✗ no matchup block on any switch-menu hover');
 
+  // --- 2b. the ⚡ speed verdict on a BENCHED mon -----------------------------
+  // A bench mon's speed appears on no other surface, and its inputs (the private
+  // team's item/status, its own base stats) are exactly what a spectator replay
+  // cannot supply — so this is the only place the line can be checked for real.
+  // Randbats enumerates the foe's sets and must produce it; an open format has no
+  // pool to read a foe speed from and must produce none.
+  const feedFormat = /random/.test(FORMAT);
+  const zapLines = [...perButton.values()]
+    .filter(isMatchup)
+    .flatMap((html) => [...html.matchAll(/⚡.*?(?=<\/p>)/g)].map((m) => m[0].replace(/<[^>]+>/g, '')));
+  for (const line of zapLines.slice(0, 3)) console.log(`  ⚡ ${line.replace('⚡ ', '')}`);
+  if (feedFormat && withBlock > 0 && zapLines.length === 0) {
+    problems.push('no ⚡ speed verdict on any switch-menu matchup block (randbats: the foe pool should always yield one)');
+  }
+  if (!feedFormat && zapLines.length > 0) {
+    problems.push(`⚡ speed verdict rendered in an OPEN format, where no honest foe speed exists: ${zapLines[0]}`);
+  }
+  console.log(feedFormat
+    ? (zapLines.length > 0 ? `✓ ⚡ speed verdict on the switch menu (${zapLines.length} bench blocks)` : '✗ no ⚡ on any bench block')
+    : (zapLines.length === 0 ? '✓ no ⚡ in an open format (no foe pool to read a speed from)' : '✗ ⚡ leaked into an open format'));
+
   // --- 3. the Terastallize checkbox selector --------------------------------
   const tera = await p1.page.evaluate((id) => {
     const room = document.getElementById(`room-${id}`);

@@ -8,6 +8,7 @@ import {
   GARDEVOIR, gardevoirFacts,
   ORB_MON, orbFacts, DUAL_ABILITY,
   MEGANIUM_MEGA, megaMeganiumFacts,
+  CALYREX_SHADOW, calyrexShadowFacts,
   TENTACRUEL, tentacruelFacts,
 } from './sets.testfixtures.js';
 
@@ -109,6 +110,30 @@ describe('resolveMon reflects the same narrowing/deductions the display does', (
 
   it('resolves a Mega forme cleanly despite the client/feed ability-name mismatch', () => {
     expect(resolveMon(megaMeganiumFacts(), MEGANIUM_MEGA).assumptionsUncertainReason).toBeUndefined();
+  });
+
+  it("an ability the species cannot have narrows nothing — the protocol's umbrella name", () => {
+    // Calyrex-Shadow reaches us with baseAbility "As One" (see the fixture) while the feed
+    // says "As One (Spectrier)". Keying on the name rejected the only role, so every hover
+    // read "matched no known set" from the moment it switched in.
+    const r = resolveMon(calyrexShadowFacts({revealedMoves: ['Astral Barrage']}), CALYREX_SHADOW);
+    expect(r.assumptionsUncertainReason).toBeUndefined();
+    expect(r.possibleMoves).toContain('Nasty Plot');
+    expect(r.ability).toBe('Grim Neigh'); // the calc still uses the LIVE ability
+  });
+
+  it('an ability the species cannot have narrows nothing — a borrowed one', () => {
+    // Skill Swap before the innate ability was ever revealed: the client leaves `baseAbility`
+    // empty, so readState falls back to the live one. Noivern can't have Poison Heal, so the
+    // name is not evidence about its set — it must not reject the roles the moves still allow.
+    const dex = {baseStats: {hp: 85, atk: 70, def: 80, spa: 97, spd: 80, spe: 123},
+      types: ['Flying', 'Dragon'], abilities: ['Frisk', 'Infiltrator']};
+    const facts = noivernFacts({speciesData: dex, ability: 'Poison Heal', baseAbility: 'Poison Heal'});
+    expect(resolveMon(facts, NOIVERN).assumptionsUncertainReason).toBeUndefined();
+    // A real Noivern ability still narrows: Infiltrator alone rules out neither role, but
+    // Frisk is Fast Support's alone — so the pool loses Fast Attacker's moves.
+    const frisk = resolveMon(noivernFacts({speciesData: dex, baseAbility: 'Frisk'}), NOIVERN);
+    expect(frisk.possibleMoves).not.toContain('Boomburst');
   });
 });
 

@@ -147,6 +147,37 @@ export const megaMeganiumFacts = (over: Partial<LiveFacts> = {}): LiveFacts =>
     ability: 'Mega Sol', baseAbility: 'Mega Sol', item: 'Meganiumite', ...over,
   });
 
+// A composite ability, verbatim from the gen9randombattle feed. The sim announces one under
+// an UMBRELLA name the dex has never heard of — `|-ability| As One`, then its components —
+// so the client stamps `As One` into `baseAbility` while the feed keys the set to
+// `As One (Spectrier)`. The species' own dex slots (below) are what tell the two apart.
+export const CALYREX_SHADOW: RandbatsEntry = {
+  level: 64,
+  abilities: ['As One (Spectrier)'],
+  items: ['Choice Specs', 'Life Orb'],
+  roles: {
+    'Fast Attacker': {
+      abilities: ['As One (Spectrier)'],
+      items: ['Choice Specs', 'Life Orb'],
+      teraTypes: ['Dark', 'Ghost'],
+      moves: ['Astral Barrage', 'Nasty Plot', 'Pollen Puff', 'Psyshock', 'Trick'],
+    },
+  },
+};
+// The facts a Calyrex-Shadow presents, captured live from replay 2648347259: `Grim Neigh`
+// live (the component that proc'd on a KO), `As One` innate (the umbrella).
+export const calyrexShadowFacts = (over: Partial<LiveFacts> = {}): LiveFacts =>
+  liveFacts({
+    speciesForme: 'Calyrex-Shadow', level: 64,
+    ability: 'Grim Neigh', baseAbility: 'As One',
+    speciesData: {
+      baseStats: {hp: 100, atk: 85, def: 80, spa: 165, spd: 100, spe: 150},
+      types: ['Psychic', 'Ghost'],
+      abilities: ['As One (Spectrier)'],
+    },
+    ...over,
+  });
+
 // One role whose hidden item could be Assault Vest OR Leftovers — the shape that makes a
 // single move deal two different amounts (AV halves the special hit).
 export const TENTACRUEL: RandbatsEntry = {

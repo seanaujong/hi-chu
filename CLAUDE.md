@@ -363,6 +363,24 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   the "✓ ability" display, while the calc still uses the live `ability` (a Traced Teravolt is
   really active). Checked by `resolve.test.ts` ("set inference uses the INNATE ability") and
   `readState.test.ts`. Without it, a Traced mon panics with "matched no known set".
+- ✅ **…and only when the species could actually HAVE that ability — the client can hand us a
+  name no set can carry.** A COMPOSITE ability is announced under an umbrella name the dex has
+  never heard of: Calyrex-Shadow's `As One (Spectrier)` arrives as `|-ability| As One` followed
+  by its components (`Unnerve`, then `Grim Neigh` on a KO), and the client's `rememberAbility`
+  stamps that first line — `As One` — into `baseAbility`. The `?? facts.ability` fallback above
+  can likewise land on a *borrowed* ability (a Skill Swap before the innate one was ever
+  revealed). A feed role only ever lists a species' REAL abilities, so such a name can only
+  ever REJECT every role, never select one — every Calyrex-Shadow hover read "⚠ matched no
+  known set" from the moment it switched in (replay gen9randombattle-2648347259, reproduced
+  live). So `innateAbility` verifies the reported name against the species' own dex ability
+  slots (`speciesData.abilities`, the tolerant client-dex read `assume.ts` already relies on)
+  and returns undefined when it isn't one of them: it tells us nothing, so it narrows nothing.
+  Absent dex slots (older client, a fixture with no `battle.dex`) the name is taken as given,
+  exactly as before — a pure false-rejection filter that can't cost real narrowing power.
+  `deductions.ts` reads the same `innateAbility` (its inline copy was the second home for the
+  law). Checked by `resolve.test.ts` ("an ability the species cannot have narrows nothing" —
+  the umbrella and borrowed cases, both watched failing with the check reverted, and both
+  reproduced/cured against the live replay with the shipped bundle).
 - ✅ **Damage under a hidden item/ability is split by DISTINCT outcome, not by set.**
   When the target's item is unknown, `resolveVariants` enumerates every still-possible
   set and the move tooltip shows one labelled line per *distinct* damage result — but

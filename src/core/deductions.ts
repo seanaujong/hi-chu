@@ -8,7 +8,7 @@
 // Pure: no DOM, no network, no @smogon/calc.
 
 import type {LiveFacts} from './types.js';
-import {toId} from './facts.js';
+import {toId, innateAbility} from './facts.js';
 
 // Abilities that mask Life Orb's recoil, so its ABSENCE proves nothing about the item.
 const RECOIL_SUPPRESSORS = new Set(['sheerforce', 'magicguard']);
@@ -28,7 +28,7 @@ function itemStillHidden(facts: LiveFacts): boolean {
  */
 function lifeOrbRuledOut(facts: LiveFacts, roleAbilities: readonly string[]): boolean {
   if (!facts.landedDamagingHit || !itemStillHidden(facts)) return false;
-  const known = facts.baseAbility ?? facts.ability; // the innate ability (cf. narrow.innateAbility)
+  const known = innateAbility(facts);
   if (known !== undefined) return !RECOIL_SUPPRESSORS.has(toId(known));
   return !roleAbilities.some((a) => RECOIL_SUPPRESSORS.has(toId(a)));
 }

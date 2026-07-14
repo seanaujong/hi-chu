@@ -194,3 +194,41 @@ export const TENTACRUEL: RandbatsEntry = {
   },
 };
 export const tentacruelFacts = (over: Partial<LiveFacts> = {}): LiveFacts => liveFacts({speciesForme: 'Tentacruel', level: 82, ...over});
+
+// Terapagos: BUILT with Tera Shift — but Tera Shift turns it into Terapagos-Terastal the
+// moment it switches in, a PERMANENT forme change, and the client stamps the new forme's
+// own ability (Tera Shell) over the innate one it is still remembered by. The feed lists
+// only what a set can be built with, so the reported name matches nothing in it. Real
+// gen9randombattle entry.
+export const TERAPAGOS: RandbatsEntry = {
+  level: 77,
+  abilities: ['Tera Shift'],
+  items: ['Chesto Berry', 'Heavy-Duty Boots'],
+  roles: {
+    'Fast Bulky Setup': {
+      abilities: ['Tera Shift'],
+      items: ['Chesto Berry', 'Heavy-Duty Boots'],
+      teraTypes: ['Stellar'],
+      moves: ['Calm Mind', 'Earth Power', 'Rapid Spin', 'Rest', 'Tera Starstorm'],
+    },
+    'Setup Sweeper': {
+      abilities: ['Tera Shift'],
+      items: ['Chesto Berry', 'Heavy-Duty Boots'],
+      teraTypes: ['Stellar'],
+      moves: ['Calm Mind', 'Dark Pulse', 'Rapid Spin', 'Rest', 'Tera Starstorm'],
+    },
+  },
+};
+export const terapagosFacts = (over: Partial<LiveFacts> = {}): LiveFacts =>
+  liveFacts({
+    speciesForme: 'Terapagos-Terastal', // the forme change already happened, on switch-in
+    level: 77,
+    ability: 'Tera Shell',
+    baseAbility: 'Tera Shell', // clobbered by |detailschange| — the innate Tera Shift is gone
+    speciesData: {
+      baseStats: {hp: 95, atk: 95, def: 110, spa: 105, spd: 110, spe: 85},
+      types: ['Normal'],
+      abilities: ['Tera Shell'], // the LIVE forme's dex slots, which is what the client reads
+    },
+    ...over,
+  });

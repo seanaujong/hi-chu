@@ -10,6 +10,7 @@ import {
   ORB_MON, orbFacts, DUAL_ABILITY,
   MEGANIUM_MEGA, megaMeganiumFacts,
   CALYREX_SHADOW, calyrexShadowFacts,
+  TERAPAGOS, terapagosFacts,
   TENTACRUEL, tentacruelFacts,
 } from './sets.testfixtures.js';
 
@@ -88,6 +89,18 @@ describe('resolveMon', () => {
     expect(resolveMon(dragoniteFacts({knownStats}), DRAGONITE).knownStats).toEqual(knownStats);
     expect(resolveMon(dragoniteFacts(), DRAGONITE).knownStats).toBeUndefined();
   });
+
+  it('arms Unburden (abilityOn) once the item is confirmed GONE, not merely absent', () => {
+    // Knocked off / consumed mid-battle (prevItem set, nothing held) — Unburden fires.
+    const lost = resolveMon(dragoniteFacts({ability: 'Unburden', prevItem: 'Heavy-Duty Boots'}), DRAGONITE);
+    expect(lost.abilityOn).toBe(true);
+    // Never revealed to have HAD an item at all — Unburden must not fire on a mere guess.
+    const unrevealed = resolveMon(dragoniteFacts({ability: 'Unburden'}), DRAGONITE);
+    expect(unrevealed.abilityOn).toBeUndefined();
+    // Item lost, but the ability isn't Unburden — no reason to arm it.
+    const otherAbility = resolveMon(dragoniteFacts({ability: 'Multiscale', prevItem: 'Heavy-Duty Boots'}), DRAGONITE);
+    expect(otherAbility.abilityOn).toBeUndefined();
+  });
 });
 
 describe('resolveMon reflects the same narrowing/deductions the display does', () => {
@@ -121,6 +134,32 @@ describe('resolveMon reflects the same narrowing/deductions the display does', (
     expect(r.assumptionsUncertainReason).toBeUndefined();
     expect(r.possibleMoves).toContain('Nasty Plot');
     expect(r.ability).toBe('Grim Neigh'); // the calc still uses the LIVE ability
+  });
+
+  it('a FORME-LOCKED ability narrows nothing — Terapagos after Tera Shift', () => {
+    // Tera Shift fires on switch-in and makes it Terapagos-Terastal, whose own ability —
+    // Tera Shell — the client stamps over the innate one. Tera Shell is a REAL ability of
+    // the species it now is, so checking the dex can't catch this; what makes it useless as
+    // evidence is that no SET could have been built with it. Keying on it rejected both
+    // roles, so every Terapagos hover cried "matched no known set" from the turn it landed.
+    const r = resolveMon(terapagosFacts({revealedMoves: ['Calm Mind']}), TERAPAGOS);
+    expect(r.assumptionsUncertainReason).toBeUndefined();
+    expect(r.possibleMoves).toContain('Tera Starstorm');
+    expect(r.ability).toBe('Tera Shell'); // the calc still uses the ability that is really active
+  });
+
+  it('an ability the set pool CAN produce still narrows, as hard as ever', () => {
+    // The positive control for the law above: it must ignore only names no set could have
+    // been built with. ORB_MON's three roles split on ability — Sheer Force belongs to one
+    // of them, so revealing it still cuts the other two.
+    // (No landed hit: the Life Orb deduction would rule roles out by ITEM, and this case is
+    // about the ability alone.)
+    const seen = (ability: string) => orbFacts({ability, baseAbility: ability, landedDamagingHit: false});
+    const narrowed = resolveByRole(seen('Sheer Force'), ORB_MON);
+    expect(narrowed.map((v) => v.role)).toEqual(['Force Sweeper']);
+    // …while a name the pool could never produce leaves every role standing.
+    const unnarrowed = resolveByRole(seen('Mega Sol'), ORB_MON);
+    expect(unnarrowed.map((v) => v.role)).toEqual(['Orb Sweeper', 'Mixed Attacker', 'Force Sweeper']);
   });
 
   it('an ability the species cannot have narrows nothing — a borrowed one', () => {

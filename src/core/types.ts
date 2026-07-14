@@ -89,7 +89,26 @@ export interface SpeciesData {
 
 /** Everything the running battle has revealed about one Pokémon. */
 export interface LiveFacts {
+  /**
+   * The Pokémon this IS — its identity, and the key its set is published under. A forme
+   * it can never go back from (Mega, Palafin-Hero, Terapagos-Terastal) is part of that
+   * identity and shows up here; the feed still finds the set, keyed on the base species.
+   */
   readonly speciesForme: string;
+  /**
+   * The forme it is WEARING right now, set only while a reversible change (Relic Song's
+   * Meloetta-Pirouette, Stance Change, Zen Mode — or Transform, copying another Pokémon
+   * whole) makes that differ from `speciesForme`.
+   *
+   * The two are separate because they answer to different layers, exactly as `ability`
+   * (live) and `baseAbility` (innate) do. The CALC must see the forme actually standing
+   * there — its stats, its types. Set INFERENCE must not: a Meloetta-Pirouette is still
+   * running a Meloetta set, and the feed publishes no Pirouette entry to look up. So the
+   * inference layers (narrow, knowledge, the feed lookup) read `speciesForme`, and the
+   * calc-facing writer — `resolve.buildResolved`, the one place a ResolvedMon is made —
+   * reads this one in preference.
+   */
+  readonly liveForme?: string;
   /** Client-dex base data for `speciesForme` — see `SpeciesData`. */
   readonly speciesData?: SpeciesData;
   readonly level: number;

@@ -22,12 +22,20 @@ export interface ClientPokemon {
   readonly item?: string;
   /** A revealed item the Pokémon no longer holds (consumed berry, knocked-off orb). */
   readonly prevItem?: string;
+  /** Moves the battle has seen this Pokémon use. A leading "*" marks a move it has only
+   *  by TRANSFORM — the client's `rememberMove` prefixes one while `volatiles.transform`
+   *  is set — so a starred entry belongs to the COPIED Pokémon, not this one's set. */
   readonly moveTrack?: ReadonlyArray<readonly [string, unknown]>;
   readonly gender?: string;
   readonly side?: ClientSide;
   /** Side+name identity, e.g. "p1: Noivern" — matches the protocol log's actor tags
    *  (slot-independent, so a mid-battle switch doesn't misattribute a slot). */
   readonly ident?: string;
+  /** Active volatiles, keyed by id; each is its own `[id, ...args]` tuple. Two of them
+   *  carry the forme a Pokémon is CURRENTLY wearing (see `readLiveForme`):
+   *  `formechange: ['formechange', 'Meloetta-Pirouette']` and
+   *  `transform: ['transform', targetPokemon, shiny, gender, targetLevel]`. */
+  readonly volatiles?: Readonly<Record<string, readonly unknown[] | undefined>>;
 }
 
 export interface ClientSide {
@@ -172,11 +180,36 @@ function asFullStats(raw: Readonly<Record<string, number | undefined>> | undefin
   return wellFormed ? (out as FullStats) : undefined;
 }
 
+/**
+ * The forme this Pokémon is wearing RIGHT NOW, when that differs from the species it was
+ * built as — the client's own `getSpeciesForme()` law, `volatiles.formechange[1]` first.
+ *
+ * The client splits forme changes in two. A PERMANENT one (Mega Evolution, Palafin-Hero,
+ * Terapagos-Terastal, Mimikyu-Busted) arrives as `|detailschange|` and rewrites
+ * `speciesForme` outright — nothing to do here. A TEMPORARY one (Relic Song's
+ * Meloetta-Pirouette, Stance Change, Zen Mode, Forecast, Shields Down — and Transform,
+ * whose target forme the client records the same way) leaves `speciesForme` untouched and
+ * records the live forme in the `formechange` volatile. Read only the field and every
+ * temporary forme is invisible: we would calculate Meloetta-Pirouette (128 Spe, 128 Atk)
+ * as plain Meloetta (90/77), and a transformed Ditto as a Ditto.
+ *
+ * Undefined when the Pokémon is simply itself.
+ */
+export function readLiveForme(p: ClientPokemon): string | undefined {
+  const forme = p.volatiles?.formechange?.[1];
+  if (typeof forme !== 'string' || forme.length === 0) return undefined;
+  return forme === p.speciesForme ? undefined : forme;
+}
+
 export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, speciesData?: SpeciesData): LiveFacts {
-  // moveTrack entries are [name, pp]; a leading "*" marks a transformed/mimicked move.
+  // moveTrack entries are [name, pp]. A "*" marks a move held only by TRANSFORM: it is the
+  // COPIED Pokémon's move, and reading it as this one's would narrow its set by evidence
+  // that was never its own (a transformed Ditto "revealing" the moveset it is imitating).
   const revealedMoves = (p.moveTrack ?? [])
-    .map(([name]) => name.replace(/^\*/, ''))
+    .filter(([name]) => !name.startsWith('*'))
+    .map(([name]) => name)
     .filter((name) => name.length > 0);
+  const liveForme = readLiveForme(p);
 
   const boosts: Partial<Record<StatID, number>> = {};
   for (const stat of BOOSTABLE) {
@@ -195,6 +228,7 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, spe
 
   const facts: LiveFacts = {
     speciesForme: p.speciesForme,
+    ...(liveForme ? {liveForme} : {}),
     level: p.level,
     hpPercent: p.maxhp > 0 ? p.hp / p.maxhp : 1,
     boosts,

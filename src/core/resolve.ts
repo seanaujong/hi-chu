@@ -76,7 +76,11 @@ export function buildResolved(
   uncertain: string | undefined,
 ): ResolvedMon {
   return {
-    speciesForme: facts.speciesForme,
+    // The forme actually standing there — a Pokémon mid-Relic-Song attacks as
+    // Meloetta-Pirouette, and everything the calc reads (base stats, types, weight) is
+    // that forme's. Its SET is still Meloetta's, which is why the layers above kept
+    // reading `facts.speciesForme` and only this one, calc-facing, prefers the live forme.
+    speciesForme: facts.liveForme ?? facts.speciesForme,
     ...(facts.speciesData ? {speciesData: facts.speciesData} : {}),
     level: facts.level || entry.level,
     nature: role?.nature ?? RANDBATS_NATURE,

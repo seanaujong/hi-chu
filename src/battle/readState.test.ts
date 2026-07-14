@@ -1,6 +1,7 @@
 import {describe, it, expect} from 'vitest';
 import {
   toLiveFacts,
+  readLiveForme,
   readSpeciesData,
   hasLandedDamagingHit,
   tookEntryHazardDamage,
@@ -59,9 +60,38 @@ describe('toLiveFacts', () => {
     expect(toLiveFacts(clientMon({status: ''})).status).toBeUndefined();
   });
 
-  it('strips the "*" transform marker and drops empty move names', () => {
+  it('drops a "*" TRANSFORM move: it is the copied Pokémon\'s, not this one\'s', () => {
+    // The client stars a move a Pokémon only has by Transform. Reading it as a revealed
+    // move of THIS Pokémon narrows its set by the moveset it is imitating — a Ditto that
+    // has copied a Dragonite is not thereby a Dragonite-shaped Ditto set.
     const f = toLiveFacts(clientMon({moveTrack: [['*Outrage', 5], ['Roost', 10]]}));
-    expect(f.revealedMoves).toEqual(['Outrage', 'Roost']);
+    expect(f.revealedMoves).toEqual(['Roost']);
+  });
+
+  it('reads the live forme from the formechange volatile, not speciesForme', () => {
+    // A temporary forme change (Relic Song, Stance Change, Zen Mode, Transform) leaves
+    // `speciesForme` alone and records the forme here — the client's own getSpeciesForme().
+    const meloetta = clientMon({
+      speciesForme: 'Meloetta',
+      volatiles: {formechange: ['formechange', 'Meloetta-Pirouette']},
+    });
+    expect(readLiveForme(meloetta)).toBe('Meloetta-Pirouette');
+    const f = toLiveFacts(meloetta);
+    expect(f.liveForme).toBe('Meloetta-Pirouette'); // what the calc must see
+    expect(f.speciesForme).toBe('Meloetta'); // what the set is published under
+  });
+
+  it('has no live forme when the Pokémon is simply itself', () => {
+    expect(readLiveForme(clientMon({volatiles: {}}))).toBeUndefined();
+    expect(readLiveForme(clientMon())).toBeUndefined();
+    expect(toLiveFacts(clientMon()).liveForme).toBeUndefined();
+    // A permanent change (|detailschange|) rewrites speciesForme itself; the client leaves
+    // no volatile behind, and a stale one naming the same forme is not a change.
+    const palafin = clientMon({
+      speciesForme: 'Palafin-Hero',
+      volatiles: {formechange: ['formechange', 'Palafin-Hero']},
+    });
+    expect(readLiveForme(palafin)).toBeUndefined();
   });
 
   it('carries the behaviour signals through, defaulting to false', () => {

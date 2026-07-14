@@ -3,6 +3,7 @@ import {resolveByRole, resolveMon, resolveVariants} from './resolve.js';
 import {inferSets} from './knowledge.js';
 import type {RandbatsEntry} from './types.js';
 import {
+  liveFacts,
   DRAGONITE, dragoniteFacts,
   NOIVERN, noivernFacts,
   GARDEVOIR, gardevoirFacts,
@@ -168,6 +169,49 @@ describe('resolveVariants — the still-possible sets to calc over', () => {
       },
     };
     expect(resolveVariants(noivernFacts({speciesForme: 'Rotom'}), twin)).toHaveLength(1);
+  });
+});
+
+describe('a live forme change', () => {
+  // Relic Song turns Meloetta into Meloetta-Pirouette for as long as it stays in. The calc
+  // has to see the forme standing there; the SET is still the one the feed publishes under
+  // "Meloetta" — there is no Pirouette entry to look up, and the moves it revealed as a
+  // Meloetta still narrow its role. So the two species part ways at exactly one seam.
+  const MELOETTA: RandbatsEntry = {
+    level: 82,
+    abilities: ['Serene Grace'],
+    items: ['Leftovers'],
+    roles: {
+      Wallbreaker: {
+        abilities: ['Serene Grace'],
+        items: ['Leftovers'],
+        teraTypes: ['Fighting'],
+        moves: ['Relic Song', 'Close Combat', 'Knock Off'],
+      },
+    },
+  };
+  const facts = liveFacts({
+    speciesForme: 'Meloetta',
+    liveForme: 'Meloetta-Pirouette',
+    level: 82,
+    revealedMoves: ['Relic Song'],
+  });
+
+  it('is what the calc resolves to, while the set stays the base species\'', () => {
+    const r = resolveMon(facts, MELOETTA);
+    expect(r.speciesForme).toBe('Meloetta-Pirouette');
+    // …and the Meloetta role still matched: the revealed move narrowed it as normal.
+    expect(r.possibleMoves).toContain('Close Combat');
+    expect(r.assumptionsUncertainReason).toBeUndefined();
+  });
+
+  it('reaches every variant, not just the single resolution', () => {
+    for (const v of resolveVariants(facts, MELOETTA)) expect(v.mon.speciesForme).toBe('Meloetta-Pirouette');
+    for (const v of resolveByRole(facts, MELOETTA)) expect(v.mon.speciesForme).toBe('Meloetta-Pirouette');
+  });
+
+  it('leaves a Pokémon that has not changed forme exactly as it was', () => {
+    expect(resolveMon(dragoniteFacts(), DRAGONITE).speciesForme).toBe('Dragonite');
   });
 });
 

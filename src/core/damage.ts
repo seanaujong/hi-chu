@@ -9,7 +9,7 @@
 // (core/multihit.ts) to get the true total, and from it an exact single-use KO chance.
 
 import {calculate, calcStat, Generations, Pokemon, Move, Field, toID, type GenerationNum, type State} from '@smogon/calc';
-import type {FieldFacts, FullStats, ResolvedMon, StatID} from './types.js';
+import type {FieldFacts, FullStats, ResolvedMon, SpeciesData, StatID} from './types.js';
 import {multiHitProfile} from './moves.js';
 import {
   type Pmf,
@@ -59,16 +59,27 @@ export type Gen = ReturnType<typeof Generations.get>;
 type SpeciesOverrides = NonNullable<State.Pokemon['overrides']>;
 
 /**
- * Base data for a species the calc's dex does NOT know — Champions invents new Megas
- * (Chandelure-Mega) that never existed in a mainline game, so `gen.species.get` comes
- * back empty and the constructor would throw. The client's own dex knows them (its
- * tooltips need the same data), and that reading rides in on `mon.speciesData`; passed
- * as `overrides`, the calc computes stats, STAB, and the type chart correctly. A species
- * the calc DOES know keeps its canonical record — this is a fallback, never a replacement.
+ * The base data the calc must use instead of its own dex record, if any. Two unrelated
+ * reasons, and they compose through one `overrides`:
+ *
+ * A species the calc's dex does NOT know — Champions invents new Megas (Chandelure-Mega)
+ * that never existed in a mainline game, so `gen.species.get` comes back empty and the
+ * constructor would throw. The client's own dex knows them (its tooltips need the same
+ * data), and that reading rides in on `mon.speciesData`. It is a FALLBACK: a species the
+ * calc does know keeps its canonical record.
+ *
+ * A body that doesn't match its species — only Transform makes that happen, and then
+ * `mon.speciesOverride` is authoritative even for a species the calc knows well (a
+ * transformed Ditto is a Dragapult with Ditto's base HP; no dex record says that).
+ *
+ * The calc deep-merges `overrides` onto the dex record, so handing it base stats alone
+ * leaves types and weight canonical.
  */
-function unknownSpeciesOverrides(gen: Gen, mon: ResolvedMon): {overrides: SpeciesOverrides} | Record<string, never> {
-  if (!mon.speciesData || gen.species.get(toID(mon.speciesForme)) !== undefined) return {};
-  const {baseStats, types, weightkg} = mon.speciesData;
+function speciesOverrides(gen: Gen, mon: ResolvedMon): {overrides: SpeciesOverrides} | Record<string, never> {
+  const dexLacksSpecies = gen.species.get(toID(mon.speciesForme)) === undefined;
+  const data = mon.speciesOverride ?? (dexLacksSpecies ? mon.speciesData : undefined);
+  if (!data) return {};
+  const {baseStats, types, weightkg} = data;
   return {
     overrides: {
       baseStats,
@@ -148,11 +159,52 @@ export function moveCategory(gen: number, moveName: string): 'Physical' | 'Speci
   return new Move(Generations.get(gen as GenerationNum), moveName).category;
 }
 
-/** The base stats the calc will actually use for this mon: its own dex record when it
- *  knows the species, else the client-dex fallback riding on `speciesData`. */
+/**
+ * One species' body as the calc knows it — base stats, types, weight. The calc's own dex
+ * first; the client-dex reading the caller supplies (`SpeciesData`) fills in for a species
+ * the calc lacks, which is the only reason that fallback exists.
+ *
+ * Exported because Transform builds a body out of two of them: the target's, wearing the
+ * copier's base HP.
+ */
+export function speciesBody(gen: number, speciesForme: string, fallback?: SpeciesData): SpeciesData | undefined {
+  const dex = Generations.get(gen as GenerationNum).species.get(toID(speciesForme));
+  if (!dex?.baseStats || !dex.types) return fallback;
+  return {
+    baseStats: dex.baseStats as FullStats,
+    types: [...dex.types],
+    ...(typeof dex.weightkg === 'number' ? {weightkg: dex.weightkg} : {}),
+  };
+}
+
+/** The base stats the calc will actually use for this mon — the body it is wearing, which
+ *  is its species' own until Transform hands it someone else's. */
 function baseStatsFor(gen: Gen, mon: ResolvedMon): FullStats | undefined {
+  if (mon.speciesOverride) return mon.speciesOverride.baseStats;
   const dex = gen.species.get(toID(mon.speciesForme));
   return (dex?.baseStats as FullStats | undefined) ?? mon.speciesData?.baseStats;
+}
+
+/**
+ * This Pokémon's FINAL stats — the numbers the calc will read once it is built. Exact
+ * figures we already hold (the server's, or a Transform copy's) win; otherwise the calc's
+ * own stat formula derives them from the resolved spread through `calcStat`, the very
+ * function the Pokemon constructor uses — so this is what the calc computes, not an
+ * imitation of it.
+ *
+ * Exported because Transform copies the TARGET's finals verbatim: we have to be able to
+ * read them off the target before we can install them on the copier.
+ */
+export function finalStatsOf(gen: number, mon: ResolvedMon): FullStats | undefined {
+  if (mon.knownStats) return mon.knownStats;
+  const g = Generations.get(gen as GenerationNum);
+  const base = baseStatsFor(g, mon);
+  if (!base) return undefined;
+  const stats = {} as FullStats;
+  for (const stat of STAT_IDS) {
+    stats[stat] = calcStat(g, stat, base[stat], mon.ivs[stat], mon.evs[stat], mon.level, mon.nature);
+  }
+  return stats;
 }
 
 /** The spread that reproduces `mon.knownStats` exactly, when finals are known and solvable. */
@@ -172,12 +224,13 @@ export function buildPokemon(gen: Gen, mon: ResolvedMon, curHP?: number): Pokemo
   const solved = solvedSpread(gen, mon);
   return new Pokemon(gen, mon.speciesForme, {
     level: mon.level,
-    ...unknownSpeciesOverrides(gen, mon),
+    ...speciesOverrides(gen, mon),
     nature: solved?.nature ?? mon.nature,
     evs: solved?.evs ?? mon.evs,
     ivs: solved?.ivs ?? mon.ivs,
     ...(mon.ability !== undefined ? {ability: mon.ability} : {}),
     ...(item !== undefined ? {item} : {}),
+    ...(mon.abilityOn ? {abilityOn: true} : {}),
     ...(mon.status !== undefined ? {status: mon.status} : {}),
     boosts: mon.boosts,
     // teraType is only ever set when the Tera is ACTIVE for this calc — actually

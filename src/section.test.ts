@@ -26,7 +26,7 @@ const data = fixture.randbats as unknown as RandbatsData;
  * The client's classes are untyped and cyclic, so the reconstruction casts through
  * `unknown` — the shapes match readState's structural interfaces.
  */
-function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; nearTailwind?: boolean} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
+function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; nearTailwind?: boolean; foeDitto?: 'transformed' | 'plain'} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
   const sides: ClientSide[] = fixture.battle.sides.map((s, i) => {
     // Tailwind blows on OUR side (index 0) only — the asymmetry is the point: it must
     // double our speed and leave the foe's alone, whichever side a caller orients on.
@@ -55,6 +55,27 @@ function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: strin
     });
     return side as unknown as ClientSide;
   });
+  // Swap the foe active for a Ditto — plain, or Transformed into our Noivern. The client
+  // records a transform as TWO volatiles: the target's own Pokemon object, and the same
+  // `formechange` an ordinary forme change uses. It also copies the target's tracked moves
+  // onto the Ditto, each STARRED: `*Flamethrower` is Noivern's move, not Ditto's.
+  if (over.foeDitto) {
+    const ourNoivern = sides[0]!.active[0];
+    const ditto = {
+      speciesForme: 'Ditto', level: 87, hp: 225, maxhp: 225, status: '', boosts: {},
+      terastallized: '', ident: 'p2: Ditto', side: sides[1],
+      ...(over.foeDitto === 'transformed'
+        ? {
+            moveTrack: [['*Flamethrower', 0]],
+            volatiles: {
+              transform: ['transform', ourNoivern, false, 'M', 82],
+              formechange: ['formechange', 'Noivern'],
+            },
+          }
+        : {}),
+    };
+    (sides[1]!.active as (ClientPokemon | null)[])[0] = ditto as unknown as ClientPokemon;
+  }
   const battle = {
     gen: fixture.battle.gen,
     tier: fixture.battle.tier,
@@ -813,5 +834,67 @@ describe('the ⚡ verdict previews the Mega’s Speed — but only from gen 7', 
     const base = ourSpeed(buildPokemonSection(battle, foe, feed, false));
     const mega = ourSpeed(buildPokemonSection(battle, foe, feed, true));
     expect(mega).toBe(base);
+  });
+});
+
+describe('a Transformed Ditto — the copy, not the copier', () => {
+  // Ditto's real randbats set: one move, Transform, and a Choice Scarf. Everything it can
+  // actually DO comes from the Pokémon it copied — here our Noivern (L82, 249 Speed).
+  const DITTO_ENTRY = {
+    level: 87,
+    abilities: ['Imposter'],
+    items: ['Choice Scarf'],
+    roles: {'Fast Support': {abilities: ['Imposter'], items: ['Choice Scarf'], teraTypes: ['Ghost', 'Steel'], moves: ['Transform']}},
+  };
+  const dittoData = {...(data as object), Ditto: DITTO_ENTRY} as unknown as RandbatsData;
+
+  const transformed = loadBattle({foeDitto: 'transformed'});
+  const plain = loadBattle({foeDitto: 'plain'});
+
+  it('reads the COPIED Speed for the ⚡ verdict, with its own Choice Scarf on top', () => {
+    // Transform copies the target's FINAL Speed (Noivern's 249, made at Noivern's level),
+    // and the Scarf it is still holding is its own: 249 × 1.5 = 373. A Ditto calculated as
+    // a Ditto would come out at base-48 Speed and we would "outspeed" a Pokémon that is
+    // holding our own Speed stat and a Scarf.
+    const html = buildPokemonSection(transformed.battle, transformed.active('Ditto'), dittoData);
+    expect(html).toContain('they move first');
+    expect(html).toContain('249 vs 373');
+  });
+
+  it('keeps Ditto\'s own set in the block, and lists the moves it copied', () => {
+    const html = buildPokemonSection(transformed.battle, transformed.active('Ditto'), dittoData);
+    // Its item and ability are its own — Transform takes neither.
+    expect(html).toContain('Imposter');
+    expect(html).toContain('Choice Scarf');
+    // …but the moves are the copy's, each with its damage into us. Its own lone move is
+    // spent: Transform is what got it here.
+    expect(html).toContain('Draco Meteor');
+    expect(html).toMatch(/Draco Meteor \([\d.]+–[\d.]+%\)/);
+    expect(html).not.toContain('Transform');
+  });
+
+  it('does not mistake a copied move for a reveal about DITTO', () => {
+    // The client stars a copied move (`*Flamethrower`). Read as Ditto's own, it matches no
+    // Ditto role — whose only move is Transform — and every hover would cry data drift.
+    const html = buildPokemonSection(transformed.battle, transformed.active('Ditto'), dittoData);
+    expect(html).not.toContain('matched no known set');
+  });
+
+  it('takes damage on the copied body, over its OWN HP', () => {
+    // Draco Meteor into a Noivern body (Dragon — doubly weak to it) instead of a Normal-type
+    // Ditto, and over Ditto's own 225 max HP rather than Noivern's 274: Transform copies
+    // every stat except HP.
+    const copy = buildMoveSection(transformed.battle, transformed.active('Noivern'), 'Draco Meteor', dittoData);
+    const asItself = buildMoveSection(plain.battle, plain.active('Noivern'), 'Draco Meteor', dittoData);
+    expect(maxPercent(copy)).toBeCloseTo(138.7, 1);
+    expect(maxPercent(asItself)).toBeCloseTo(92, 1);
+    expect(copy).toContain('guaranteed KO');
+  });
+
+  it('leaves a Pokémon that has copied no one exactly as it was', () => {
+    // The whole machinery is inert without a transform volatile: same tooltip, byte for byte.
+    const before = buildPokemonSection(plain.battle, plain.active('Ditto'), dittoData);
+    expect(before).toContain('Transform'); // its own set, unmolested
+    expect(before).not.toContain('Draco Meteor');
   });
 });

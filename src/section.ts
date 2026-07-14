@@ -11,7 +11,7 @@
 //   buildPokemonSection — a Pokémon hover: the still-possible sets (narrowed by reveals),
 //     with damage numbers attached when the hovered mon is the opponent's.
 
-import {calcDamage, moveCategory, painSplit, type DamageReport} from './core/damage.js';
+import {calcDamage, finalStatsOf, moveCategory, painSplit, speciesBody, type DamageReport} from './core/damage.js';
 import {resolveByRole, resolveMon, resolveVariants} from './core/resolve.js';
 import {assumeDefenderVariants, type MoveSlant} from './core/assume.js';
 import {inferSets} from './core/knowledge.js';
@@ -38,11 +38,14 @@ import type {
   RandbatsEntry,
   ResolvedMon,
   SetVariant,
+  TransformCopy,
 } from './core/types.js';
+import {transformCopy} from './core/transform.js';
 import {pickEntry, megaEntryForItem} from './data/randbats.js';
 import {
   toLiveFacts,
   readBehaviors,
+  readTransformTarget,
   readOwnItem,
   readOwnMoves,
   readOwnServerPokemon,
@@ -130,6 +133,90 @@ function openVariantsFor(gen: number): DefenderVariantsFor {
  *  client dex's species data (the calc's fallback for formes its own dex lacks). */
 function factsFor(battle: ClientBattle, mon: ClientPokemon): LiveFacts {
   return toLiveFacts(mon, readBehaviors(battle, mon), readSpeciesData(battle, mon));
+}
+
+/**
+ * How this tooltip reads a Pokémon. Beyond the raw snapshot it resolves a TRANSFORM, and
+ * that is why it has to be a seam rather than a free function: the copy a transformed
+ * Pokémon wears IS the Pokémon it copied, so building it means resolving that other
+ * Pokémon — which only a format-aware reader can do (the feed, for a randbats mon).
+ *
+ * Every surface reads facts through this one, so a transformed Ditto looks the same
+ * wherever it appears: as a target, as an attacker, and on the ⚡ verdict.
+ */
+type FactsReader = (mon: ClientPokemon) => LiveFacts;
+
+/** Resolve a Pokémon to the single set we would calculate it as — EXACTLY, or not at all.
+ *  A randbats mon always resolves: the feed publishes its spread, ours and theirs alike.
+ *  An open format has no feed, and its foe spreads are bracketed rather than guessed (see
+ *  assume.ts) — a bracket is no basis for the exact numbers Transform installs, so it
+ *  answers undefined and the copy falls back to body-only. */
+type ExactResolver = (facts: LiveFacts) => ResolvedMon | undefined;
+
+function exactResolver(data: RandbatsData | null): ExactResolver {
+  return (facts) => {
+    if (!data) return undefined;
+    const entry = entryFor(data, facts);
+    return entry ? resolveMon(facts, entry) : undefined;
+  };
+}
+
+/**
+ * The facts reader for this tooltip: the snapshot, plus the Transform copy for a Pokémon
+ * that is wearing one.
+ */
+function factsReader(battle: ClientBattle, gen: number, data: RandbatsData | null): FactsReader {
+  const resolve = exactResolver(data);
+  return (mon) => {
+    const facts = factsFor(battle, mon);
+    const target = readTransformTarget(mon);
+    if (!target) return facts;
+    const copy = transformCopyFor(battle, gen, facts, target, resolve);
+    return copy ? {...facts, transformedInto: copy} : facts;
+  };
+}
+
+/**
+ * The copy a transformed Pokémon is wearing, built from the TARGET's own resolution — the
+ * same pipeline that would answer "what is that Pokémon?" if you hovered it.
+ *
+ * Undefined when we can't even name the two bodies involved, which leaves the Pokémon
+ * resolving as its plain self (it will still be calculated as the right SPECIES, since the
+ * live forme rides on `facts.liveForme` regardless — this only costs the copied numbers).
+ */
+function transformCopyFor(
+  battle: ClientBattle,
+  gen: number,
+  self: LiveFacts,
+  target: ClientPokemon,
+  resolve: ExactResolver,
+): TransformCopy | undefined {
+  // The client records the copied species in the same `formechange` volatile a forme change
+  // uses, so the forme we are wearing IS the target's — no second reading needed.
+  const forme = self.liveForme;
+  if (forme === undefined) return undefined;
+  const targetFacts = factsFor(battle, target);
+  const ownBody = speciesBody(gen, self.speciesForme, self.speciesData);
+  const targetBody = speciesBody(gen, forme, targetFacts.speciesData);
+  if (!ownBody || !targetBody) return undefined;
+
+  // The copier resolved as ITSELF: Transform displaces its body, but its own HP survives,
+  // and that HP comes from the set it is still running (a Ditto's own Ditto set).
+  const {liveForme: _wearingTheirs, ...asItself} = self;
+  const own = resolve(asItself);
+  const copied = resolve(targetFacts);
+  const ownFinals = own ? finalStatsOf(gen, own) : undefined;
+  const copiedFinals = copied ? finalStatsOf(gen, copied) : undefined;
+  // Our own team knows its real moveset; a foe's is whatever its surviving sets could run.
+  // (An our-view surface either way — a copy of OUR Pokémon is what is about to hit us, and
+  // the opponent, having copied it, already knows every move we would be "revealing".)
+  const ourMoves = readOwnMoves(battle, target);
+  const moves = ourMoves ?? copied?.possibleMoves ?? [];
+
+  return transformCopy(
+    {baseStats: ownBody.baseStats, ...(ownFinals ? {finalStats: ownFinals} : {})},
+    {body: targetBody, ...(copiedFinals ? {finalStats: copiedFinals} : {}), moves, movesKnown: ourMoves !== undefined},
+  );
 }
 
 /** Showdown id form: lowercase, alphanumerics only ("Ice Punch" → "icepunch"). */
@@ -265,7 +352,7 @@ function megaSpeedApplies(gen: number): boolean {
 function illusionVariants(defenderFacts: LiveFacts, defenderEntry: RandbatsEntry | undefined, data: RandbatsData): SetVariant[] {
   // The suspect is a DIFFERENT species than shown, so the shown forme's dex data
   // (facts.speciesData) must not ride along into the Zoroark's resolution.
-  const {speciesData: _shownFormes, ...publicFacts} = defenderFacts;
+  const {speciesData: _shownFormes, transformedInto: _notItsCopy, ...publicFacts} = defenderFacts;
   return suspectsFor(defenderFacts, defenderEntry, data).map(({species, entry}) => ({
     mon: resolveMon({...publicFacts, speciesForme: species, level: entry.level}, entry),
     role: species,
@@ -298,10 +385,11 @@ function speedSection(
   data: RandbatsData,
   format: {gen: number},
   megaSelected: boolean,
+  readFacts: FactsReader,
 ): string {
   if (foeVariants.length === 0) return '';
   const lines = ourActives.map((our): SpeedLineModel => {
-    const publicFacts = ownTruth(battle, our, factsFor(battle, our));
+    const publicFacts = ownTruth(battle, our, readFacts(our));
     const ourEntry = entryFor(data, publicFacts);
     const realItem = ourEntry ? ownItemName(battle, our, ourEntry) : undefined;
     const ourFacts = realItem ? {...publicFacts, item: realItem} : publicFacts;
@@ -344,6 +432,7 @@ function ownMovesSection(
   attacker: ResolvedMon,
   moves: readonly string[],
   format: {gen: number; doubles: boolean},
+  readFacts: FactsReader,
   variantsFor: DefenderVariantsFor,
   foeSpeedVariants?: FoeSpeedVariantsFor,
   // The ⚡ line's own-side mon, when it must differ from the damage attacker: a pending
@@ -352,7 +441,7 @@ function ownMovesSection(
   speedAttacker: ResolvedMon = attacker,
 ): string {
   const sections = activesOpposing(battle, ourSide).map((foe) => {
-    const defenderFacts = factsFor(battle, foe);
+    const defenderFacts = readFacts(foe);
     const variantsForMove = variantsFor(defenderFacts);
     // The FOE is the defender here, so `defenderTailwind` is theirs and `attackerTailwind`
     // is ours — the mirror image of speedSection's read, which orients on our own side.
@@ -402,6 +491,7 @@ function ownHoverMatchup(
   data: RandbatsData,
   format: {gen: number; doubles: boolean},
   megaSelected: boolean,
+  readFacts: FactsReader,
 ): string {
   const moves = readOwnMoves(battle, pokemon);
   const facts = ownTruth(battle, pokemon, publicFacts);
@@ -419,7 +509,9 @@ function ownHoverMatchup(
   // Our real item feeds the ⚡ line too: a Scarf we are holding is our own private
   // truth, and showing US our own speed as uncertain would be absurd.
   const speedFor = (foeFacts: LiveFacts): readonly SetVariant[] => randbatsFoeVariants(data, foeFacts);
-  return ownMovesSection(battle, pokemon.side, attacker, moves, format, randbatsVariantsFor(data), speedFor, speedAttacker);
+  return ownMovesSection(
+    battle, pokemon.side, attacker, moves, format, readFacts, randbatsVariantsFor(data), speedFor, speedAttacker,
+  );
 }
 
 /**
@@ -442,6 +534,7 @@ export function buildSwitchSection(battle: ClientBattle, server: ClientServerPok
   const speciesData = readSpeciesData(battle, facts);
   const factsWithDex = {...facts, ...(speciesData ? {speciesData} : {})};
   const ourSide = nearSide(battle);
+  const readFacts = factsReader(battle, format.gen, data);
 
   switch (format.kind) {
     case 'randbats': {
@@ -457,7 +550,7 @@ export function buildSwitchSection(battle: ClientBattle, server: ClientServerPok
       // team (an id-form Choice Scarf; the damage layer resolves ids through the dex),
       // and it carries no boosts, because it enters with none.
       const speedFor = (foeFacts: LiveFacts): readonly SetVariant[] => randbatsFoeVariants(data, foeFacts);
-      return ownMovesSection(battle, ourSide, attacker, moves, format, randbatsVariantsFor(data), speedFor);
+      return ownMovesSection(battle, ourSide, attacker, moves, format, readFacts, randbatsVariantsFor(data), speedFor);
     }
     case 'open': {
       // The ServerPokemon already carries the real item/ability in `facts`; its exact
@@ -469,7 +562,7 @@ export function buildSwitchSection(battle: ClientBattle, server: ClientServerPok
         {...factsWithDex, ...(knownStats ? {knownStats} : {})},
         entryOrMinimal(undefined, facts),
       );
-      const html = ownMovesSection(battle, ourSide, attacker, moves, format, openVariantsFor(format.gen));
+      const html = ownMovesSection(battle, ourSide, attacker, moves, format, readFacts, openVariantsFor(format.gen));
       return html ? html + renderNotes([OPEN_FORMAT_NOTE]) : '';
     }
     default:
@@ -564,8 +657,9 @@ export function buildMoveSection(
   const foes = findOpposingActives(battle, pokemon);
   if (foes.length === 0) return '';
 
+  const readFacts = factsReader(battle, format.gen, data);
   // Our attacker: public battle state, private identity (Illusion disguises us to us too).
-  const publicFacts = ownTruth(battle, pokemon, factsFor(battle, pokemon));
+  const publicFacts = ownTruth(battle, pokemon, readFacts(pokemon));
   // Terastallize is ticked for this turn: preview the damage with the Tera active, using
   // OUR private Tera type (an our-view surface, like the real-item read). Not speculation —
   // the type is our own truth and activating it is the user's declared intent. Moot once
@@ -589,7 +683,7 @@ export function buildMoveSection(
       const realItem = ownItemName(battle, pokemon, attackerEntry);
       const attacker = asMega(resolveMon({...publicFacts, ...(realItem ? {item: realItem} : {}), ...teraFacts}, attackerEntry));
       // Name each target only when there's more than one (doubles) — singles keeps native parity.
-      return foes.map((foe) => moveVsFoe(attacker, foe, moveName, format, data, battle, foes.length > 1)).join('');
+      return foes.map((foe) => moveVsFoe(attacker, foe, moveName, format, data, battle, readFacts, foes.length > 1)).join('');
     }
     case 'open': {
       // No pool to match the item against: the raw id form goes straight in — the damage
@@ -606,7 +700,7 @@ export function buildMoveSection(
       const attacker = asMega(resolveMon(attackerFacts, entryOrMinimal(undefined, attackerFacts)));
       const variantsFor = openVariantsFor(format.gen);
       const sections = foes
-        .map((foe) => openMoveVsFoe(attacker, foe, moveName, format, battle, variantsFor, foes.length > 1))
+        .map((foe) => openMoveVsFoe(attacker, foe, moveName, format, battle, readFacts, variantsFor, foes.length > 1))
         .join('');
       return sections ? sections + renderNotes([OPEN_FORMAT_NOTE]) : '';
     }
@@ -624,10 +718,11 @@ function openMoveVsFoe(
   moveName: string,
   format: {gen: number; doubles: boolean},
   battle: ClientBattle,
+  readFacts: FactsReader,
   variantsFor: DefenderVariantsFor,
   label: boolean,
 ): string {
-  const defenderFacts = factsFor(battle, defenderMon);
+  const defenderFacts = readFacts(defenderMon);
   const defenderVariants = variantsFor(defenderFacts)(moveName);
   if (defenderVariants.length === 0) return '';
   const field = readFieldFacts(battle, defenderMon.side);
@@ -645,9 +740,10 @@ function moveVsFoe(
   format: {gen: number; doubles: boolean},
   data: RandbatsData,
   battle: ClientBattle,
+  readFacts: FactsReader,
   label: boolean,
 ): string {
-  const defenderFacts = factsFor(battle, defenderMon);
+  const defenderFacts = readFacts(defenderMon);
   const defenderEntry = entryFor(data, defenderFacts);
   const targetLabel = label ? defenderFacts.speciesForme : undefined;
 
@@ -734,6 +830,19 @@ function toBlock(c: CandidateSet, species: string | undefined, damage: Map<strin
 }
 
 /**
+ * A transformed Pokémon attacks with the moveset it COPIED, so that is what its block must
+ * show: its own set's moves are moot (Ditto's is a lone Transform, and it has been used).
+ * Only the moves are replaced — Transform takes neither item nor ability — so the block goes
+ * on naming the Ditto set that is holding the Choice Scarf, and lists under it the moves
+ * actually about to be aimed at us, each with its damage.
+ */
+function withCopiedMoves(c: CandidateSet, facts: LiveFacts): CandidateSet {
+  const copy = facts.transformedInto;
+  if (!copy) return c;
+  return {...c, moves: copy.moves.map((name) => ({name, known: copy.movesKnown}))};
+}
+
+/**
  * The Pokémon tooltip section: the still-possible sets, one block per candidate,
  * in the original Randbats Tooltip's layout. Hovering the opponent narrows their
  * sets by every public reveal and attaches each move's damage vs our active;
@@ -746,11 +855,12 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
   const format = detectFormat(battle);
   if (!format) return '';
 
-  const facts = factsFor(battle, pokemon);
+  const readFacts = factsReader(battle, format.gen, data);
+  const facts = readFacts(pokemon);
 
   switch (format.kind) {
     case 'randbats':
-      return data ? randbatsPokemonSection(battle, pokemon, facts, data, format, megaSelected) : '';
+      return data ? randbatsPokemonSection(battle, pokemon, facts, data, format, megaSelected, readFacts) : '';
     case 'open': {
       // No sets/mirror view (nothing to infer without a pool) and nothing on a FOE
       // hover in v1; our own mon gets the matchup view — the switch-decision answer —
@@ -767,7 +877,7 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
       // open format (no feed to read a foe Speed from), so the gen-6 Speed split is moot.
       const applyMega = megaPreviewFor(battle, pokemon, megaSelected);
       const attacker = applyMega ? applyMega(base) : base;
-      const html = ownMovesSection(battle, pokemon.side, attacker, moves, format, openVariantsFor(format.gen));
+      const html = ownMovesSection(battle, pokemon.side, attacker, moves, format, readFacts, openVariantsFor(format.gen));
       return html ? html + renderNotes([OPEN_FORMAT_NOTE]) : '';
     }
     default:
@@ -784,6 +894,7 @@ function randbatsPokemonSection(
   data: RandbatsData,
   format: {gen: number; doubles: boolean},
   megaSelected: boolean,
+  readFacts: FactsReader,
 ): string {
   const entry = entryFor(data, facts);
   if (!entry) return ''; // not a tracked randbats Pokémon
@@ -797,7 +908,10 @@ function randbatsPokemonSection(
   const sources = [
     {facts, entry, species: undefined as string | undefined, knowledge: shown},
     ...suspectsFor(facts, entry, data).map(({species, entry: e}) => {
-      const f: LiveFacts = {...facts, speciesForme: species, level: e.level};
+      // A suspected Zoroark is a different Pokémon: neither the shown forme's dex data nor
+      // any Transform copy belongs to it.
+      const {transformedInto: _notItsCopy, ...shownFacts} = facts;
+      const f: LiveFacts = {...shownFacts, speciesForme: species, level: e.level};
       return {facts: f, entry: e, species: species as string | undefined, knowledge: inferSets(f, e)};
     }),
   ];
@@ -807,7 +921,7 @@ function randbatsPokemonSection(
   const foe = isFoe(battle, pokemon);
   const ourMon = foe ? findOpposingActive(battle, pokemon) : null;
   // The threat lands on the Pokémon really standing there, not on the disguise we're wearing.
-  const ourFacts = ourMon ? ownTruth(battle, ourMon, factsFor(battle, ourMon)) : null;
+  const ourFacts = ourMon ? ownTruth(battle, ourMon, readFacts(ourMon)) : null;
   const defender = ourFacts ? resolveMon(ourFacts, entryOrMinimal(entryFor(data, ourFacts), ourFacts)) : null;
   const field = ourMon ? readFieldFacts(battle, ourMon.side) : undefined;
 
@@ -816,10 +930,11 @@ function randbatsPokemonSection(
     const attackers = defender ? resolveByRole(s.facts, s.entry) : []; // aligned 1:1 with candidates
     s.knowledge.candidates.forEach((c, i) => {
       const attacker = attackers[i]?.mon ?? attackers[0]?.mon;
+      const shown = withCopiedMoves(c, s.facts);
       const damage = defender && attacker && field
-        ? reportsByMove(attacker, defender, c.moves.map((m) => m.name), format.gen, field)
+        ? reportsByMove(attacker, defender, shown.moves.map((m) => m.name), format.gen, field)
         : undefined;
-      blocks.push(toBlock(c, s.species, damage));
+      blocks.push(toBlock(shown, s.species, damage));
     });
   }
   if (blocks.every((b) => b.moves.length === 0)) return '';
@@ -837,12 +952,13 @@ function randbatsPokemonSection(
         data,
         format,
         megaSelected,
+        readFacts,
       )
     : '';
   // Own view's at-a-glance answer: OUR moves' damage into the current foe (private
   // moveset — an our-view surface). Leads the tooltip like ⚡ does on a foe hover;
   // the mirror blocks below remain strictly public.
-  const ownMovesHtml = foe ? '' : ownHoverMatchup(battle, pokemon, facts, data, format, megaSelected);
+  const ownMovesHtml = foe ? '' : ownHoverMatchup(battle, pokemon, facts, data, format, megaSelected, readFacts);
 
   return speedHtml + ownMovesHtml + renderSetsSection({candidates: blocks, extraNotes: notes});
 }

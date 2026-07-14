@@ -2,6 +2,7 @@ import {describe, it, expect} from 'vitest';
 import {
   toLiveFacts,
   readLiveForme,
+  readTransformTarget,
   readSpeciesData,
   hasLandedDamagingHit,
   tookEntryHazardDamage,
@@ -92,6 +93,28 @@ describe('toLiveFacts', () => {
       volatiles: {formechange: ['formechange', 'Palafin-Hero']},
     });
     expect(readLiveForme(palafin)).toBeUndefined();
+  });
+
+  it('reads the Transform target straight out of the volatile', () => {
+    // The client stores the target's own Pokemon object there, so the copy can be resolved
+    // with the same machinery as any other Pokémon on the field.
+    const noivern = clientMon({speciesForme: 'Noivern', level: 82});
+    const ditto = clientMon({
+      speciesForme: 'Ditto',
+      level: 87,
+      volatiles: {transform: ['transform', noivern, false, 'M', 82], formechange: ['formechange', 'Noivern']},
+    });
+    expect(readTransformTarget(ditto)?.speciesForme).toBe('Noivern');
+    // …and it is the live forme too: the client records a transform as a forme change.
+    expect(readLiveForme(ditto)).toBe('Noivern');
+  });
+
+  it('has no Transform target for anyone else, and refuses a malformed one', () => {
+    expect(readTransformTarget(clientMon())).toBeUndefined();
+    expect(readTransformTarget(clientMon({volatiles: {}}))).toBeUndefined();
+    // A shape we don't recognise costs us the copy, never the tooltip.
+    expect(readTransformTarget(clientMon({volatiles: {transform: ['transform', 'Noivern']}}))).toBeUndefined();
+    expect(readTransformTarget(clientMon({volatiles: {transform: ['transform', {speciesForme: 'Noivern'}]}}))).toBeUndefined();
   });
 
   it('carries the behaviour signals through, defaulting to false', () => {

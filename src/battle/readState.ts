@@ -201,6 +201,25 @@ export function readLiveForme(p: ClientPokemon): string | undefined {
   return forme === p.speciesForme ? undefined : forme;
 }
 
+/**
+ * The Pokémon this one has TRANSFORMED into, or undefined. The client keeps the target's
+ * live `Pokemon` object right in the volatile — `['transform', target, shiny, gender,
+ * level]` — so the copy can be read with exactly the machinery every other Pokémon on the
+ * field is read with. That is the point: a transformed Ditto IS that Pokémon, and the
+ * honest way to describe it is to go and resolve the one it copied.
+ *
+ * Structurally checked before it is handed back, like every other client read: the field is
+ * untyped, and a malformed one must cost us the copy, not the tooltip.
+ */
+export function readTransformTarget(p: ClientPokemon): ClientPokemon | undefined {
+  const target = p.volatiles?.transform?.[1];
+  if (typeof target !== 'object' || target === null) return undefined;
+  const mon = target as ClientPokemon;
+  return typeof mon.speciesForme === 'string' && mon.speciesForme.length > 0 && typeof mon.level === 'number'
+    ? mon
+    : undefined;
+}
+
 export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, speciesData?: SpeciesData): LiveFacts {
   // moveTrack entries are [name, pp]. A "*" marks a move held only by TRANSFORM: it is the
   // COPIED Pokémon's move, and reading it as this one's would narrow its set by evidence

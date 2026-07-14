@@ -13,6 +13,7 @@ import type {FullStats, LiveFacts, RandbatsEntry, RandbatsRole, ResolvedMon, Set
 import {toId} from './facts.js';
 import {selectRoles} from './narrow.js';
 import {survivingItems} from './deductions.js';
+import {applyTransform} from './transform.js';
 
 const RANDBATS_BASE_EVS = 85; // gen9 randbats starts every stat at 85 EVs…
 const RANDBATS_BASE_IVS = 31; // …and 31 IVs, before per-set overrides.
@@ -50,6 +51,14 @@ function itemGone(facts: LiveFacts): boolean {
   return facts.item === undefined && facts.prevItem !== undefined;
 }
 
+/** Unburden doubles Speed only while the item is confirmed GONE — reusing `itemGone` is
+ *  what keeps it from firing for a mon that merely started itemless (randbats sets always
+ *  start holding one, so `itemGone` already means "lost it mid-battle"). `@smogon/calc`
+ *  can't derive this itself; it reads an explicit `abilityOn` flag (see `ResolvedMon`). */
+function unburdenActive(facts: LiveFacts, ability: string | undefined): boolean {
+  return ability !== undefined && toId(ability) === 'unburden' && itemGone(facts);
+}
+
 /** Revealed moves (certainties) unioned over the candidate roles' pool for the rest. */
 function possibleMovesFor(facts: LiveFacts, candidates: readonly RandbatsRole[], entry: RandbatsEntry): string[] {
   const pool = unionMoves(candidates, entry);
@@ -75,7 +84,7 @@ export function buildResolved(
   possibleMoves: readonly string[],
   uncertain: string | undefined,
 ): ResolvedMon {
-  return {
+  const resolved: ResolvedMon = {
     // The forme actually standing there — a Pokémon mid-Relic-Song attacks as
     // Meloetta-Pirouette, and everything the calc reads (base stats, types, weight) is
     // that forme's. Its SET is still Meloetta's, which is why the layers above kept
@@ -88,6 +97,7 @@ export function buildResolved(
     ivs: fillStats(RANDBATS_BASE_IVS, role?.ivs ?? entry.ivs),
     ability,
     item,
+    ...(unburdenActive(facts, ability) ? {abilityOn: true} : {}),
     status: facts.status,
     boosts: facts.boosts,
     hpPercent: facts.hpPercent,
@@ -98,6 +108,9 @@ export function buildResolved(
     ...(uncertain ? {assumptionsUncertainReason: uncertain} : {}),
     ...(facts.knownStats ? {knownStats: facts.knownStats} : {}),
   };
+  // A Transformed Pokémon wears the copy for every calc, and its own set for everything
+  // else — so the overlay lands here, after the set has been resolved, not instead of it.
+  return facts.transformedInto ? applyTransform(resolved, facts.transformedInto) : resolved;
 }
 
 export function resolveMon(facts: LiveFacts, entry: RandbatsEntry): ResolvedMon {
@@ -181,7 +194,7 @@ function variantSignature(m: ResolvedMon): string {
   return JSON.stringify([
     m.speciesForme, m.level, m.nature, m.evs, m.ivs,
     m.ability ?? null, m.item ?? null, m.status ?? null, m.boosts, m.hpPercent,
-    m.teraType ?? null, m.terastallized, m.knownStats ?? null,
+    m.teraType ?? null, m.terastallized, m.knownStats ?? null, m.speciesOverride ?? null,
   ]);
 }
 

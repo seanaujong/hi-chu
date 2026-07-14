@@ -162,6 +162,44 @@ export interface LiveFacts {
    * public knowledge, so the calc's own derivation is already exact there.
    */
   readonly knownStats?: FullStats;
+  /**
+   * The Pokémon this one has TRANSFORMED into (Ditto's Imposter, Mew's Transform), when
+   * it has. Absent for everyone else — which is nearly everyone.
+   *
+   * Transform copies the target whole and keeps almost nothing of its own, so the copy —
+   * not the copier's own set — is what every calc must read. The shell builds it, because
+   * only the shell can resolve the TARGET (the same pipeline that would answer "what is
+   * that Pokémon?" if you hovered it); the core then consumes it in one place,
+   * `resolve.buildResolved`, so every surface sees the same copy.
+   */
+  readonly transformedInto?: TransformCopy;
+}
+
+/**
+ * What a Transformed Pokémon is wearing. Transform takes the target's species, types,
+ * final stats, ability and moves; the copier keeps its own level, HP, item, status and
+ * boosts. HP is the odd one out of the stats — it is never copied — so it is already
+ * folded into both stat tables here, and neither `baseStats` nor `finalStats` describes
+ * any single real Pokémon: they are the copier's HP grafted onto the target's body.
+ */
+export interface TransformCopy {
+  /** The copied body: the target's base stats, types and weight — with the copier's OWN
+   *  base HP, since the calc derives max HP from whatever species record it is handed. */
+  readonly body: SpeciesData;
+  /**
+   * The stats Transform actually installs: the target's FINAL numbers, verbatim (it copies
+   * the numbers, not the spread that made them), with the copier's own final HP. Absent
+   * when the target's spread isn't knowable — an open format's foe, whose EVs we only ever
+   * bracket — in which case the body still applies and the spread stays the assumed one.
+   */
+  readonly finalStats?: FullStats;
+  /** The target's moves: what this Pokémon can actually attack with now. */
+  readonly moves: readonly string[];
+  /** True when those moves are the target's REAL four, not the pool its set could still be
+   *  running — which is the usual case, since Imposter copies the opposing active and the
+   *  opposing active, from our seat, is ours. Decides whether the sets view marks them
+   *  confirmed (✓) or speculative. */
+  readonly movesKnown: boolean;
 }
 
 // --- Inferred set knowledge (the information game) --------------------------
@@ -236,12 +274,32 @@ export interface ResolvedMon {
   readonly speciesForme: string;
   /** Client-dex base data for `speciesForme` — the calc's fallback for a species it lacks. */
   readonly speciesData?: SpeciesData;
+  /**
+   * Base data that REPLACES the species record, rather than filling in for a missing one:
+   * the calc must use this even for a species it knows perfectly well. Only Transform sets
+   * it, because only Transform makes a Pokémon's body stop matching its species — a
+   * transformed Ditto has Dragapult's base stats but its own base HP, which no dex record
+   * describes. (`speciesData` above is the opposite: a fallback, ignored when the calc's
+   * own dex has the species.)
+   */
+  readonly speciesOverride?: SpeciesData;
   readonly level: number;
   readonly nature: string;
   readonly evs: FullStats;
   readonly ivs: FullStats;
   readonly ability: string | undefined;
   readonly item: string | undefined;
+  /**
+   * True when a CONDITIONAL ability's boost is currently ACTIVE and the calc has no way to
+   * infer that itself. `@smogon/calc`'s `getFinalSpeed` reads Unburden's ×2 Speed off an
+   * explicit `abilityOn` flag on the calc's `Pokemon` — the same generic toggle other
+   * gen-8/9 abilities (Flash Fire, Slow Start, Stakeout, …) use — rather than deriving it
+   * from `item`/turn count itself. hi-chu sets it only for Unburden today:
+   * `resolve.buildResolved` turns it on exactly when the ability is Unburden AND the item
+   * is confirmed GONE, never merely absent (Unburden triggers on a mid-battle LOSS, not a
+   * mon that started itemless). Absent/false means "not applicable — off".
+   */
+  readonly abilityOn?: boolean;
   readonly status: StatusName | undefined;
   readonly boosts: Readonly<Partial<Record<StatID, number>>>;
   readonly hpPercent: number;

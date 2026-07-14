@@ -60,6 +60,10 @@ function probeLiveClient() {
   const b = globalThis.battle;
   const problems = [];
   const facts = [];
+  // Which of the rarer client shapes this replay actually exercised — a random replay
+  // usually has no transformed or forme-changed Pokémon, and a probe that never fired is
+  // not a probe that passed. Reported, not failed on.
+  const seen = {formeChange: false, transform: false};
 
   const format = R.detectFormat(b);
   if (!format || format.kind !== 'randbats' || !/^gen\d+random/.test(format.formatId)) {
@@ -117,6 +121,31 @@ function probeLiveClient() {
     if (sd && (!Array.isArray(sd.abilities) || sd.abilities.length === 0)) {
       problems.push(`readSpeciesData(${f.speciesForme || '?'}).abilities = ${JSON.stringify(sd.abilities)} (dex species.abilities drifted?)`);
     }
+    // The live forme rides on a VOLATILE, not on speciesForme: a reversible forme change
+    // (Relic Song, Stance Change, Zen Mode) and Transform both leave the field alone and
+    // record the forme in `volatiles.formechange`. The field's mere existence is the shape
+    // contract; when a replay actually shows one, check what it carries.
+    if (mon.volatiles !== undefined && (typeof mon.volatiles !== 'object' || mon.volatiles === null)) {
+      problems.push(`${f.speciesForme || '?'}.volatiles = ${JSON.stringify(mon.volatiles)} (expected an object)`);
+    }
+    const formechange = mon.volatiles?.formechange;
+    if (formechange !== undefined) {
+      if (typeof formechange[1] !== 'string' || !formechange[1]) {
+        problems.push(`${f.speciesForme || '?'}.volatiles.formechange = ${JSON.stringify(formechange)} (expected ['formechange', 'Some-Forme'])`);
+      } else if (R.readLiveForme(mon) !== formechange[1] && formechange[1] !== mon.speciesForme) {
+        problems.push(`readLiveForme(${f.speciesForme || '?'}) missed the formechange volatile ${JSON.stringify(formechange[1])}`);
+      }
+      seen.formeChange = true;
+    }
+    // The transform volatile holds the TARGET's own Pokemon object — that is what makes a
+    // copy resolvable at all (we go and read the Pokémon it copied).
+    if (mon.volatiles?.transform !== undefined) {
+      const target = R.readTransformTarget(mon);
+      if (!target || typeof target.speciesForme !== 'string' || !target.speciesForme) {
+        problems.push(`readTransformTarget(${f.speciesForme || '?'}) = ${JSON.stringify(target)} (volatiles.transform[1] is no longer the target Pokemon)`);
+      }
+      seen.transform = true;
+    }
     const fieldFacts = R.readFieldFacts(b, mon.side);
     const screens = fieldFacts?.defenderScreens;
     if (!screens || ['reflect', 'lightScreen', 'auroraVeil'].some((k) => typeof screens[k] !== 'boolean')) {
@@ -135,7 +164,7 @@ function probeLiveClient() {
       tera: f.teraType || null, item: f.item || null, status: f.status || null, moves: f.revealedMoves,
     });
   }
-  return {problems, facts, format};
+  return {problems, facts, format, seen};
 }
 
 async function main() {
@@ -165,13 +194,19 @@ async function main() {
     });
 
     await page.addScriptTag({content: await buildProbe()});
-    const {problems, facts, format} = await page.evaluate(probeLiveClient);
+    const {problems, facts, format, seen} = await page.evaluate(probeLiveClient);
 
     console.log(`  detectFormat → ${JSON.stringify(format)}`);
     for (const f of facts) {
       const tags = [f.tera && `Tera ${f.tera}`, f.item && `@${f.item}`, f.status && `[${f.status}]`].filter(Boolean).join(' ');
       console.log(`  read ${f.species} L${f.level} ${f.hpPct}% ${tags}  moves=[${f.moves.join(', ')}]`);
     }
+
+    // A random replay rarely contains a Transform or a reversible forme change, so say
+    // plainly whether those probes fired. "No drift" from a check that never ran is not a
+    // clean bill of health — to exercise them, pick a replay that has a Ditto in it.
+    console.log(`  volatiles: formechange ${seen.formeChange ? 'SEEN — checked' : 'absent (not exercised)'}, ` +
+      `transform ${seen.transform ? 'SEEN — checked' : 'absent (not exercised)'}`);
 
     if (problems.length) {
       console.error('\n✗ DRIFT DETECTED — readState.ts no longer matches the live client:');

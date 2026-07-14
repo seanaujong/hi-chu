@@ -273,8 +273,9 @@ function ownTruth(battle: ClientBattle, mon: ClientPokemon, facts: LiveFacts): L
   const own = readOwnServerPokemon(battle, mon);
   const truth = own ? serverPokemonFacts(own) : undefined;
   if (!truth || baseSpecies(truth.speciesForme) === baseSpecies(facts.speciesForme)) return facts;
-  // A different species means different dex data: the disguise's must not ride along.
-  const {speciesData: _disguise, ...battleState} = facts;
+  // A different species means a different BODY: neither the disguise's dex data nor any
+  // forme it was wearing describes the Pokémon really standing there.
+  const {speciesData: _disguise, liveForme: _itsForme, transformedInto: _itsCopy, ...battleState} = facts;
   const speciesData = readSpeciesData(battle, truth);
   return {
     ...battleState,

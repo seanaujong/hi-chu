@@ -52,13 +52,16 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
   - **The set-inference pipeline, split by concern** (was one `resolve.ts`):
     - `facts.ts` — tiny shared readings of `LiveFacts` (`toId`, `innateAbility`,
       `isMegaForme`); a leaf so the layers below needn't depend on each other for them.
+      `innateAbility`'s dex check now serves `deductions.ts`; role narrowing is governed by
+      `narrow.buildableAbilities` (see the invariant).
     - `deductions.ts` — the behavioural deduction layer: SILENT items (Life Orb, Heavy-Duty
       Boots) deduced ABSENT from public behaviour. `ruledOutItems`/`survivingItems`; adding
       a deduction = one predicate + one line. Keeps the matcher general (it filters a pool,
       it doesn't know mechanics).
     - `narrow.ts` — the evidence law: `roleMatches` + `selectRoles` narrow roles by ALL
       public evidence (moves, item incl. `prevItem`, innate ability, active Tera) plus the
-      deduction rule-outs. The one place the "which roles survive" rule lives.
+      deduction rule-outs. The one place the "which roles survive" rule lives —
+      `buildableAbilities` is the guard that an ability no SET could carry narrows nothing.
     - `resolve.ts` — the resolution law: `resolveMon` merges live facts over randbats into
       the one set we calculate with; `resolveVariants` enumerates EVERY still-possible set
       (hidden item/ability) for uncertainty-aware damage; `resolveByRole` gives one
@@ -69,6 +72,11 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
     - `illusion.ts` — Zoroark detection: `illusionSuspects` flags when a revealed move fits
       a Zoroark set but not the shown species (the Illusion tell), so `section.ts` can add
       that Zoroark as an extra defender variant (move view) and candidate block (sets view).
+  - `transform.ts` — the Transform law (Ditto's Imposter): a Pokémon that has copied another
+    one WHOLE. `transformCopy` builds the copy (the target's body and final numbers, wearing
+    the copier's HP — the one stat Transform never takes); `applyTransform` overlays it on the
+    copier's resolution, from the one place a ResolvedMon is made. Its sibling `illusion.ts` is
+    the case we can only SUSPECT; this is the one the client tells us outright.
   - `assume.ts` — the OPEN-format assumption law (no feed): the foe's unknown spread
     bracketed by its two honest extremes on the axis the move attacks, crossed with the
     species' dex abilities. A second producer of `SetVariant`s, reusing `resolve`'s
@@ -90,10 +98,11 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
   + damage vs our active; own → what the opponent can deduce, decided by `side.isFar`).
   Each builder switches exhaustively on `detectFormat(battle).kind` — the randbats arm is
   the feed-driven code, the open arm the assumption-driven one — and takes `data:
-  RandbatsData | null` (null in an open format; there is no feed). The `DefenderVariantsFor`
-  supplier is the seam the two arms plug into: what the foe could still be, per move.
-  No DOM/cache, so the real-battle fixture test (`section.test.ts`) drives the exact
-  path a live hover runs.
+  RandbatsData | null` (null in an open format; there is no feed). Two seams the arms plug
+  into: `DefenderVariantsFor` (what the foe could still be, per move) and `FactsReader` (how
+  a Pokémon is READ — beyond the snapshot it resolves a Transform, which means resolving the
+  Pokémon that was copied, so only a format-aware reader can build it). No DOM/cache, so the
+  real-battle fixture test (`section.test.ts`) drives the exact path a live hover runs.
 - `src/content.ts` — thin shell; resolves the format, looks up/warms the cached feed (only
   for a randbats format — an open one never fetches), hands off to `section.ts`, and
   monkey-patches BOTH tooltip renderers, `showPokemonTooltip` and `showMoveTooltip` (runs
@@ -316,12 +325,70 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   ability that could be Magic Guard leaves Boots unconfirmed ("never lie"). Checked by
   `resolve.test.ts` ("switching into Stealth Rock unharmed CONFIRMS…" / "never lies about a
   possible Magic Guard set") and `readState.test.ts` (`switchedIntoStealthRockUnharmed`).
-- ✅ **A Mega forme matches on forme + stone, never its ability.** A Mega's ability is
-  forme-locked (no set-discriminating value) and the live client and feed can name it
-  differently (Champions Meganium-Mega: client "Mega Sol" vs feed "Leaf Guard"), so
-  `narrow.roleMatches` skips the ability check when `isMegaForme(speciesForme)` — else every
-  role is rejected ("matched no known set"). Checked by `resolve.test.ts` ("a Mega forme
-  matches on forme + stone").
+- ✅ **The forme a Pokémon IS and the forme it is WEARING are different facts, and only the
+  calc reads the second.** A PERMANENT forme change (Mega, Palafin-Hero, Terapagos-Terastal,
+  Mimikyu-Busted, Eiscue-Noice, Zygarde-Complete) arrives as `|detailschange|` and rewrites
+  the client's `speciesForme`. A REVERSIBLE one — Relic Song's Meloetta-Pirouette, Stance
+  Change, Zen Mode, Forecast, Shields Down, Hunger Switch, and **Transform** — leaves it
+  untouched and records the live forme in the `formechange` VOLATILE, which the client's own
+  tooltip reads back through `getSpeciesForme()`. Read the field alone and every reversible
+  forme is invisible: a Meloetta mid-Relic-Song was calculated as plain Meloetta (90 Spe / 77
+  Atk instead of Pirouette's 128 / 128). `readState.readLiveForme` is that law
+  (`volatiles.formechange?.[1] ?? speciesForme`), and it lands on `LiveFacts.liveForme` —
+  the same split `ability` (live) and `baseAbility` (innate) already draw. **Inference reads
+  `speciesForme`, the calc reads `liveForme`**: a Pirouette still runs a Meloetta set, and
+  the feed publishes no changed forme at all (of 509 gen9 species, not one). So the feed
+  lookup, `narrow` and `knowledge` keep the built species, and exactly one calc-facing
+  writer — `resolve.buildResolved` — prefers the live one. `pickEntry` already strips forme
+  suffixes, which is why the PERMANENT formes still find their set. Checked by
+  `readState.test.ts` (`readLiveForme`, incl. a permanent forme leaving no volatile) and
+  `resolve.test.ts` ("a live forme change"). 👁 for drift: `volatiles` is a new client read —
+  `npm run drift-check` guards its shape and says whether the replay actually contained one.
+- ✅ **A Transformed Pokémon is calculated as the one it COPIED — body, numbers and moves —
+  keeping only what Transform never takes.** Transform is not a forme change. A forme change
+  swaps the body and keeps the Pokémon (Pirouette still has Meloetta's spread, and the calc
+  derives its stats the ordinary way). Transform swaps the Pokémon: the sim copies the
+  target's FINAL stat numbers verbatim (`transformInto`: `storedStats[stat] =
+  pokemon.storedStats[stat]`), not the spread that made them — so a Ditto carries someone
+  else's stats at its OWN level, and since the damage formula reads the attacker's level, the
+  copy hits harder than the Pokémon it copied. `core/transform.ts` owns the law and writes
+  the exception once: **HP is the one stat never copied**, so the copy is the target's body
+  wearing the copier's HP (`speciesOverride`, an authoritative base-stat record no dex has —
+  distinct from `speciesData`, which is only a fallback for a species the calc LACKS). Level,
+  item, ability, status and boosts stay the copier's. The copied stats reach the calc as
+  `knownStats`, the channel exact finals already travel down — which also DISPLACES the
+  copier's own server stats, always stale under Transform (the request ships
+  `baseStoredStats`, which `transformInto` deliberately never updates; the client's own
+  tooltip distrusts them the same way). The copy is built by the SHELL, because only the
+  shell can resolve the target — `section.factsReader`, a seam the format arms supply: a
+  randbats target resolves exactly from the feed, and an open format's foe is bracketed
+  rather than guessed, so it yields body-only (right species, right types, its own HP, the
+  format's assumed spread). Two reveals follow the identity/live split: a starred `moveTrack`
+  entry (`*Outrage`) is the COPIED Pokémon's move and must never narrow the copier's set (it
+  used to, so a transformed Ditto "revealed" the moveset it was imitating and matched no
+  Ditto role); and the sets view goes on naming the Ditto set — its Choice Scarf and Imposter
+  are its own — while listing the copied moves under it, each with its damage, since its own
+  lone move is spent. Checked by `transform.test.ts` (the law), `readState.test.ts`
+  (`readTransformTarget`, the star filter) and `section.test.ts` (the real fixture, a Scarf
+  Ditto that copied our Noivern: "⚡ they move first — 249 vs 373" — it holds OUR Speed stat
+  and its own Scarf multiplies it — and Draco Meteor into it reads 138.7% not 92%, a Noivern
+  body over Ditto's own 225 HP; the HP graft and the star filter each watched failing).
+- ✅ **An ability narrows a role only if a SET could have been built with it.** The client
+  hands us ability names no set can carry, and each could only ever REJECT every role, never
+  select one — so `narrow.roleMatches` ignores any innate ability outside the entry's own
+  ability pool (`buildableAbilities`, the union over its roles). Three kinds, one law:
+  FORME-LOCKED (Terapagos is built with Tera Shift, which turns it into Terapagos-Terastal on
+  switch-in — and the client stamps *that* forme's ability, Tera Shell, over the innate one,
+  so every Terapagos hover read "⚠ matched no known set" from the turn it landed; likewise a
+  Mega, where the client says "Mega Sol" and the feed says "Leaf Guard"); UMBRELLA
+  (Calyrex-Shadow's `As One (Spectrier)` announced as plain `As One`); and BORROWED (a Skill
+  Swap before the innate ability was ever revealed). This SUBSUMES the old `isMegaForme` skip
+  — a Mega's ability is just another name no set was built with — so `roleMatches` no longer
+  asks whether it is looking at a Mega, and the Mega test now fails when THIS law is reverted,
+  which is the proof it carries it. Note the Terapagos case is exactly what the dex check
+  below cannot catch: Tera Shell is a real ability *of the species it now is*. Checked by
+  `resolve.test.ts` (the forme-locked, umbrella and borrowed cases, plus a positive control
+  that a real pool ability still narrows as hard as ever — all watched failing).
 - ✅ **A disguised Zoroark surfaces as its own candidate, never a corrupted one.** Illusion
   makes the client show Zoroark as a teammate, so the calc/lookup are silently for the WRONG
   species until it breaks — we can't see through it (the client is fooled too). But a
@@ -378,7 +445,11 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   Absent dex slots (older client, a fixture with no `battle.dex`) the name is taken as given,
   exactly as before — a pure false-rejection filter that can't cost real narrowing power.
   `deductions.ts` reads the same `innateAbility` (its inline copy was the second home for the
-  law). Checked by `resolve.test.ts` ("an ability the species cannot have narrows nothing" —
+  law) — **and that is now what this check is FOR**: role narrowing is governed by the
+  stronger pool law above (a name no set was built with narrows nothing), but `deductions.ts`
+  has no pool to test against and must not trust a bogus name either, or a borrowed ability
+  would let it conclude "not Sheer Force" and rule out a Life Orb the mon may really hold.
+  Checked by `resolve.test.ts` ("an ability the species cannot have narrows nothing" —
   the umbrella and borrowed cases, both watched failing with the check reverted, and both
   reproduced/cured against the live replay with the shipped bundle).
 - ✅ **Damage under a hidden item/ability is split by DISTINCT outcome, not by set.**
@@ -481,6 +552,20 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   between header and move lines), and `section.test.ts` (real fixture: "⚡ you move first —
   249 vs 216" leads the foe tooltip AND the matchup block, byte-identical; the switch menu's
   Scarf/paralysis/no-boosts reads; the mirror and the open format have no ⚡).
+- ✅ **Unburden's ×2 Speed is armed via an explicit `abilityOn` flag, not inferred from
+  `item` alone.** `@smogon/calc`'s `getFinalSpeed` reads Unburden off `pokemon.abilityOn` —
+  the same generic toggle other gen-8/9 conditional abilities (Flash Fire, Slow Start,
+  Stakeout, …) use — rather than deriving it from the held item itself, so a resolved item
+  of `undefined` was silently NOT enough to double Speed; the calc has no way to infer it on
+  its own. `resolve.buildResolved` computes it: the ability is Unburden AND the item is
+  `itemGone(facts)` — the same "confirmed GONE, not merely absent" predicate the Knock-Off/
+  consumed-item rule already uses — so a mon that merely started itemless never falsely
+  doubles, only one whose item was actually LOST mid-battle (Knock Off, a consumed berry,
+  Trick/Switcheroo). `damage.buildPokemon` threads `mon.abilityOn` onto the same calc
+  `Pokemon` used for both damage and speed; Unburden itself never affects damage, so this is
+  harmless there. Checked by `resolve.test.ts` ("arms Unburden…": armed on a confirmed loss,
+  not a mere absence, not for a different ability) and `speed.test.ts` ("doubles Speed for
+  Unburden once armed…", pinning the ×2 itself) — both watched failing with the flag never set.
 - 👁 **Where we correct @smogon/calc** (things it should arguably handle but doesn't, that we
   own): `multihit.ts` (the multi-hit model above) and the **item id→name quirk** — the calc
   silently *ignores* an item passed in id form (`heavydutyboots`), applying nothing. Fixed at

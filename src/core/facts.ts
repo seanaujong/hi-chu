@@ -41,12 +41,15 @@ export function innateAbility(facts: LiveFacts): string | undefined {
 }
 
 /**
- * True once a Pokémon has Mega Evolved (its forme carries the "-Mega" suffix). A Mega
- * forme's ability is forme-LOCKED — every Meganium-Mega has the same one — so it carries
- * no set-discriminating information, and it must not gate role matching: the live client
- * and the randbats feed can even name it differently (a Champions Meganium-Mega reports
- * ability "Mega Sol" while the feed lists "Leaf Guard"), which would otherwise reject
- * every role. The forme change plus the revealed Mega stone already pin the set.
+ * True once a Pokémon has Mega Evolved (its forme carries the "-Mega" suffix) — so there is
+ * nothing left to preview, which is what `readState.readMegaForme` uses it for.
+ *
+ * It no longer gates role matching. A Mega's ability is forme-LOCKED, so it discriminates no
+ * set and the client and feed can even name it differently (a Champions Meganium-Mega reports
+ * "Mega Sol" where the feed lists "Leaf Guard") — but that is one instance of a general law,
+ * not a Mega special case: an ability NO SET COULD BE BUILT WITH narrows nothing, whatever
+ * put it there. `narrow.buildableAbilities` owns it, and covers the forme-locked ability of a
+ * Terapagos-Terastal (no "-Mega" suffix to key on) in the same breath.
  */
 export function isMegaForme(speciesForme: string): boolean {
   return /-Mega(-[XY])?$/.test(speciesForme);

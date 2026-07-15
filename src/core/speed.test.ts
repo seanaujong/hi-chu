@@ -64,6 +64,12 @@ describe('finalSpeed', () => {
     expect(finalSpeed(chloro, {field: field({weather: 'Sun'})})).toBe(dry * 2);
     expect(finalSpeed(chloro, {field: field({weather: 'Rain'})})).toBe(dry);
   });
+
+  it('doubles Speed for Unburden once armed via abilityOn — resolve.ts is what decides WHEN', () => {
+    const bare = mon({ability: 'Unburden'});
+    expect(finalSpeed(bare)).toBe(273); // item never lost (abilityOn unset) — no boost
+    expect(finalSpeed(mon({ability: 'Unburden', abilityOn: true}))).toBe(546);
+  });
 });
 
 describe('speedBuckets', () => {

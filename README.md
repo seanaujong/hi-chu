@@ -60,7 +60,11 @@ Random-Battle-only, and every other format (OU, VGC, Custom Game) gets the damag
   same way: the Mega's stats, ability, and typing feed the damage (so Charizard-Mega-X's
   Tough Claws and 130 Attack show *before* you evolve), and its Speed feeds the ⚡ speed
   verdict too — except in Gen 6, where a Pokémon kept its base Speed the turn it Mega
-  Evolved. The math is delegated to `@smogon/calc`, so
+  Evolved. It also follows a Pokémon that has **changed forme mid-battle** — Meloetta-Pirouette
+  after Relic Song, Aegislash-Blade, Darmanitan-Zen, and so on — because the forme's own stats
+  and typing are what the calc must see; and a **Transformed** Pokémon (Ditto's Imposter) is
+  calculated as the one it copied, right down to hitting at *its own* level while wearing the
+  target's stats. The math is delegated to `@smogon/calc`, so
   interactions resolve correctly — e.g. a *burn* normally halves a physical attacker's damage,
   but the ability **Guts** ignores that, and the calc gets it right.
 

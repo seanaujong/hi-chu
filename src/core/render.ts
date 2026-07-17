@@ -282,62 +282,87 @@ export function renderSpeedSection(lines: readonly SpeedLineModel[]): string {
 
 // --- Pokémon hover (own side): your moves' damage vs the foe active ---------
 
-/** One of OUR moves vs the foe: its distinct damage outcomes. Usually one bucket;
- *  a hidden defensive item on the foe (Assault Vest) splits it, labelled like the
- *  move tooltip's variant lines. */
+/** One of OUR moves vs the foe (or, for an incoming line, one of THEIRS vs us): its
+ *  distinct damage outcomes. Usually one bucket; a hidden item on the uncertain side
+ *  splits it, labelled like the move tooltip's variant lines. */
 export interface OwnMoveLineModel {
   readonly name: string;
   readonly buckets: readonly DamageBucket[];
+  /** Set only on an INCOMING line: true when the foe has actually used this move,
+   *  the same ✓ the sets view marks a confirmed move with. Undefined on an outgoing
+   *  line — our own moves are always fully known, never inferred. */
+  readonly known?: boolean;
 }
 
-/** One foe active's worth of our-move damage (one in singles, two in doubles). */
+/** One foe active's worth of matchup damage (one in singles, two in doubles). */
 export interface OwnMovesModel {
   readonly foeName: string;
-  /** Foe current HP as a fraction in [0,1] — KO chances are relative to it. */
+  /** Foe current HP as a fraction in [0,1] — the OUTGOING lines' KO chances are
+   *  relative to it. */
   readonly defenderHpPercent: number;
   readonly moves: readonly OwnMoveLineModel[];
   /** Who moves first between OUR Pokémon and this foe. Present only where a pool of
    *  foe sets exists to read a speed from (randbats); an assumed spread has no
    *  honest speed, so an open format leaves it unset and no ⚡ line renders. */
   readonly speed?: SpeedOrder;
+  /**
+   * The defensive half of the matchup: what the foe's own moves would do INTO the
+   * mon this tooltip is about, the mirror of `moves`. Present only where a move pool
+   * exists to enumerate (randbats) and at least one move produced a modellable
+   * outcome. `attackerHpPercent` is OUR mon's own HP — the INCOMING lines' KO
+   * context, the opposite of `defenderHpPercent` above, which is the foe's.
+   */
+  readonly incoming?: {
+    readonly attackerHpPercent: number;
+    readonly moves: readonly OwnMoveLineModel[];
+  };
 }
 
 /** "Draco Meteor: 62.5% - 74.1% · 43% to KO" — one line per damaging move, each
- *  distinct outcome labelled by what sets it apart when the foe's item splits it. */
-function ownMoveLine(row: OwnMoveLineModel, model: OwnMovesModel): string {
+ *  distinct outcome labelled by what sets it apart when the uncertain side's item
+ *  splits it. `hpPercent` is the DEFENDER's — the foe's for an outgoing line, ours
+ *  for an incoming one — since that's whose HP the KO chance is relative to. A known
+ *  incoming move (the foe has actually used it) gets the sets view's own ✓ mark. */
+function ownMoveLine(row: OwnMoveLineModel, hpPercent: number): string {
   const outcomes = row.buckets.map((b) => {
     const r = b.report;
     const ko = koText(r.koChance);
-    const koCtx = ko && model.defenderHpPercent < 0.995 ? ` at ${pct1(model.defenderHpPercent)} HP` : '';
+    const koCtx = ko && hpPercent < 0.995 ? ` at ${pct1(hpPercent)} HP` : '';
     const koPart = ko ? ` · <span class="hichu-ko">${ko}</span>${koCtx}` : '';
     const label = b.label ? `<small>(${esc(b.label)})</small> ` : '';
     return `${label}${moveDamageText(r)}${koPart}`;
   });
-  return `${esc(row.name)}: ${outcomes.join(' · ')}`;
+  const name = row.known ? `<b>✓ ${esc(row.name)}</b>` : esc(row.name);
+  return `${name}: ${outcomes.join(' · ')}`;
 }
 
 /**
  * The own-hover matchup block: OUR Pokémon's real moves, each with its damage into
  * the current foe active — the switch-decision view (a benched Pokémon's move
  * buttons aren't hoverable, so this is where its numbers live, mirroring how the
- * foe view attaches threat numbers to their unhoverable moves). One block per foe,
- * headed "vs <name>" — the tooltip is about OUR Pokémon, so the target needs
- * naming even in singles. The ⚡ verdict rides directly under that header: speed
- * order is a fact about the PAIR, so it belongs beside the damage rather than only
- * on the foe's own tooltip — and it is the only way a benched Pokémon's speed
- * matchup can be read at all. Status moves never reach the model; a foe with no
- * modellable move yields no block.
+ * foe view attaches threat numbers to their unhoverable moves) — followed by an
+ * "Incoming:" group for the defensive half, what the foe's own moves would do INTO
+ * this mon. One block per foe, headed "vs <name>" — the tooltip is about OUR
+ * Pokémon, so the target needs naming even in singles. The ⚡ verdict rides directly
+ * under that header: speed order is a fact about the PAIR, so it belongs beside the
+ * damage rather than only on the foe's own tooltip — and it is the only way a
+ * benched Pokémon's speed matchup can be read at all. Status moves never reach the
+ * model; a foe with no modellable move on EITHER side yields no block.
  */
 export function renderOwnMovesSection(sections: readonly OwnMovesModel[]): string {
   return sections
-    .filter((s) => s.moves.length > 0)
-    .map((s) =>
-      block([
+    .filter((s) => s.moves.length > 0 || (s.incoming?.moves.length ?? 0) > 0)
+    .map((s) => {
+      const incoming = s.incoming && s.incoming.moves.length > 0
+        ? ['<small>Incoming:</small>', ...s.incoming.moves.map((row) => ownMoveLine(row, s.incoming!.attackerHpPercent))]
+        : [];
+      return block([
         targetHeader(s.foeName),
         ...(s.speed ? [speedLine({order: s.speed})] : []),
-        ...s.moves.map((row) => ownMoveLine(row, s)),
-      ]),
-    )
+        ...s.moves.map((row) => ownMoveLine(row, s.defenderHpPercent)),
+        ...incoming,
+      ]);
+    })
     .join('');
 }
 

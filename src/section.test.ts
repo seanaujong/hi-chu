@@ -26,7 +26,7 @@ const data = fixture.randbats as unknown as RandbatsData;
  * The client's classes are untyped and cyclic, so the reconstruction casts through
  * `unknown` — the shapes match readState's structural interfaces.
  */
-function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; nearTailwind?: boolean; foeDitto?: 'transformed' | 'plain'} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
+function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; nearTailwind?: boolean; foeDitto?: 'transformed' | 'plain'} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
   const sides: ClientSide[] = fixture.battle.sides.map((s, i) => {
     // Tailwind blows on OUR side (index 0) only — the asymmetry is the point: it must
     // double our speed and leave the foe's alone, whichever side a caller orients on.
@@ -50,6 +50,9 @@ function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: strin
         // A knocked-off item: nothing held, prevItem names what was lost.
         ...(p.speciesForme === 'Tentacruel' && over.tentacruelPrevItem !== undefined ? {prevItem: over.tentacruelPrevItem} : {}),
         ...(p.speciesForme === 'Tentacruel' && over.tentacruelBoosts !== undefined ? {boosts: over.tentacruelBoosts} : {}),
+        ...(p.speciesForme === 'Tentacruel' && over.tentacruelMoveTrack !== undefined
+          ? {moveTrack: over.tentacruelMoveTrack.map((m) => [m, 0])}
+          : {}),
         ...(over.fullHp ? {hp: p.maxhp} : {}),
       } as unknown as ClientPokemon;
     });
@@ -445,6 +448,58 @@ describe('buildPokemonSection hovering OUR Noivern as the player (the matchup vi
     // only as a speculative pool option, never as a confirmed ✓.
     expect(mirror).not.toContain('✓ Hurricane');
     expect(mirror).toContain('✓ Flamethrower');
+  });
+});
+
+describe('the matchup view’s defensive half — what the foe’s moves would do INTO this mon', () => {
+  const moves = ['dracometeor', 'flamethrower', 'hurricane', 'roost'];
+  const mine = {myNoivernItem: 'heavydutyboots', myNoivernMoves: moves};
+
+  it('lists Tentacruel’s own possible moves as an "Incoming:" group, after our own damage lines', () => {
+    const {battle, active} = loadBattle(mine);
+    const html = buildPokemonSection(battle, active('Noivern'), data);
+    expect(html).toContain('<small>Incoming:</small>');
+    // Every one of Tentacruel's Bulky Support moves should show up with a damage range.
+    expect(html).toMatch(/Surf: [\d.]+% - [\d.]+%/);
+    expect(html).toMatch(/Knock Off: [\d.]+% - [\d.]+%/);
+    expect(html.indexOf('Draco Meteor:')).toBeLessThan(html.indexOf('<small>Incoming:</small>'));
+    expect(html.indexOf('<small>Incoming:</small>')).toBeLessThan(html.indexOf('Surf:'));
+  });
+
+  it('grades the incoming KO chance against OUR Noivern’s HP, not Tentacruel’s', () => {
+    // Knock Off boosted 1.5× by our real Heavy-Duty Boots — real-item awareness applies to
+    // the DEFENSIVE side too, not just our own attacks.
+    const {battle, active} = loadBattle(mine);
+    const html = buildPokemonSection(battle, active('Noivern'), data);
+    const incoming = html.slice(html.indexOf('<small>Incoming:</small>'));
+    expect(incoming).toMatch(/Knock Off: [\d.]+% - [\d.]+%/);
+  });
+
+  it('marks a move Tentacruel has actually used with the sets view’s own ✓', () => {
+    const {battle, active} = loadBattle({...mine, tentacruelMoveTrack: ['Surf']});
+    const html = buildPokemonSection(battle, active('Noivern'), data);
+    const incoming = html.slice(html.indexOf('<small>Incoming:</small>'));
+    expect(incoming).toContain('<b>✓ Surf</b>:');
+    expect(incoming).not.toContain('✓ Knock Off');
+  });
+
+  it('reaches the switch menu too — the only surface a benched mon’s incoming threat can appear on', () => {
+    const {battle} = loadBattle();
+    const server: unknown = {
+      ident: 'p1: Noivern', details: 'Noivern, L82, F', condition: '272/272',
+      item: 'heavydutyboots', baseAbility: 'infiltrator', teraType: 'Fire',
+      moves: ['dracometeor', 'flamethrower', 'hurricane', 'roost'],
+    };
+    const html = buildSwitchSection(battle, server as never, data);
+    expect(html).toContain('<small>Incoming:</small>');
+    expect(html).toMatch(/Surf: [\d.]+% - [\d.]+%/);
+  });
+
+  it('is randbats-only — an open format has no move pool to enumerate, so it renders nothing', () => {
+    const {battle, active} = loadBattle(mine);
+    const openBattle = {...battle, tier: '[Gen 9] OU'} as ClientBattle;
+    const html = buildPokemonSection(openBattle, active('Noivern'), null);
+    expect(html).not.toContain('Incoming');
   });
 });
 

@@ -26,7 +26,11 @@ Random-Battle-only, and every other format (OU, VGC, Custom Game) gets the damag
   the current opponent, KO chance attached. Your real moveset and item are read from your
   private team, so the numbers are exact; if the foe's hidden item would change a number
   (an Assault Vest they may or may not hold), the line splits into labelled outcomes
-  instead of guessing.
+  instead of guessing. *(Random Battles.)* Right below it, an `Incoming:` group answers the
+  other half of the same question — what the foe's own possible moves would do INTO the
+  Pokémon you're considering, so a switch decision reads both "can it threaten?" and "does
+  it survive?" without leaving the tooltip. A move the foe has actually used is marked ✓,
+  same as the set-inference view.
 - **Who moves first.** *(Random Battles.)* Speed order is a fact about a *pair*, so the ⚡
   verdict appears on both halves of it. Hovering an opponent leads with your active's
   effective Speed against theirs. Hovering one of your own Pokémon — **including a benched

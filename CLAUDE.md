@@ -8,7 +8,10 @@ Hovering one of **our move buttons** shows that move's damage into the opposing 
 (with **granular multi-hit damage** — a true KO% that integrates over the random 2–5 hit
 count, not `k × one roll`); hovering **our own Pokémon** (benched included) leads with
 the **matchup view**: our real moves' damage into the foe active, read from the private
-team. In a **Random Battle** those surfaces sit atop the information game — hovering a
+team, followed by its defensive mirror — an **`Incoming:`** group showing what the foe's
+own moves would do INTO that mon, so a switch decision reads both "can it threaten?" and
+"does it survive?" in one place (randbats-only, like the ⚡ verdict below). In a
+**Random Battle** those surfaces sit atop the information game — hovering a
 **Pokémon** shows which randbats sets are still possible given every public reveal (moves
 used, item incl. consumed/knocked-off, ability), with damage vs our active attached on
 the opponent's tooltip and the mirror ("their read on you") on our own; a **⚡ speed-order
@@ -288,6 +291,38 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   disabled, the id→name resolution reverted, and the gone-item strip removed),
   `render.test.ts` (`renderOwnMovesSection`), `readState.test.ts` (`readOwnMoves`,
   `serverPokemonFacts`), and `content.test.ts` (the null-clientPokemon routing).
+- ✅ **The matchup view's defensive half: an `Incoming:` group showing what the FOE's own
+  moves would do INTO the mon this tooltip is about — the mirror of the outgoing lines
+  above it.** "Can it threaten?" (the outgoing lines) is only half the switch decision;
+  "does it survive?" needs the reverse calc, and the switch menu is the only surface a
+  benched mon's numbers can appear on at all — same reasoning as the outgoing half.
+  `section.randbatsIncomingMovesFor` is the mirror of `DefenderVariantsFor`: there, a
+  fixed move fans out over hidden DEFENDER sets; here, the fixed defender (this tooltip's
+  mon) fans out over hidden ATTACKER sets, one entry per still-possible foe move. It reads
+  the sets view's OWN per-role move knowledge (`knowledge.inferSets`) crossed with
+  `resolve.resolveVariants`' full item/ability fan-out, aligned by ROLE NAME — the same
+  alignment `resolveByRole` already relies on for the sets view's per-candidate damage —
+  so a hidden Life Orb/Choice item splits an incoming line into labelled outcomes exactly
+  like the move tooltip's defender side (never a set's first-guessed item). A move the foe
+  has actually used is marked with the sets view's own ✓ (`OwnMoveLineModel.known`).
+  `scoreVariants` is the shared core both directions now funnel through — `moveDamageBuckets`
+  varies the DEFENDER, `incomingDamageBuckets` varies the ATTACKER — so "known wins, bucket
+  by distinct outcome" can't fork between them. **The field orientation is the trap, same as
+  the ⚡ verdict**: the outgoing lines' `field` reads the FOE as defender, but the incoming
+  lines need `ourSide` as defender (a screen or Tailwind on OUR side applies here, the foe's
+  does not) — computed as a second, oppositely-oriented `readFieldFacts` call inside the same
+  `ownMovesSection`. **Randbats-only**, exactly like the ⚡ verdict and for the identical
+  reason: an assumed open-format spread has no move pool to enumerate, so `ownMovesSection`'s
+  `incomingMovesFor` param is supplied only by randbats callers and simply absent for open
+  formats — no `if` inside the shared block builder. Illusion suspects are NOT folded into
+  this (unlike the outgoing/sets-view directions) — a suspected Zoroark's moves don't share
+  names with the shown species' pool, so they don't fit the per-move-name bucketing shape;
+  a real gap, left for later rather than forced into this shape. Checked by `section.test.ts`
+  ("the matchup view's defensive half…": the Incoming group on both entry paths, KO context
+  against OUR OWN hp not the foe's, the ✓ mark, the item-hidden split, randbats-only — guards
+  watched failing with the feature reverted) and `render.test.ts`
+  (`renderOwnMovesSection`: the Incoming label, its own hp context, ✓, item split, and that a
+  foe block with only incoming content still renders).
 - ✅ **A LANDED damaging hit with no item revealed rules Life Orb out.** Life Orb takes 1/10
   recoil when a damaging move connects and REVEALS itself doing so — so if a mon has landed a
   hit and no item has surfaced, it isn't holding one. It must be a *landed* hit, not merely a

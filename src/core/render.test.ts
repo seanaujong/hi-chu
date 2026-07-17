@@ -395,6 +395,91 @@ describe('renderOwnMovesSection (own hover: your moves vs the foe active)', () =
   it('omits the ⚡ line when there is no speed — an open format has no foe pool to read one from', () => {
     expect(renderOwnMovesSection([section()])).not.toContain('⚡');
   });
+
+  describe('the incoming half — what the foe’s own moves would do INTO this mon', () => {
+    it('lists each incoming move under its own "Incoming:" label, after the outgoing lines', () => {
+      const html = renderOwnMovesSection([
+        section({
+          incoming: {
+            attackerHpPercent: 1,
+            moves: [{name: 'Sludge Bomb', buckets: [{label: '', report: report({move: 'Sludge Bomb', percent: {min: 30, max: 36, mean: 33}})}]}],
+          },
+        }),
+      ]);
+      expect(html).toContain('<small>Incoming:</small>');
+      expect(html).toContain('Sludge Bomb: 30% - 36%');
+      expect(html.indexOf('Draco Meteor:')).toBeLessThan(html.indexOf('<small>Incoming:</small>'));
+      expect(html.indexOf('<small>Incoming:</small>')).toBeLessThan(html.indexOf('Sludge Bomb:'));
+    });
+
+    it('grades the incoming KO chance against OUR OWN hp, not the foe’s', () => {
+      const html = renderOwnMovesSection([
+        section({
+          defenderHpPercent: 1, // the foe is at full — must NOT drive the incoming KO context
+          incoming: {
+            attackerHpPercent: 0.4,
+            moves: [{name: 'Knock Off', buckets: [{label: '', report: report({move: 'Knock Off', koChance: 0.8})}]}],
+          },
+        }),
+      ]);
+      expect(html).toContain('<span class="hichu-ko">80% to KO</span> at 40% HP');
+    });
+
+    it('marks a move the foe has actually used with the sets view’s own ✓', () => {
+      const html = renderOwnMovesSection([
+        section({
+          incoming: {
+            attackerHpPercent: 1,
+            moves: [
+              {name: 'Surf', known: true, buckets: [{label: '', report: report({move: 'Surf'})}]},
+              {name: 'Sludge Bomb', known: false, buckets: [{label: '', report: report({move: 'Sludge Bomb'})}]},
+            ],
+          },
+        }),
+      ]);
+      expect(html).toContain('<b>✓ Surf</b>:');
+      expect(html).toContain('Sludge Bomb:');
+      expect(html).not.toContain('✓ Sludge Bomb');
+    });
+
+    it('labels a distinct outcome when the foe’s hidden item changes the incoming damage', () => {
+      const html = renderOwnMovesSection([
+        section({
+          incoming: {
+            attackerHpPercent: 1,
+            moves: [{
+              name: 'Knock Off',
+              buckets: [
+                {label: 'Life Orb', report: report({move: 'Knock Off', percent: {min: 25, max: 30, mean: 27}})},
+                {label: 'Leftovers', report: report({move: 'Knock Off'})},
+              ],
+            }],
+          },
+        }),
+      ]);
+      expect(html).toContain('Knock Off: <small>(Life Orb)</small> 25% - 30% · <small>(Leftovers)</small> 30% - 36%');
+    });
+
+    it('omits the Incoming label entirely when there is nothing to show (open format, or no modellable move)', () => {
+      const html = renderOwnMovesSection([section()]);
+      expect(html).not.toContain('Incoming');
+      expect(renderOwnMovesSection([section({incoming: {attackerHpPercent: 1, moves: []}})])).not.toContain('Incoming');
+    });
+
+    it('still renders the block when only the incoming half has anything to show', () => {
+      const html = renderOwnMovesSection([
+        section({
+          moves: [], // nothing modellable outgoing — a status-only set, say
+          incoming: {
+            attackerHpPercent: 1,
+            moves: [{name: 'Surf', buckets: [{label: '', report: report({move: 'Surf'})}]}],
+          },
+        }),
+      ]);
+      expect(html).toContain('<b>Tentacruel</b>');
+      expect(html).toContain('Surf:');
+    });
+  });
 });
 
 describe('renderNotes (tooltip-wide caveats)', () => {

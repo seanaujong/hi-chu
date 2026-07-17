@@ -837,6 +837,58 @@ describe('the ⚡ verdict previews the Mega’s Speed — but only from gen 7', 
   });
 });
 
+describe('the sets view lists a possible Mega set while the foe’s item is unrevealed (Champions)', () => {
+  // Real Champions shape: the base entry's OWN item pool never lists the stone (Charizard's
+  // real pool is ['Leftovers']) — the Mega set lives entirely under its own separate entry.
+  // Two stones (X and Y) so a candidate list can show BOTH still being live at once.
+  const feed = {
+    Charizard: {level: 52, abilities: ['Blaze'], items: ['Leftovers'], moves: ['Flamethrower']},
+    'Charizard-Mega-X': {level: 47, abilities: ['Blaze'], items: ['Charizardite X'], moves: ['Dragon Claw']},
+    'Charizard-Mega-Y': {level: 47, abilities: ['Blaze'], items: ['Charizardite Y'], moves: ['Air Slash']},
+    Tentacruel: {level: 50, abilities: ['Clear Body'], items: ['Black Sludge'], moves: ['Scald']},
+  } as unknown as RandbatsData;
+
+  const foeBattle = (item?: string): {battle: ClientBattle; foeZard: ClientPokemon} => {
+    const near = {isFar: false, sideConditions: {}, active: [] as unknown[]};
+    const far = {isFar: true, sideConditions: {}, active: [] as unknown[]};
+    const ours = {speciesForme: 'Tentacruel', level: 50, hp: 100, maxhp: 100, status: '', boosts: {}, moveTrack: [], ident: 'p1: Tentacruel', side: near} as unknown as ClientPokemon;
+    const foeZard = {
+      speciesForme: 'Charizard', level: 50, hp: 100, maxhp: 100, status: '', boosts: {}, moveTrack: [],
+      ident: 'p2: Charizard', side: far, ...(item ? {item} : {}),
+    } as unknown as ClientPokemon;
+    near.active = [ours];
+    far.active = [foeZard];
+    const battle = {gen: 9, tier: '[Gen 9 Champions] Random Battle', sides: [near, far]} as unknown as ClientBattle;
+    return {battle, foeZard};
+  };
+
+  it('lists both still-possible Mega sets alongside the base set', () => {
+    const {battle, foeZard} = foeBattle();
+    const html = buildPokemonSection(battle, foeZard, feed);
+    expect(html).toContain('Charizardite X');
+    expect(html).toContain('Charizard-Mega-X');
+    expect(html).toContain('Charizardite Y');
+    expect(html).toContain('Charizard-Mega-Y');
+    expect(html).toContain('Leftovers'); // the base (non-Mega) set is still there too
+  });
+
+  it('drops both Mega candidates once a different item is revealed', () => {
+    // A foe-revealed item arrives as its display name (real client shape — see the
+    // captured Tentacruel fixture, `item: 'Leftovers'`), not the id form the private
+    // team's request JSON uses.
+    const {battle, foeZard} = foeBattle('Leftovers');
+    const html = buildPokemonSection(battle, foeZard, feed);
+    expect(html).not.toContain('Mega:');
+  });
+
+  it('narrows to exactly the held stone’s Mega set once the item is revealed as one', () => {
+    const {battle, foeZard} = foeBattle('Charizardite Y');
+    const html = buildPokemonSection(battle, foeZard, feed);
+    expect(html).toContain('Charizard-Mega-Y');
+    expect(html).not.toContain('Charizard-Mega-X'); // the OTHER stone is no longer possible
+  });
+});
+
 describe('a Transformed Ditto — the copy, not the copier', () => {
   // Ditto's real randbats set: one move, Transform, and a Choice Scarf. Everything it can
   // actually DO comes from the Pokémon it copied — here our Noivern (L82, 249 Speed).

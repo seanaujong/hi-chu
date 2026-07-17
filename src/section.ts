@@ -41,7 +41,7 @@ import type {
   TransformCopy,
 } from './core/types.js';
 import {transformCopy} from './core/transform.js';
-import {pickEntry, megaEntryForItem} from './data/randbats.js';
+import {pickEntry, megaEntryForItem, megaEntriesFor} from './data/randbats.js';
 import {
   toLiveFacts,
   readBehaviors,
@@ -369,6 +369,20 @@ function suspectsFor(facts: LiveFacts, entry: RandbatsEntry | undefined, data: R
     })
     .filter((x): x is IllusionSuspect => x !== null);
   return illusionSuspects(facts, entry, impostors);
+}
+
+/**
+ * The Mega forme(s) this Pokémon might still evolve into (Champions), while a held Mega
+ * stone remains genuinely possible: nothing about the item has been revealed yet. A
+ * revealed item either already resolved to the Mega set (`entryFor`'s own
+ * `megaEntryForItem` check) or rules Mega out entirely — and a LOST item (`prevItem` set)
+ * rules it out too, since Mega Evolution needs the stone in hand. `megaEntriesFor` finds
+ * every still-possible Mega entry for the species; each becomes its own candidate source,
+ * exactly like an Illusion suspect, so the sets view lists it instead of silently dropping it.
+ */
+function megaCandidatesFor(facts: LiveFacts, data: RandbatsData): readonly {forme: string; entry: RandbatsEntry}[] {
+  if (facts.item !== undefined || facts.prevItem !== undefined) return [];
+  return megaEntriesFor(data, facts.speciesForme);
 }
 
 /**
@@ -903,9 +917,11 @@ function randbatsPokemonSection(
   const shown = inferSets(facts, entry);
   const notes = shown.uncertainReason ? [shown.uncertainReason] : [];
 
-  // The hovered species, plus any Zoroark it might secretly be (Illusion), as candidate
-  // sources. Each contributes its own blocks; an Illusion source tags its blocks with the
-  // species it might really be (its own set + species drive that block's damage).
+  // The hovered species, plus any Zoroark it might secretly be (Illusion) and any Mega
+  // forme it might still evolve into (Champions), as candidate sources. Each contributes
+  // its own blocks; an Illusion source tags its blocks with the species it might really be
+  // (its own set + species drive that block's damage). A Mega candidate stays untagged — it
+  // is still the same Pokémon, just a set living under a different feed entry.
   const sources = [
     {facts, entry, species: undefined as string | undefined, knowledge: shown},
     ...suspectsFor(facts, entry, data).map(({species, entry: e}) => {
@@ -914,6 +930,11 @@ function randbatsPokemonSection(
       const {transformedInto: _notItsCopy, ...shownFacts} = facts;
       const f: LiveFacts = {...shownFacts, speciesForme: species, level: e.level};
       return {facts: f, entry: e, species: species as string | undefined, knowledge: inferSets(f, e)};
+    }),
+    ...megaCandidatesFor(facts, data).map(({forme, entry: e}) => {
+      const {transformedInto: _notItsCopy, ...shownFacts} = facts;
+      const f: LiveFacts = {...shownFacts, speciesForme: forme, level: e.level};
+      return {facts: f, entry: e, species: undefined as string | undefined, knowledge: inferSets(f, e)};
     }),
   ];
 

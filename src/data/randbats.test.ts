@@ -1,6 +1,6 @@
 import {describe, it, expect, vi, afterEach} from 'vitest';
 import {Generations, Pokemon} from '@smogon/calc';
-import {pickEntry, megaEntryForItem, championsStatPointsToEvs, fetchRandbats} from './randbats.js';
+import {pickEntry, megaEntryForItem, megaEntriesFor, championsStatPointsToEvs, fetchRandbats} from './randbats.js';
 import {inferSets} from '../core/knowledge.js';
 import type {LiveFacts, RandbatsData, RandbatsEntry} from '../core/types.js';
 
@@ -22,6 +22,37 @@ describe('megaEntryForItem (a held Mega stone is running the Mega set)', () => {
     expect(megaEntryForItem(feed, 'Leftovers')).toBeUndefined(); // held, but no Mega set uses it
     expect(megaEntryForItem(feed, 'Choice Scarf')).toBeUndefined();
     expect(megaEntryForItem(feed, undefined)).toBeUndefined();
+  });
+});
+
+describe('megaEntriesFor (every Mega set still possible while the item is unknown)', () => {
+  // Real Champions shape: a base entry's OWN item pool never lists the stone (verbatim from
+  // the live feed: Charizard's pool is ['Leftovers'], not ['Charizardite X', …]) — the Mega
+  // set lives only under its own separate entry, keyed by species prefix.
+  const feed = {
+    Charizard: {level: 52, abilities: ['Blaze'], items: ['Leftovers']},
+    'Charizard-Mega-X': {level: 47, abilities: ['Blaze'], items: ['Charizardite X']},
+    'Charizard-Mega-Y': {level: 47, abilities: ['Blaze'], items: ['Charizardite Y']},
+    'Floette-Eternal': {level: 52, abilities: ['Flower Veil'], items: ['Choice Scarf']},
+    'Floette-Mega': {level: 48, abilities: ['Flower Veil'], items: ['Floettite']},
+    Blissey: {level: 50, abilities: ['Natural Cure'], items: ['Leftovers']},
+  } as unknown as RandbatsData;
+
+  it('finds every still-possible Mega entry for a species with more than one stone', () => {
+    const found = megaEntriesFor(feed, 'Charizard').map((m) => m.forme).sort();
+    expect(found).toEqual(['Charizard-Mega-X', 'Charizard-Mega-Y']);
+  });
+
+  it('finds the irregularly-keyed Mega by species prefix, not by matching the base key', () => {
+    // "Floette-Eternal" and "Floette-Mega" share no key relationship beyond the species
+    // prefix — a naive "does <forme>-Mega exist" lookup finds nothing here.
+    const found = megaEntriesFor(feed, 'Floette-Eternal');
+    expect(found.map((m) => m.forme)).toEqual(['Floette-Mega']);
+    expect(found[0]?.entry.items).toEqual(['Floettite']);
+  });
+
+  it('returns nothing for a species with no Mega entry', () => {
+    expect(megaEntriesFor(feed, 'Blissey')).toEqual([]);
   });
 });
 

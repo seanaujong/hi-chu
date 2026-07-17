@@ -199,3 +199,24 @@ export function megaEntryForItem(data: RandbatsData, item: string | undefined): 
   }
   return undefined;
 }
+
+/**
+ * Every Mega-forme entry this species could still evolve into, found by SPECIES PREFIX
+ * rather than an assumed suffix on the hovered forme — the `megaEntryForItem` counterpart
+ * for when the item hasn't been revealed yet. A held stone commits to one Mega set via the
+ * item; while the item is unknown, the sets view needs every Mega set that's still LIVE, and
+ * a base entry's own item pool never lists the stone (Champions keys Mega as a wholly
+ * separate entry — Charizard's own pool is `['Leftovers']`, not `['Charizardite X', …]`), so
+ * without this the Mega possibility never surfaces until the item happens to be revealed.
+ * Matched on the first hyphen segment of both sides — the same species-identity comparison
+ * `section.ts`'s `baseSpecies` already uses — because a Mega key's OWN prefix is reliable
+ * even when the base forme's key is irregular (Floette-Eternal's Mega is "Floette-Mega",
+ * dropping "Eternal"; both sides still reduce to "Floette").
+ */
+export function megaEntriesFor(data: RandbatsData, speciesForme: string): readonly {forme: string; entry: RandbatsEntry}[] {
+  const wanted = asId(speciesForme.split('-')[0] ?? speciesForme);
+  const raw = data as unknown as Readonly<Record<string, RawEntry>>;
+  return Object.entries(raw)
+    .filter(([key]) => /-Mega(-[XY])?$/.test(key) && asId(key.split('-')[0] ?? key) === wanted)
+    .map(([forme, entry]) => ({forme, entry: normalizeEntry(entry)}));
+}

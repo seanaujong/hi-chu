@@ -412,6 +412,21 @@ describe('renderOwnMovesSection (own hover: your moves vs the foe active)', () =
       expect(html.indexOf('<small>Incoming:</small>')).toBeLessThan(html.indexOf('Sludge Bomb:'));
     });
 
+    it('puts the incoming half in its own .hichu-block, divided from the outgoing half', () => {
+      const html = renderOwnMovesSection([
+        section({
+          incoming: {
+            attackerHpPercent: 1,
+            moves: [{name: 'Sludge Bomb', buckets: [{label: '', report: report({move: 'Sludge Bomb'})}]}],
+          },
+        }),
+      ]);
+      expect(html.match(/<div class="hichu-block">/g)).toHaveLength(2);
+      const outgoingBlockEnd = html.indexOf('</div>');
+      expect(html.indexOf('Draco Meteor:')).toBeLessThan(outgoingBlockEnd);
+      expect(outgoingBlockEnd).toBeLessThan(html.indexOf('<small>Incoming:</small>'));
+    });
+
     it('grades the incoming KO chance against OUR OWN hp, not the foe’s', () => {
       const html = renderOwnMovesSection([
         section({

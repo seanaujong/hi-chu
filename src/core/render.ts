@@ -342,26 +342,33 @@ function ownMoveLine(row: OwnMoveLineModel, hpPercent: number): string {
  * buttons aren't hoverable, so this is where its numbers live, mirroring how the
  * foe view attaches threat numbers to their unhoverable moves) — followed by an
  * "Incoming:" group for the defensive half, what the foe's own moves would do INTO
- * this mon. One block per foe, headed "vs <name>" — the tooltip is about OUR
- * Pokémon, so the target needs naming even in singles. The ⚡ verdict rides directly
- * under that header: speed order is a fact about the PAIR, so it belongs beside the
- * damage rather than only on the foe's own tooltip — and it is the only way a
- * benched Pokémon's speed matchup can be read at all. Status moves never reach the
- * model; a foe with no modellable move on EITHER side yields no block.
+ * this mon. Headed "vs <name>" — the tooltip is about OUR Pokémon, so the target
+ * needs naming even in singles. The ⚡ verdict rides directly under that header:
+ * speed order is a fact about the PAIR, so it belongs beside the damage rather than
+ * only on the foe's own tooltip — and it is the only way a benched Pokémon's speed
+ * matchup can be read at all. Status moves never reach the model; a foe with no
+ * modellable move on EITHER side yields no block. The incoming half gets its own
+ * `.hichu-block` — the same divider the sets view uses to separate candidates —
+ * rather than sharing the outgoing half's block with only a `<small>` label between
+ * them, so the two directions (can it threaten? does it survive?) read as visually
+ * distinct groups instead of one growing list.
  */
 export function renderOwnMovesSection(sections: readonly OwnMovesModel[]): string {
   return sections
     .filter((s) => s.moves.length > 0 || (s.incoming?.moves.length ?? 0) > 0)
     .map((s) => {
-      const incoming = s.incoming && s.incoming.moves.length > 0
-        ? ['<small>Incoming:</small>', ...s.incoming.moves.map((row) => ownMoveLine(row, s.incoming!.attackerHpPercent))]
-        : [];
-      return block([
+      const outgoing = block([
         targetHeader(s.foeName),
         ...(s.speed ? [speedLine({order: s.speed})] : []),
         ...s.moves.map((row) => ownMoveLine(row, s.defenderHpPercent)),
-        ...incoming,
       ]);
+      const incoming = s.incoming && s.incoming.moves.length > 0
+        ? block([
+            '<small>Incoming:</small>',
+            ...s.incoming.moves.map((row) => ownMoveLine(row, s.incoming!.attackerHpPercent)),
+          ])
+        : '';
+      return outgoing + incoming;
     })
     .join('');
 }

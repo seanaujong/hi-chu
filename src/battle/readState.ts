@@ -146,6 +146,7 @@ export interface BehaviorSignals {
   readonly landedDamagingHit?: boolean;
   readonly tookEntryHazardDamage?: boolean;
   readonly switchedIntoStealthRockUnharmed?: boolean;
+  readonly timesAttacked?: number;
 }
 
 /**
@@ -256,6 +257,7 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, spe
     landedDamagingHit: signals.landedDamagingHit ?? false,
     tookEntryHazardDamage: signals.tookEntryHazardDamage ?? false,
     switchedIntoStealthRockUnharmed: signals.switchedIntoStealthRockUnharmed ?? false,
+    timesAttacked: signals.timesAttacked ?? 0,
     ...(asStatus(p.status) ? {status: asStatus(p.status)!} : {}),
     ...(p.terastallized ? {teraType: p.terastallized} : {}),
     ...(ability ? {ability} : {}),
@@ -333,6 +335,44 @@ export function hasLandedDamagingHit(battle: ClientBattle, mon: ClientPokemon): 
   return false;
 }
 
+/**
+ * How many times has `mon` been hit by another Pokémon's move — RAGE FIST's power scales
+ * with exactly this count (`min(350, 50 + 50×timesAttacked)`, the sim's own
+ * `pokemon.timesAttacked`), and it persists across switches (the sim never resets it), so
+ * this is a running total over the WHOLE battle, not just the mon's current stint.
+ *
+ * Reads the log the mirror-image way from `hasLandedDamagingHit`: instead of "did the
+ * mover deal damage", "did a bare `-damage` land on ME while someone ELSE was moving".
+ * A multi-hit move emits one `-damage` line PER hit, so e.g. three Bullet Seed hits count
+ * as three — matching the sim's own `target.timesAttacked += hit - 1`. A `[from]` tag
+ * marks INDIRECT damage (status, hazard, recoil) and never counts, which is also what
+ * excludes a Substitute-blocked hit for free: the sub absorbs it as `-activate`, not
+ * `-damage`, on the real Pokémon, so no line ever matches. A self-inflicted hit
+ * (confusion) is excluded because its mover IS `mon` — the sim's own increment carries
+ * the same `pokemon !== target` guard.
+ *
+ * Takes just an `ident`, not a full `ClientPokemon` — a benched mon read from the private
+ * `ServerPokemon` (`serverPokemonFacts`) carries one too, and the log itself is the only
+ * source either shape needs.
+ */
+export function timesAttacked(battle: ClientBattle, mon: {readonly ident?: string}): number {
+  const me = identKey(mon.ident);
+  if (!me) return 0;
+  let mover: string | null = null;
+  let count = 0;
+  for (const line of battle.stepQueue ?? []) {
+    if (line.startsWith('|move|')) {
+      mover = identKey(line.split('|')[2]) ?? null;
+    } else if (line.startsWith('|switch|') || line.startsWith('|drag|') || line.startsWith('|turn|')) {
+      mover = null; // a new actor context — don't let a later line borrow the last move
+    } else if (line.startsWith('|-damage|') && mover !== null && mover !== me) {
+      const parts = line.split('|');
+      if (identKey(parts[2]) === me && !parts.slice(4).some((p) => p.startsWith('[from]'))) count++;
+    }
+  }
+  return count;
+}
+
 // Entry hazards that deal switch-in damage — the only ones Heavy-Duty Boots negates and
 // thus the only ones whose damage rules Boots out. (Toxic Spikes/Sticky Web don't damage.)
 const DAMAGING_HAZARDS = ['Stealth Rock', 'Spikes', 'G-Max Steelsurge'];
@@ -407,6 +447,7 @@ export function readBehaviors(battle: ClientBattle, mon: ClientPokemon): Behavio
     landedDamagingHit: hasLandedDamagingHit(battle, mon),
     tookEntryHazardDamage: tookEntryHazardDamage(battle, mon),
     switchedIntoStealthRockUnharmed: switchedIntoStealthRockUnharmed(battle, mon),
+    timesAttacked: timesAttacked(battle, mon),
   };
 }
 
@@ -530,9 +571,12 @@ function parseServerCondition(condition: string | undefined): {hpPercent: number
  * read — no section beats a wrong one. Boosts are empty by construction: a benched mon
  * has none, and the active's own surfaces pass the full battle-view Pokémon instead.
  * These facts are PRIVATE (real item/ability) — our-view surfaces only, never the
- * mirror.
+ * mirror. `battle` is optional (only the log gives `timesAttacked` a real count) so a
+ * caller that hasn't got a battle handy still gets a well-formed `LiveFacts`, just with
+ * that count at its default 0 — the same graceful-absence rule every other log-derived
+ * signal here already follows.
  */
-export function serverPokemonFacts(p: ClientServerPokemon): LiveFacts | undefined {
+export function serverPokemonFacts(p: ClientServerPokemon, battle?: ClientBattle): LiveFacts | undefined {
   const parsed = parseServerDetails(p.details);
   const speciesForme = p.speciesForme || parsed.speciesForme;
   if (!speciesForme) return undefined;
@@ -554,6 +598,7 @@ export function serverPokemonFacts(p: ClientServerPokemon): LiveFacts | undefine
     landedDamagingHit: false,
     tookEntryHazardDamage: false,
     switchedIntoStealthRockUnharmed: false,
+    timesAttacked: battle ? timesAttacked(battle, {ident: p.ident}) : 0,
     ...(status ? {status} : {}),
     ...(p.terastallized ? {teraType: p.terastallized} : {}),
     ...(ability ? {ability} : {}),

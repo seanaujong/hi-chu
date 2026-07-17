@@ -20,6 +20,7 @@ function mon(over: Partial<ResolvedMon> & {speciesForme: string}): ResolvedMon {
     teraType: undefined,
     terastallized: false,
     possibleMoves: [],
+    timesAttacked: 0,
     ...over,
   };
 }
@@ -343,6 +344,44 @@ describe('Guts negates burn (the bug the baseline gets wrong)', () => {
     // Guts both ignores the burn Attack drop AND adds 1.5×, so it should be far higher,
     // not the ~half a naive "burn always halves" model would produce.
     expect(guts.total.mean).toBeGreaterThan(ironFist.total.mean * 2);
+  });
+});
+
+describe('Rage Fist scales its power with the ATTACKER’s own hits taken (a calc gap, like multi-hit)', () => {
+  // @smogon/calc's own move data lists Rage Fist as a flat bp: 50 — it has no notion of
+  // `timesAttacked` at all. Pinned against a direct @smogon/calc run with the same
+  // spread and `overrides.basePower` set to the sim's own formula's output by hand, so
+  // this also proves `overrides.basePower` reaches the calc for a move it never special-
+  // cases by name (unlike Triple Axel/Kick, which the calc recomputes over regardless).
+  const defender = mon({speciesForme: 'Skarmory'});
+  const attacker = (n: number) => mon({speciesForme: 'Runerigus', timesAttacked: n});
+
+  it('50 power when the user has never been hit', () => {
+    const r = calcDamage(attacker(0), defender, 'Rage Fist');
+    expect([r.total.min, r.total.max]).toEqual([40, 48]);
+  });
+
+  it('100 power after one hit — min(350, 50 + 50×1)', () => {
+    const r = calcDamage(attacker(1), defender, 'Rage Fist');
+    expect([r.total.min, r.total.max]).toEqual([79, 94]);
+  });
+
+  it('200 power after three hits', () => {
+    const r = calcDamage(attacker(3), defender, 'Rage Fist');
+    expect([r.total.min, r.total.max]).toEqual([159, 187]);
+  });
+
+  it('caps at 350 power from 6 hits on — a 7th+ hit no longer raises the damage', () => {
+    const six = calcDamage(attacker(6), defender, 'Rage Fist');
+    const ten = calcDamage(attacker(10), defender, 'Rage Fist');
+    expect([six.total.min, six.total.max]).toEqual([276, 325]);
+    expect([ten.total.min, ten.total.max]).toEqual([276, 325]);
+  });
+
+  it('is unaffected by the DEFENDER having been hit — only the attacker’s own count matters', () => {
+    const untouchedDefender = calcDamage(attacker(0), defender, 'Rage Fist');
+    const hitDefender = calcDamage(attacker(0), mon({speciesForme: 'Skarmory', timesAttacked: 5}), 'Rage Fist');
+    expect(hitDefender.total).toEqual(untouchedDefender.total);
   });
 });
 

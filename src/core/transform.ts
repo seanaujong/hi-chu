@@ -34,6 +34,8 @@ export interface CopyTarget {
   readonly moves: readonly string[];
   /** Its REAL four moves, rather than the pool its set could still be running. */
   readonly movesKnown: boolean;
+  /** The target's own `timesAttacked` — Transform adopts it whole (see `TransformCopy`). */
+  readonly timesAttacked: number;
 }
 
 /**
@@ -55,6 +57,7 @@ export function transformCopy(copier: Copier, target: CopyTarget): TransformCopy
     ...(copied && ownHp !== undefined ? {finalStats: {...copied, hp: ownHp}} : {}),
     moves: [...target.moves],
     movesKnown: target.movesKnown,
+    timesAttacked: target.timesAttacked,
   };
 }
 
@@ -80,5 +83,8 @@ export function applyTransform(mon: ResolvedMon, copy: TransformCopy): ResolvedM
     speciesOverride: copy.body,
     possibleMoves: [...copy.moves],
     ...(copy.finalStats ? {knownStats: copy.finalStats} : {}),
+    // The sim copies `timesAttacked` onto the copier verbatim (`transformInto`), so a
+    // transformed Ditto's Rage Fist reads the hits its COPY has taken, not its own.
+    timesAttacked: copy.timesAttacked,
   };
 }

@@ -215,7 +215,13 @@ function transformCopyFor(
 
   return transformCopy(
     {baseStats: ownBody.baseStats, ...(ownFinals ? {finalStats: ownFinals} : {})},
-    {body: targetBody, ...(copiedFinals ? {finalStats: copiedFinals} : {}), moves, movesKnown: ourMoves !== undefined},
+    {
+      body: targetBody,
+      ...(copiedFinals ? {finalStats: copiedFinals} : {}),
+      moves,
+      movesKnown: ourMoves !== undefined,
+      timesAttacked: targetFacts.timesAttacked,
+    },
   );
 }
 
@@ -544,7 +550,7 @@ export function buildSwitchSection(battle: ClientBattle, server: ClientServerPok
   const format = detectFormat(battle);
   if (!format) return '';
   const moves = server.moves ?? [];
-  const facts = serverPokemonFacts(server);
+  const facts = serverPokemonFacts(server, battle);
   if (!facts || facts.hpPercent <= 0 || moves.length === 0) return '';
   const speciesData = readSpeciesData(battle, facts);
   const factsWithDex = {...facts, ...(speciesData ? {speciesData} : {})};

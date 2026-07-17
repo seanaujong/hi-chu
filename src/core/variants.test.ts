@@ -19,6 +19,7 @@ function variant(over: {species?: string; item?: string; ability?: string; role?
     teraType: undefined,
     terastallized: false,
     possibleMoves: [],
+    timesAttacked: 0,
   };
   return {mon, role: over.role ?? ''};
 }

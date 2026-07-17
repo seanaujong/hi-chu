@@ -516,6 +516,30 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   flag, Pound stops being a faithful stand-in — revisit. Checked by `damage.test.ts`
   ("variable-power multi-hit … is computed per hit"; guards watched failing with the law
   reverted).
+- ✅ **Rage Fist's power scales with the ATTACKER's own hits taken — a mechanic
+  `@smogon/calc`'s move data doesn't model at all** (its table lists a flat `bp: 50`; unlike
+  Triple Axel/Kick, nothing in the calc's mechanics recomputes it by name, so
+  `overrides.basePower` reaches it cleanly). `readState.timesAttacked` reads the sim's own
+  signal off the protocol log — a bare `-damage` line landing on the mon while some OTHER
+  Pokémon's move is resolving, one line per hit so a multi-hit move counts every hit it
+  lands (mirrors `hasLandedDamagingHit`'s mover-tracking, in the opposite direction: "was I
+  hit" instead of "did I hit"). A `[from]` tag (status, hazard, recoil, confusion) never
+  counts, which for free excludes a Substitute-blocked hit too — the sub absorbs it as
+  `-activate`, not `-damage`, on the real Pokémon. `LiveFacts.timesAttacked` flows through
+  `resolve.buildResolved` onto `ResolvedMon`, and `damage.rageFistPower` computes
+  `min(350, 50 + 50×timesAttacked)` (the sim's own `ragefist.basePowerCallback`) as an
+  `overrides.basePower` when the move is Rage Fist. **Persists across switches** — the sim
+  never resets `pokemon.timesAttacked`, so this is a running count over the WHOLE battle,
+  matched by side+name the same way `hasLandedDamagingHit` is. **Transform adopts the
+  TARGET's count, not the copier's own** — the sim's `transformInto` overwrites
+  `timesAttacked` wholesale (`this.timesAttacked = pokemon.timesAttacked`), so
+  `TransformCopy.timesAttacked` carries the target's, and `applyTransform` installs it —
+  a transformed Ditto's Rage Fist reads the hits its COPY has taken. Checked by
+  `readState.test.ts` (`timesAttacked`: direct hits, multi-hit summing, `[from]` exclusion,
+  Substitute exclusion, cross-switch matching), `damage.test.ts` (pinned Runerigus-vs-
+  Skarmory numbers at 0/1/3/6/10 hits taken, the 350 cap, defender-side hits not mattering),
+  and `transform.test.ts` (the target's count survives the copy, watched failing with the
+  law reverted). 👁 for drift: `stepQueue`/`ident` are already `drift-check`-guarded fields.
 - ✅ **Speed order: arithmetic delegated, ORDER owned, a fact about the PAIR.** `core/speed.ts`
   computes each still-possible set's effective Speed with the calc's `getFinalSpeed` (Scarf,
   paralysis incl. Quick Feet, Tailwind, boosts, weather/terrain abilities, Protosynthesis) —

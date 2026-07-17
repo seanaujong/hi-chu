@@ -159,6 +159,22 @@ export function moveCategory(gen: number, moveName: string): 'Physical' | 'Speci
   return new Move(Generations.get(gen as GenerationNum), moveName).category;
 }
 
+const RAGE_FIST_BASE_POWER = 50;
+const RAGE_FIST_POWER_PER_HIT = 50;
+const RAGE_FIST_MAX_POWER = 350;
+
+/**
+ * Rage Fist's power scales with how many times the USER has been hit this battle — a
+ * mechanic @smogon/calc's own move data doesn't model at all (its table lists Rage Fist
+ * as a flat `bp: 50`, and unlike Triple Axel/Triple Kick nothing in the calc's mechanics
+ * recomputes it by name). `min(350, 50 + 50×timesAttacked)` is the sim's own formula
+ * (`data/moves.ts`'s `ragefist.basePowerCallback`); passed in as `overrides.basePower`,
+ * it reaches the calc cleanly for exactly that reason — nothing else touches it.
+ */
+function rageFistPower(timesAttacked: number): number {
+  return Math.min(RAGE_FIST_MAX_POWER, RAGE_FIST_BASE_POWER + RAGE_FIST_POWER_PER_HIT * timesAttacked);
+}
+
 /**
  * One species' body as the calc knows it — base stats, types, weight. The calc's own dex
  * first; the client-dex reading the caller supplies (`SpeciesData`) fills in for a species
@@ -337,8 +353,12 @@ export function calcDamage(
   const category = dexMove.category;
   const field = options.field ? buildField(options.field, options.doubles ?? false) : undefined;
 
+  // Rage Fist's actual power, not the dex's flat 50 — see `rageFistPower`.
+  const powerOverride =
+    toID(moveName) === 'ragefist' ? {overrides: {basePower: rageFistPower(attacker.timesAttacked)}} : {};
+
   const run = (hits?: number) =>
-    calculate(gen, atk, def, new Move(gen, moveName, hits !== undefined ? {hits} : {}), field);
+    calculate(gen, atk, def, new Move(gen, moveName, {...(hits !== undefined ? {hits} : {}), ...powerOverride}), field);
 
   // --- Ordinary single-hit move ---------------------------------------------
   if (!profile) {

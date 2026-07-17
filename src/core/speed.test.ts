@@ -22,6 +22,7 @@ const mon = (over: Partial<ResolvedMon> = {}): ResolvedMon => ({
   teraType: undefined,
   terastallized: false,
   possibleMoves: [],
+  timesAttacked: 0,
   ...over,
 });
 

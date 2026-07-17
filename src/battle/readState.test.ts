@@ -5,6 +5,7 @@ import {
   readTransformTarget,
   readSpeciesData,
   hasLandedDamagingHit,
+  timesAttacked,
   tookEntryHazardDamage,
   switchedIntoStealthRockUnharmed,
   readOwnItem,
@@ -320,6 +321,68 @@ describe('hasLandedDamagingHit', () => {
   it('is false with no log or no ident (conservative — never a false rule-out)', () => {
     expect(hasLandedDamagingHit(withLog([]), noivern)).toBe(false);
     expect(hasLandedDamagingHit(withLog(['|move|p1a: Noivern|Flamethrower|p2a: X', '|-damage|p2a: X|1/2']), clientMon({}))).toBe(false);
+  });
+});
+
+describe('timesAttacked (RAGE FIST’s power scales with this)', () => {
+  const withLog = (stepQueue: string[]): ClientBattle => ({gen: 9, tier: '[Gen 9] Random Battle', sides: [], stepQueue});
+  const noivern = clientMon({ident: 'p1: Noivern'});
+
+  it('counts a direct move hit landing on the mon', () => {
+    const log = ['|move|p2a: Corviknight|Brave Bird|p1a: Noivern', '|-damage|p1a: Noivern|140/298'];
+    expect(timesAttacked(withLog(log), noivern)).toBe(1);
+  });
+
+  it('sums every hit of a multi-hit move — one -damage line per hit', () => {
+    const log = [
+      '|move|p2a: Cloyster|Icicle Spear|p1a: Noivern',
+      '|-damage|p1a: Noivern|220/298',
+      '|-damage|p1a: Noivern|140/298',
+      '|-damage|p1a: Noivern|60/298',
+      '|-hitcount|p1a: Noivern|3',
+    ];
+    expect(timesAttacked(withLog(log), noivern)).toBe(3);
+  });
+
+  it('ignores indirect damage — hazards, status and recoil carry [from]', () => {
+    const log = [
+      '|move|p2a: Corviknight|Body Press|p1a: Noivern',
+      '|-damage|p1a: Noivern|200/298|[from] Stealth Rock', // not this move's hit
+    ];
+    expect(timesAttacked(withLog(log), noivern)).toBe(0);
+  });
+
+  it('does not count a self-inflicted hit (confusion) — the sim tags it [from] confusion, no [move] of its own', () => {
+    // Real shape (sim/battle.ts spreadDamage): confusion damages via `this.damage()` directly,
+    // with no `|move|` line at all — just the activate, then a tagged -damage.
+    const log = ['|-activate|p1a: Noivern|confusion', '|-damage|p1a: Noivern|250/298|[from] confusion'];
+    expect(timesAttacked(withLog(log), noivern)).toBe(0);
+  });
+
+  it('does not count a hit a Substitute blocked — the sub absorbs it, no -damage on the real mon', () => {
+    const log = ['|move|p2a: Corviknight|Brave Bird|p1a: Noivern', '|-activate|p1a: Noivern|move: Substitute|[damage]'];
+    expect(timesAttacked(withLog(log), noivern)).toBe(0);
+  });
+
+  it('accumulates across separate hits over the course of the battle', () => {
+    const log = [
+      '|move|p2a: Corviknight|Brave Bird|p1a: Noivern',
+      '|-damage|p1a: Noivern|200/298',
+      '|turn|3',
+      '|move|p2a: Skarmory|Body Press|p1a: Noivern',
+      '|-damage|p1a: Noivern|140/298',
+    ];
+    expect(timesAttacked(withLog(log), noivern)).toBe(2);
+  });
+
+  it('matches by side+name across a switch, not by slot letter', () => {
+    const log = ['|switch|p1b: Noivern|Noivern, L82|298/298', '|move|p2a: Corviknight|Brave Bird|p1b: Noivern', '|-damage|p1b: Noivern|200/298'];
+    expect(timesAttacked(withLog(log), noivern)).toBe(1);
+  });
+
+  it('is 0 with no log or no ident (conservative — never a false count)', () => {
+    expect(timesAttacked(withLog([]), noivern)).toBe(0);
+    expect(timesAttacked(withLog(['|move|p2a: X|Tackle|p1a: Noivern', '|-damage|p1a: Noivern|1/2']), clientMon({}))).toBe(0);
   });
 });
 

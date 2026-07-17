@@ -154,6 +154,13 @@ export interface LiveFacts {
    * immunities that would muddy the read.
    */
   readonly switchedIntoStealthRockUnharmed: boolean;
+  /**
+   * How many times the battle log shows this Pokémon TAKING a direct move hit — RAGE
+   * FIST's power scales with it (`min(350, 50 + 50×timesAttacked)`), the sim's own
+   * `pokemon.timesAttacked`. Persists across switches (the sim never resets it), so this
+   * is a running count over the WHOLE battle, not just the current stint on the field.
+   */
+  readonly timesAttacked: number;
   readonly gender?: 'M' | 'F' | 'N';
   /**
    * OUR OWN mon's exact final stats, as the server reports them in the request JSON
@@ -200,6 +207,10 @@ export interface TransformCopy {
    *  opposing active, from our seat, is ours. Decides whether the sets view marks them
    *  confirmed (✓) or speculative. */
   readonly movesKnown: boolean;
+  /** The TARGET's own `timesAttacked` — the sim copies it onto the copier verbatim
+   *  (`transformInto`: `this.timesAttacked = pokemon.timesAttacked`), so a transformed
+   *  Ditto's Rage Fist reads the hits ITS COPY has taken, not the Ditto underneath. */
+  readonly timesAttacked: number;
 }
 
 // --- Inferred set knowledge (the information game) --------------------------
@@ -313,4 +324,7 @@ export interface ResolvedMon {
    *  damage layer makes the calc reproduce these exactly instead of deriving stats
    *  from the assumed nature/EVs/IVs. */
   readonly knownStats?: FullStats;
+  /** See `LiveFacts.timesAttacked` — carried through so the damage layer can compute
+   *  Rage Fist's actual power, something @smogon/calc's own move data doesn't model. */
+  readonly timesAttacked: number;
 }

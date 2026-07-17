@@ -107,6 +107,7 @@ export function buildResolved(
     possibleMoves: [...possibleMoves],
     ...(uncertain ? {assumptionsUncertainReason: uncertain} : {}),
     ...(facts.knownStats ? {knownStats: facts.knownStats} : {}),
+    timesAttacked: facts.timesAttacked,
   };
   // A Transformed Pokémon wears the copy for every calc, and its own set for everything
   // else — so the overlay lands here, after the set has been resolved, not instead of it.

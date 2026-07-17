@@ -13,7 +13,7 @@ const DRAGAPULT: SpeciesData = {
 const DRAGAPULT_FINALS: FullStats = {hp: 260, atk: 268, def: 186, spa: 232, spd: 186, spe: 306};
 
 const copier = {baseStats: DITTO_BASE, finalStats: DITTO_FINALS};
-const target = {body: DRAGAPULT, finalStats: DRAGAPULT_FINALS, moves: ['Dragon Darts'], movesKnown: true};
+const target = {body: DRAGAPULT, finalStats: DRAGAPULT_FINALS, moves: ['Dragon Darts'], movesKnown: true, timesAttacked: 3};
 
 describe('transformCopy', () => {
   it('copies every stat except HP, which stays the copier’s own', () => {
@@ -44,6 +44,10 @@ describe('transformCopy', () => {
     expect(transformCopy(copier, target).movesKnown).toBe(true);
     expect(transformCopy(copier, {...target, movesKnown: false}).movesKnown).toBe(false);
   });
+
+  it('carries the TARGET’s own timesAttacked — the sim copies it onto the copier verbatim', () => {
+    expect(transformCopy(copier, target).timesAttacked).toBe(3);
+  });
 });
 
 describe('applyTransform', () => {
@@ -63,6 +67,7 @@ describe('applyTransform', () => {
     terastallized: false,
     possibleMoves: ['Transform'],
     knownStats: DITTO_FINALS, // the request's stale figures — the sim never updates them
+    timesAttacked: 5, // Ditto's OWN count — Transform overrides it with the target's
   };
   const copy = transformCopy(copier, target);
 
@@ -83,6 +88,12 @@ describe('applyTransform', () => {
     expect(r.ability).toBe('Imposter');
     expect(r.boosts).toEqual({spe: 2});
     expect(r.hpPercent).toBe(0.5);
+  });
+
+  it('adopts the TARGET’s timesAttacked, not the copier’s own — Rage Fist reads the copy’s hits', () => {
+    // Ditto's own count was 5 (see the fixture); the target it copied had taken 3 hits.
+    // The sim's `transformInto` overwrites `timesAttacked` wholesale, so the copy must too.
+    expect(applyTransform(ditto, copy).timesAttacked).toBe(3);
   });
 
   it('displaces the copier’s stale server stats rather than letting them win', () => {

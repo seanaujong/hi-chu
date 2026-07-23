@@ -34,8 +34,7 @@ the live battle — active Terastallization, status, boosts, weather, and more �
 so the math, delegated to @smogon/calc, resolves correctly. Set inference uses
 only what's public: moves used, revealed item, ability, and Tera.
 
-Damage works in every format; set inference is Random Battle only (there's no
-set to guess elsewhere).
+Damage works in every format; set inference is Random Battle only.
 
 hi-chu is free and open source (MIT). It collects no data. It was inspired by the
 closed-source "Randbats Tooltip" — a fresh, open, maintained take on the same

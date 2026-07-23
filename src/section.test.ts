@@ -376,6 +376,41 @@ describe('buildPokemonSection hovering THEIR Tentacruel (possible sets)', () => 
   });
 });
 
+describe('the sets view brackets a genuinely uncertain ATTACKER item instead of guessing one', () => {
+  // A synthetic, role-less entry: Weavile could be holding Life Orb (+30% own damage) or
+  // Leftovers (no offensive effect) — unlike Tentacruel's AV/Leftovers fixture above, THIS
+  // item actually changes the HOLDER's own attacking numbers, which is what the sets view's
+  // per-candidate damage needs to prove it no longer guesses one representative item.
+  const feed: RandbatsData = {
+    Weavile: {level: 78, abilities: ['Pressure'], items: ['Life Orb', 'Leftovers'], moves: ['Icicle Crash']},
+  };
+  const near = {isFar: false, sideConditions: {}, active: [] as unknown[]};
+  const far = {isFar: true, sideConditions: {}, active: [] as unknown[]};
+  const ourActive = {
+    speciesForme: 'Skarmory', level: 78, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p1: Skarmory', side: near,
+  } as unknown as ClientPokemon;
+  const foeWeavile = {
+    speciesForme: 'Weavile', level: 78, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p2: Weavile', side: far,
+  } as unknown as ClientPokemon;
+  near.active = [ourActive];
+  far.active = [foeWeavile];
+  const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far]} as unknown as ClientBattle;
+
+  it('breaks Icicle Crash out into labelled Life Orb / Leftovers outcomes, never a single guess', () => {
+    const html = buildPokemonSection(battle, foeWeavile, feed);
+    expect(html).not.toMatch(/Icicle Crash<\/b>? \(/); // no single guessed number in the Moves: line
+    expect(html).toContain('<small>Icicle Crash:</small>'); // the move's own break-out label
+    const lifeOrb = /<small>\(Life Orb\)<\/small> [\d.]+% - ([\d.]+)%/.exec(html);
+    const leftovers = /<small>\(Leftovers\)<\/small> [\d.]+% - ([\d.]+)%/.exec(html);
+    expect(lifeOrb).not.toBeNull();
+    expect(leftovers).not.toBeNull();
+    // Life Orb's +30% must actually show up as the bigger number, not just a different label.
+    expect(Number(lifeOrb![1])).toBeGreaterThan(Number(leftovers![1]));
+  });
+});
+
 describe('buildPokemonSection speed order (the ⚡ line on a foe hover)', () => {
   const {battle, active} = loadBattle();
 

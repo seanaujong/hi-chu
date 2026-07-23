@@ -382,11 +382,14 @@ export function renderOwnMovesSection(sections: readonly OwnMovesModel[]): strin
 
 // --- Pokémon hover: per-set blocks, the original's layout -------------------
 
-/** One move in a set block; `report` carries its damage vs our active (foe view). */
+/** One move in a set block; `buckets` carries its distinct damage outcomes vs our active
+ *  (foe view) — one per still-possible item/ability the role could be running, exactly
+ *  like the Incoming section's own attacker-side fan-out. Absent for a status move or one
+ *  the calc can't model. */
 export interface MoveKnowledgeRow {
   readonly name: string;
   readonly known: boolean;
-  readonly report?: DamageReport;
+  readonly buckets?: readonly DamageBucket[];
 }
 
 /** One candidate set rendered as its own block, exactly like the original. */
@@ -417,10 +420,60 @@ function optionLine(label: string, options: readonly KnownOption[]): string {
   return `<small>${label}:</small> ${options.map(optionText).join(', ')}`;
 }
 
-/** A move entry: "✓ Giga Drain (63.9–75.3%)" — damage in the original's parens spot. */
+/** A quick-scan severity tier for one damage outcome, coarser than the exact KO%: `'ohko'`
+ *  when this single use has any real chance of KOing outright (the same threshold the red
+ *  "to KO" figure already uses everywhere else — `koChance > 0`), `'2hko'` when it doesn't
+ *  but a second use would have a real chance to (the nHKO ladder's turn-2 figure, at the
+ *  same "worth mentioning" cutoff `nhkoLadderText` already uses — 0.5%), else `null` (a
+ *  3HKO+ move earns no color; the sets view is meant to flag danger, not grade every move). */
+type KoTier = 'ohko' | '2hko' | null;
+
+function koTier(r: DamageReport): KoTier {
+  if (r.koChance > 0) return 'ohko';
+  if ((r.nhko?.base[1] ?? 0) >= 0.005) return '2hko';
+  return null;
+}
+
+/** Colors a whole outcome's text by its tier — reusing the two colors this stylesheet
+ *  already ships (`.hichu-ko` red+bold for the move tooltip's KO figure, `.hichu-note`
+ *  amber for caveat lines) rather than adding a third. A 3HKO+ outcome (`null`) is
+ *  deliberately left unstyled: the point is a fast scan for what's dangerous, not a
+ *  color for every move. */
+function tierWrap(tier: KoTier, text: string): string {
+  if (tier === 'ohko') return `<b class="hichu-ko">${text}</b>`;
+  if (tier === '2hko') return `<span class="hichu-note">${text}</span>`;
+  return text;
+}
+
+/** A move entry inside the comma-joined "Moves:" line: "✓ Giga Drain (63.9–75.3%)" —
+ *  damage in the original's parens spot, colored by KO tier instead of spelling out a "to
+ *  KO" clause (see `tierWrap`) — for a move with a single certain outcome (no report at
+ *  all for a status move, or every still-possible item/ability landing on the same
+ *  number). A move with a REAL split (2+ distinct outcomes) stays just the bare name here;
+ *  its outcomes render as their own break-out lines below instead (`moveBreakout`). */
 function moveText(row: MoveKnowledgeRow): string {
   const name = row.known ? `<b>✓ ${esc(row.name)}</b>` : esc(row.name);
-  return row.report ? `${name} (${rangeText(row.report)})` : name;
+  if (!row.buckets || row.buckets.length !== 1) return name;
+  const r = row.buckets[0]!.report;
+  return tierWrap(koTier(r), `${name} (${rangeText(r)})`);
+}
+
+/** One outcome line for a move whose hidden item/ability changes the number: "(Life Orb)
+ *  74.1% - 87.6%" — the same labelled-outcome shape the move tooltip's variant lines and
+ *  the Incoming section already use, indented under the move's own label and colored by
+ *  KO tier so a fast scan down the block shows which item makes this move dangerous. */
+function moveBucketLine(bucket: DamageBucket): string {
+  const r = bucket.report;
+  const text = `<small>(${esc(bucket.label)})</small> ${moveDamageText(r)}`;
+  return `<span style="padding-left: 12px;">${tierWrap(koTier(r), text)}</span>`;
+}
+
+/** The break-out lines for a move with 2+ distinct outcomes — a label line naming the
+ *  move, then one indented outcome per still-possible item/ability. Empty for a move with
+ *  0 or 1 outcome; those stay inline in the "Moves:" list instead (see `moveText`). */
+function moveBreakout(row: MoveKnowledgeRow): string[] {
+  if (!row.buckets || row.buckets.length <= 1) return [];
+  return [`<small>${esc(row.name)}:</small>`, ...row.buckets.map(moveBucketLine)];
 }
 
 /** One gimmick's labelled line. The exhaustive switch is the whole point of the
@@ -451,6 +504,7 @@ function setLines(c: CandidateBlock): string[] {
     optionLine('Items', c.items),
     ...c.gimmicks.map(gimmickLine),
     `<small>Moves:</small> ${c.moves.map(moveText).join(', ')}`,
+    ...c.moves.flatMap(moveBreakout),
   ];
 }
 
@@ -460,7 +514,10 @@ function setLines(c: CandidateBlock): string[] {
  * throughout, each set divided from the next. No summary header (the blocks speak
  * for themselves); confirmed facts are bold with a ✓. The foe view's move lists
  * carry damage vs our active in parens (their move buttons aren't hoverable for us,
- * so threat numbers live here); the own-side mirror simply omits the numbers.
+ * so threat numbers live here), colored by KO tier for a fast scan (`moveText`), and
+ * broken out into their own lines when the role's hidden item/ability genuinely
+ * changes the number (`moveBreakout`) rather than guessing a single representative
+ * one; the own-side mirror simply omits the numbers.
  */
 export function renderSetsSection(model: SetsRenderModel): string {
   const blocks = model.candidates.map((c) => block(setLines(c))).join('');

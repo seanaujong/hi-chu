@@ -67,8 +67,11 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
       `buildableAbilities` is the guard that an ability no SET could carry narrows nothing.
     - `resolve.ts` — the resolution law: `resolveMon` merges live facts over randbats into
       the one set we calculate with; `resolveVariants` enumerates EVERY still-possible set
-      (hidden item/ability) for uncertainty-aware damage; `resolveByRole` gives one
-      resolution per surviving set (the sets view's per-block numbers). All funnel through
+      (hidden item/ability) for uncertainty-aware damage — grouped by role name
+      (`section.groupByRole`) to give the sets view's per-block damage its own
+      uncertainty-aware fan-out, the same machinery the Incoming section's attacker side
+      already used; `resolveByRole` gives one representative resolution per surviving set
+      for callers that want a single pick rather than the full fan-out. All funnel through
       `buildResolved` so "known wins" is written once.
     - `knowledge.ts` — the information game: `inferSets` renders each surviving role's
       options into a `SetKnowledge` for display (speculative values never reach the calc).
@@ -509,6 +512,30 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   `variants.test.ts` ("collapses many sets with identical shown numbers into ONE bucket"
   and the AV split) and `section.test.ts` (the real fixture: special move splits AV vs
   Leftovers, physical move stays one line). A revealed item is just the one-set case.
+- ✅ **The sets view's per-candidate damage never guesses a single representative
+  attacker either — same law, the other direction.** `resolveByRole` used to pick one
+  item/ability per role for the whole block's numbers; `section.groupByRole` +
+  `candidateDamageByMove` now feed each role's own `resolveVariants` fan-out through
+  `incomingDamageBuckets` (the same machinery the Incoming section's attacker side
+  already used), so a role whose item/ability is genuinely unknown gets one labelled
+  outcome per still-possible value instead of one confidently-wrong number. A move with
+  a single certain outcome stays inline in the `Moves:` line exactly as before
+  (`render.moveText`); a REAL split breaks that move out into its own labelled lines
+  below the list (`render.moveBreakout`) rather than cramming multiple numbers into the
+  original tool's one-line-per-set layout. Each outcome is also colored by a coarse KO
+  tier for a fast scan down the block — red+bold (reusing `.hichu-ko`) for any real
+  single-hit KO chance, amber (reusing `.hichu-note`) for a realistic 2HKO with no OHKO
+  chance, plain for 3HKO+ (`render.koTier`/`tierWrap` — no new CSS, both colors already
+  existed). The 2HKO check needs the nHKO ladder, which the sets view now requests up to
+  turn 2 (`incomingDamageBuckets`'s `nhkoTurns` param) — the Incoming section's own call
+  passes nothing and stays exactly as compact as before; the two callers share the
+  function precisely so that "how far the ladder goes" can't fork between them. Checked
+  by `render.test.ts` ("breaks a move with 2+ distinct outcomes out of the Moves: line…"
+  and the three-tier coloring test, watched failing with `moveBreakout` unwired and with
+  `tierWrap` returning the plain text) and `section.test.ts` ("the sets view brackets a
+  genuinely uncertain ATTACKER item…", a synthetic Weavile whose Life Orb vs Leftovers
+  pool changes ITS OWN damage — unlike the Tentacruel AV/Leftovers fixture above, which
+  only matters when Tentacruel is the *defender*).
 - ✅ **Format ids are derived like PS's own `toID`** (digits kept, whole title), so bracket
   tags with extra words work — checked by `readState.test.ts` ("[Gen 9 Champions] Random
   Battle" → `gen9championsrandombattle`).

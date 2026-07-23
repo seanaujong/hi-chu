@@ -111,71 +111,11 @@ The only thing a battle's format changes is *where the foe's possibilities come
 from* — a real set feed (`resolve.ts`) vs. two bracketing assumptions with none
 (`assume.ts`) — everything below that fork in REASON is shared.
 
-### The pure core (`src/core`)
-
-- **`multihit.ts`** — the multi-hit fix: `@smogon/calc` treats a *k*-hit move as
-  `k × one shared roll` (wrong on both counts), so this convolves independent per-hit
-  rolls over the real hit-count distribution — Skill Link, Loaded Dice, and the
-  multiaccuracy stop-at-miss law included, sourced from Showdown's own
-  `sim/battle-actions.ts`/`data/items.ts`. Every per-hit accuracy modifier is modeled
-  too — Compound Eyes, Hustle, No Guard, accuracy/evasion stat stages — verified against
-  the real simulator, not just its source (see `CLAUDE.md`).
-- **`moves.ts`** — the multi-hit move table, derived from Showdown's `data/moves.ts`:
-  each move's hit spec, its per-hit accuracy if it checks one, and — for Triple Axel
-  (20/40/60) and Triple Kick (10/20/30), the only two — each hit's own base power.
-- **`resolve.ts`** — merges known live facts over assumed randbats possibilities into
-  the one concrete set we calculate with. Revealed facts always win; a Tera type is
-  only ever applied when the Pokémon has actually terastallized. (Two previews, both for
-  *your own* active Pokémon and its pending move: ticking the move panel's Terastallize
-  checkbox calculates as if your Tera — your private, known type — were already active;
-  ticking Mega Evolution overlays your active mon's Mega forme, read from the stone it's
-  holding via the client dex. The Mega's stats feed the damage; its Speed feeds the ⚡
-  speed verdict from Gen 7 on — Gen 6 moved at base Speed the turn it evolved.)
-- **`assume.ts`** — the same job where no set feed exists. It brackets the foe's unknown
-  defensive investment with its two extremes (uninvested, and maxed on whichever defence
-  the move attacks) crossed with the species' possible abilities, and reuses `resolve.ts`'s
-  "revealed facts always win" writer so that law is written once. It deliberately skips the
-  set-narrowing step: there are no candidate sets to narrow.
-- **`damage.ts`** — wraps `@smogon/calc`, running it once per hit for multi-hit moves
-  and feeding `multihit.ts`'s convolution. It also turns your Pokémon's server-reported
-  final stats into an equivalent EV/nature spread, the only form that survives the
-  calc's internal copy of each Pokémon.
-- **`speed.ts`** — the speed-order law. Effective Speed per still-possible set — the
-  arithmetic (Scarf, paralysis, Tailwind, boosts, weather abilities) delegated to
-  `@smogon/calc`'s `getFinalSpeed` — with identical numbers collapsed into distinct
-  outcomes the same way damage is, and Trick Room flipping the who-moves-first verdict
-  (an order inversion, never a stat change).
-- **`render.ts`** — turns reports into the tooltip HTML string (kept pure so it can be
-  snapshot-tested rather than eyeballed in a browser).
-
-### The shell
-
-- **`src/data/randbats.ts`** — fetches and caches the set feed (memory + `localStorage`
-  with a TTL). The only file in the codebase that touches the network.
-- **`src/data/lookup.ts`** — pure reads over a feed already in hand: `pickEntry`, the two
-  Mega lookups, the Champions stat-point conversion. Split out of `randbats.ts` so a caller
-  that only needs the lookups, like `section.ts`, doesn't have to depend on the file that
-  also calls `fetch`.
-- **`src/battle/readState.ts`** — reads Showdown's untyped client objects into our
-  typed `LiveFacts` and `FieldFacts` (weather, terrain, the defender's screens). The
-  structural `ClientPokemon`/`ClientBattle`/`ClientSide` interfaces document exactly
-  which client fields we depend on.
-- **`src/content.ts`** — a *content script* (JS the extension injects into the page);
-  `world: "MAIN"` runs it in the page's own JS context (Chrome Manifest V3, "MV3") so it
-  can reach Showdown's objects. It *monkey-patches* (wraps at runtime)
-  `BattleTooltips.prototype.showPokemonTooltip` and appends our section. Everything is
-  wrapped so our code can never break Showdown's own tooltip. It stays trivial on purpose —
-  it triggers the feed fetch, reads the Tera/Mega toggles, and hands everything else to
-  `section.ts`.
-- **`src/section.ts`** — the actual orchestration, and the reason `content.ts` can stay
-  trivial: given the live battle, the hovered thing, and the feed data, it folds
-  fetch → reason → render into the tooltip's HTML string. It's pure itself (no DOM, no
-  cache, no network — `content.ts` owns that plumbing and hands the cached data in), which
-  is what lets `section.test.ts` drive the exact code path a live hover runs, against a
-  real captured battle, without a browser.
-
-For exact shapes and signatures, read the source and the `*.test.ts` files next to each
-module — the tests are the worked examples (and pin the numbers against Showdown).
+Full per-module detail — what each file in `src/core/`, `src/battle/`, and `src/data/`
+owns and why — lives in `CLAUDE.md`'s Architecture section, kept current file-by-file as
+the codebase grows. For exact shapes and signatures, read the source and the `*.test.ts`
+next to each module — the tests double as worked examples, pinned against real Showdown
+numbers.
 
 ## Develop
 

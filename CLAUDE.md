@@ -44,6 +44,17 @@ Pokémon. (The logic is covered end-to-end by tests; only this hover needs a hum
 ```sh
 npm run drift-check   # LOCAL, needs Chrome: runs readState against a live replay (see below)
 ```
+**Shape of the suite, base to top.** Unit + integration tests (`npm run check`) are the
+base and middle — colocated `*.test.ts` beside each module, two tests driven by real
+captured data (`integration.test.ts`, `section.test.ts`), and one architecture-fitness
+test (`dependency-boundaries.test.ts`) that fails the build if the import graph itself
+drifts. All fast, deterministic, CI-gated on every push. `drift-check` and `player-check`
+are a different KIND of check above that, not just a slower one: they defend against
+Pokémon Showdown's own undocumented client changing shape, not against a regression in
+our logic, so a real browser is load-bearing and neither can run in CI's fast path (each
+👁 tag in Conventions & invariants below names exactly which invariant only a real
+browser can catch). `release-visual-check` sits above even that — human/agent eyes are
+the only check for whether a preview LOOKS right, not just computes right.
 
 ## Cutting a release
 CI's `check` job (typecheck + Vitest) gates every push, but it can't reach the client-shape

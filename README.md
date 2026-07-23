@@ -10,7 +10,7 @@
 </p>
 
 Battle helpers, one hover away. hi-chu is a small browser extension that enriches
-Pokémon Showdown's in-battle tooltips:
+[Pokémon Showdown][showdown]'s in-battle tooltips:
 
 - How much damage will each move do?
 - What Random Battles set is the opponent Pokémon running?
@@ -265,32 +265,14 @@ additionally signed by Google — but these two checks are what tie it back to h
 > time, not a finding about the code. The checks above are the concrete answer to "is
 > this safe?": verify the provenance and the source hash yourself.
 
-## Glossary
-
-For readers new to competitive Pokémon / Showdown:
-
-- **Pokémon Showdown** — a browser-based battle simulator. A **Random Battle** ("randbats")
-  gives each player an auto-generated team, but each species draws from a *fixed, published
-  pool* of possible sets (moves / item / ability / Tera / level). So you don't know the
-  opponent's exact build up front — but the possibilities are finite and known, which is what
-  makes this extension possible: it shows them and narrows them as moves and items are revealed.
-- **set** — a Pokémon's build: its moves, item, ability, and stat spread (EVs / IVs / nature).
-- **rolls** — every damage calculation randomly picks one of **16** values, so a move's
-  damage is a range, not a single number.
-- **KO / KO%** — knock out (faint; bring to 0 HP) / the probability a move does so.
-- **Terastallize / Tera type** — a Gen 9 mechanic that changes a Pokémon's type mid-battle.
-- **screens** — Reflect / Light Screen / Aurora Veil, which halve incoming damage.
-- **multi-hit move** — a move that strikes several times in one use (a random 2–5, or a fixed count).
-
 ## Disclaimer
 
 hi-chu is an unofficial, fan-made tool. It is not affiliated with, endorsed by, or associated
 with Nintendo, Game Freak, The Pokémon Company, or Pokémon Showdown. "Pokémon" and all related
 names are trademarks of their respective owners.
 
-[orig]: https://chromewebstore.google.com/detail/pok%C3%A9mon-showdown-randbats/ipfdjoljmkcfabfppnclebjgbehjemch
+[showdown]: https://pokemonshowdown.com/
 [feed]: https://github.com/pkmn/randbats
 [calc]: https://github.com/smogon/damage-calc
 [releases]: https://github.com/seanaujong/hi-chu/releases/latest
 [slsa]: https://docs.github.com/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds
-[gh-cli]: https://cli.github.com

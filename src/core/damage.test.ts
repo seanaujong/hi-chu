@@ -43,10 +43,14 @@ describe('single-hit move', () => {
 });
 
 describe('a species the calc dex does not know (a Champions-invented Mega)', () => {
-  // Chandelure-Mega exists only in Champions — @smogon/calc has no record and throws
-  // reading its base stats (replay gen9championsrandombattle-2646324776 broke every
-  // hover). The client dex's data (verbatim from play.pokemonshowdown.com/data/pokedex.js)
-  // rides in on speciesData, and the calc computes from it via `overrides`.
+  // Chandelure-Mega was Champions-only when this guard was written — @smogon/calc had no
+  // record and threw reading its base stats (replay gen9championsrandombattle-2646324776
+  // broke every hover). @smogon/calc has since absorbed it into its own dex (0.11.0), so
+  // it no longer exercises the "truly unknown" path below; it's kept here only for the
+  // FROM/INTO tests, which don't care whether the numbers come from the calc's own record
+  // or our override — they'd read the same either way. The client dex's data (verbatim
+  // from play.pokemonshowdown.com/data/pokedex.js) rides in on speciesData, and the calc
+  // computes from it via `overrides`.
   const chandelureMegaDex = {
     baseStats: {hp: 60, atk: 75, def: 110, spa: 175, spd: 110, spe: 90},
     types: ['Ghost', 'Fire'],
@@ -68,8 +72,12 @@ describe('a species the calc dex does not know (a Champions-invented Mega)', () 
     expect(hit.total.min).toBeGreaterThan(0); // super-effective Dark still lands
   });
 
-  it('without dex data the unknown species still throws — we never guess its stats', () => {
-    const noDex = mon({speciesForme: 'Chandelure-Mega', level: 48});
+  it('without dex data a truly unknown species still throws — we never guess its stats', () => {
+    // "Missingno-Mega" is guaranteed fictional (unlike Chandelure-Mega above, a real
+    // Champions forme the calc might one day absorb into its own dex too) — this pins
+    // the fallback's behavior for whatever species the calc doesn't yet know, not for
+    // this one species in particular.
+    const noDex = mon({speciesForme: 'Missingno-Mega', level: 48});
     expect(() => calcDamage(noDex, arbok, 'Shadow Ball', {gen: 9, field: noField})).toThrow();
   });
 

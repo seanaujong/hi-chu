@@ -70,7 +70,9 @@ const STYLE_ID = 'hichu-style';
  * (`border-top:1px solid #888; padding:2px 4px`) AND adds the slight grey panel
  * behind our content, so each block is visually separated the way the original's
  * per-set blocks are. Everything else here is our "better calc" surface with no
- * native equivalent — the red KO figure and the orange caveat line.
+ * native equivalent — the red KO figure and the orange caveat line. Don't add
+ * custom font-size/opacity/colour beyond that pair — it clashes with the native
+ * chrome around it.
  */
 export const TOOLTIP_STYLE = `
 <style id="${STYLE_ID}">

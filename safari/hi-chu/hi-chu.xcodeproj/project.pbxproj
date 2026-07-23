@@ -1,0 +1,975 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		C3719BD82FFFE6E100F4AD5A /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3719BD72FFFE6E100F4AD5A /* AppDelegate.swift */; };
+		C3719BDA2FFFE6E100F4AD5A /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3719BD92FFFE6E100F4AD5A /* SceneDelegate.swift */; };
+		C3719BDD2FFFE6E100F4AD5A /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = C3719BDB2FFFE6E100F4AD5A /* LaunchScreen.storyboard */; };
+		C3719BE02FFFE6E100F4AD5A /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = C3719BDE2FFFE6E100F4AD5A /* Main.storyboard */; };
+		C3719BE92FFFE6E100F4AD5A /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3719BE82FFFE6E100F4AD5A /* AppDelegate.swift */; };
+		C3719BEC2FFFE6E100F4AD5A /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = C3719BEA2FFFE6E100F4AD5A /* Main.storyboard */; };
+		C3719BF32FFFE6E100F4AD5A /* hi-chu Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C3719BF22FFFE6E100F4AD5A /* hi-chu Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		C3719BFD2FFFE6E200F4AD5A /* hi-chu Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C3719BFC2FFFE6E200F4AD5A /* hi-chu Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		C3719C022FFFE6E200F4AD5A /* Main.html in Resources */ = {isa = PBXBuildFile; fileRef = C3719BC72FFFE6E100F4AD5A /* Main.html */; };
+		C3719C032FFFE6E200F4AD5A /* Main.html in Resources */ = {isa = PBXBuildFile; fileRef = C3719BC72FFFE6E100F4AD5A /* Main.html */; };
+		C3719C042FFFE6E200F4AD5A /* Icon.png in Resources */ = {isa = PBXBuildFile; fileRef = C3719BC92FFFE6E100F4AD5A /* Icon.png */; };
+		C3719C052FFFE6E200F4AD5A /* Icon.png in Resources */ = {isa = PBXBuildFile; fileRef = C3719BC92FFFE6E100F4AD5A /* Icon.png */; };
+		C3719C062FFFE6E200F4AD5A /* Style.css in Resources */ = {isa = PBXBuildFile; fileRef = C3719BCA2FFFE6E100F4AD5A /* Style.css */; };
+		C3719C072FFFE6E200F4AD5A /* Style.css in Resources */ = {isa = PBXBuildFile; fileRef = C3719BCA2FFFE6E100F4AD5A /* Style.css */; };
+		C3719C082FFFE6E200F4AD5A /* Script.js in Resources */ = {isa = PBXBuildFile; fileRef = C3719BCB2FFFE6E100F4AD5A /* Script.js */; };
+		C3719C092FFFE6E200F4AD5A /* Script.js in Resources */ = {isa = PBXBuildFile; fileRef = C3719BCB2FFFE6E100F4AD5A /* Script.js */; };
+		C3719C0A2FFFE6E200F4AD5A /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3719BCC2FFFE6E100F4AD5A /* ViewController.swift */; };
+		C3719C0B2FFFE6E200F4AD5A /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3719BCC2FFFE6E100F4AD5A /* ViewController.swift */; };
+		C3719C0C2FFFE6E200F4AD5A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C3719BCD2FFFE6E100F4AD5A /* Assets.xcassets */; };
+		C3719C0D2FFFE6E200F4AD5A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C3719BCD2FFFE6E100F4AD5A /* Assets.xcassets */; };
+		C3719C0E2FFFE6E200F4AD5A /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3719BCF2FFFE6E100F4AD5A /* SafariWebExtensionHandler.swift */; };
+		C3719C0F2FFFE6E200F4AD5A /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3719BCF2FFFE6E100F4AD5A /* SafariWebExtensionHandler.swift */; };
+		C3719C242FFFE6E200F4AD5A /* icons in Resources */ = {isa = PBXBuildFile; fileRef = C3719C212FFFE6E200F4AD5A /* icons */; };
+		C3719C252FFFE6E200F4AD5A /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = C3719C222FFFE6E200F4AD5A /* manifest.json */; };
+		C3719C262FFFE6E200F4AD5A /* content.js in Resources */ = {isa = PBXBuildFile; fileRef = C3719C232FFFE6E200F4AD5A /* content.js */; };
+		C3719C272FFFE6E200F4AD5A /* icons in Resources */ = {isa = PBXBuildFile; fileRef = C3719C212FFFE6E200F4AD5A /* icons */; };
+		C3719C282FFFE6E200F4AD5A /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = C3719C222FFFE6E200F4AD5A /* manifest.json */; };
+		C3719C292FFFE6E200F4AD5A /* content.js in Resources */ = {isa = PBXBuildFile; fileRef = C3719C232FFFE6E200F4AD5A /* content.js */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		C3719BF42FFFE6E100F4AD5A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C3719BC12FFFE6E100F4AD5A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C3719BF12FFFE6E100F4AD5A;
+			remoteInfo = "hi-chu Extension (iOS)";
+		};
+		C3719BFE2FFFE6E200F4AD5A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C3719BC12FFFE6E100F4AD5A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C3719BFB2FFFE6E200F4AD5A;
+			remoteInfo = "hi-chu Extension (macOS)";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		C3719C152FFFE6E200F4AD5A /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				C3719BF32FFFE6E100F4AD5A /* hi-chu Extension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C3719C1C2FFFE6E200F4AD5A /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				C3719BFD2FFFE6E200F4AD5A /* hi-chu Extension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		C3719BC82FFFE6E100F4AD5A /* Base */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = Base; path = Base.lproj/Main.html; sourceTree = "<group>"; };
+		C3719BC92FFFE6E100F4AD5A /* Icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Icon.png; sourceTree = "<group>"; };
+		C3719BCA2FFFE6E100F4AD5A /* Style.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = Style.css; sourceTree = "<group>"; };
+		C3719BCB2FFFE6E100F4AD5A /* Script.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = Script.js; sourceTree = "<group>"; };
+		C3719BCC2FFFE6E100F4AD5A /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
+		C3719BCD2FFFE6E100F4AD5A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		C3719BCF2FFFE6E100F4AD5A /* SafariWebExtensionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariWebExtensionHandler.swift; sourceTree = "<group>"; };
+		C3719BD42FFFE6E100F4AD5A /* hi-chu.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "hi-chu.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		C3719BD72FFFE6E100F4AD5A /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		C3719BD92FFFE6E100F4AD5A /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
+		C3719BDC2FFFE6E100F4AD5A /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		C3719BDF2FFFE6E100F4AD5A /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		C3719BE12FFFE6E100F4AD5A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		C3719BE62FFFE6E100F4AD5A /* hi-chu.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "hi-chu.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		C3719BE82FFFE6E100F4AD5A /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		C3719BEB2FFFE6E100F4AD5A /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		C3719BED2FFFE6E100F4AD5A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		C3719BF22FFFE6E100F4AD5A /* hi-chu Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "hi-chu Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		C3719BF72FFFE6E100F4AD5A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		C3719BFC2FFFE6E200F4AD5A /* hi-chu Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "hi-chu Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		C3719C012FFFE6E200F4AD5A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		C3719C212FFFE6E200F4AD5A /* icons */ = {isa = PBXFileReference; lastKnownFileType = folder; name = icons; path = ../../../dist/icons; sourceTree = "<group>"; };
+		C3719C222FFFE6E200F4AD5A /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = manifest.json; path = ../../../dist/manifest.json; sourceTree = "<group>"; };
+		C3719C232FFFE6E200F4AD5A /* content.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = content.js; path = ../../../dist/content.js; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		C3719BD12FFFE6E100F4AD5A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C3719BE32FFFE6E100F4AD5A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C3719BEF2FFFE6E100F4AD5A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C3719BF92FFFE6E200F4AD5A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		C3719BC02FFFE6E100F4AD5A = {
+			isa = PBXGroup;
+			children = (
+				C3719BC52FFFE6E100F4AD5A /* Shared (App) */,
+				C3719BCE2FFFE6E100F4AD5A /* Shared (Extension) */,
+				C3719BD62FFFE6E100F4AD5A /* iOS (App) */,
+				C3719BE72FFFE6E100F4AD5A /* macOS (App) */,
+				C3719BF62FFFE6E100F4AD5A /* iOS (Extension) */,
+				C3719C002FFFE6E200F4AD5A /* macOS (Extension) */,
+				C3719BD52FFFE6E100F4AD5A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		C3719BC52FFFE6E100F4AD5A /* Shared (App) */ = {
+			isa = PBXGroup;
+			children = (
+				C3719BCC2FFFE6E100F4AD5A /* ViewController.swift */,
+				C3719BCD2FFFE6E100F4AD5A /* Assets.xcassets */,
+				C3719BC62FFFE6E100F4AD5A /* Resources */,
+			);
+			path = "Shared (App)";
+			sourceTree = "<group>";
+		};
+		C3719BC62FFFE6E100F4AD5A /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				C3719BC72FFFE6E100F4AD5A /* Main.html */,
+				C3719BC92FFFE6E100F4AD5A /* Icon.png */,
+				C3719BCA2FFFE6E100F4AD5A /* Style.css */,
+				C3719BCB2FFFE6E100F4AD5A /* Script.js */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		C3719BCE2FFFE6E100F4AD5A /* Shared (Extension) */ = {
+			isa = PBXGroup;
+			children = (
+				C3719C202FFFE6E200F4AD5A /* Resources */,
+				C3719BCF2FFFE6E100F4AD5A /* SafariWebExtensionHandler.swift */,
+			);
+			path = "Shared (Extension)";
+			sourceTree = "<group>";
+		};
+		C3719BD52FFFE6E100F4AD5A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				C3719BD42FFFE6E100F4AD5A /* hi-chu.app */,
+				C3719BE62FFFE6E100F4AD5A /* hi-chu.app */,
+				C3719BF22FFFE6E100F4AD5A /* hi-chu Extension.appex */,
+				C3719BFC2FFFE6E200F4AD5A /* hi-chu Extension.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		C3719BD62FFFE6E100F4AD5A /* iOS (App) */ = {
+			isa = PBXGroup;
+			children = (
+				C3719BD72FFFE6E100F4AD5A /* AppDelegate.swift */,
+				C3719BD92FFFE6E100F4AD5A /* SceneDelegate.swift */,
+				C3719BDB2FFFE6E100F4AD5A /* LaunchScreen.storyboard */,
+				C3719BDE2FFFE6E100F4AD5A /* Main.storyboard */,
+				C3719BE12FFFE6E100F4AD5A /* Info.plist */,
+			);
+			path = "iOS (App)";
+			sourceTree = "<group>";
+		};
+		C3719BE72FFFE6E100F4AD5A /* macOS (App) */ = {
+			isa = PBXGroup;
+			children = (
+				C3719BE82FFFE6E100F4AD5A /* AppDelegate.swift */,
+				C3719BEA2FFFE6E100F4AD5A /* Main.storyboard */,
+				C3719BED2FFFE6E100F4AD5A /* Info.plist */,
+			);
+			path = "macOS (App)";
+			sourceTree = "<group>";
+		};
+		C3719BF62FFFE6E100F4AD5A /* iOS (Extension) */ = {
+			isa = PBXGroup;
+			children = (
+				C3719BF72FFFE6E100F4AD5A /* Info.plist */,
+			);
+			path = "iOS (Extension)";
+			sourceTree = "<group>";
+		};
+		C3719C002FFFE6E200F4AD5A /* macOS (Extension) */ = {
+			isa = PBXGroup;
+			children = (
+				C3719C012FFFE6E200F4AD5A /* Info.plist */,
+			);
+			path = "macOS (Extension)";
+			sourceTree = "<group>";
+		};
+		C3719C202FFFE6E200F4AD5A /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				C3719C212FFFE6E200F4AD5A /* icons */,
+				C3719C222FFFE6E200F4AD5A /* manifest.json */,
+				C3719C232FFFE6E200F4AD5A /* content.js */,
+			);
+			name = Resources;
+			path = "Shared (Extension)";
+			sourceTree = SOURCE_ROOT;
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		C3719BD32FFFE6E100F4AD5A /* hi-chu (iOS) */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C3719C162FFFE6E200F4AD5A /* Build configuration list for PBXNativeTarget "hi-chu (iOS)" */;
+			buildPhases = (
+				C3719BD02FFFE6E100F4AD5A /* Sources */,
+				C3719BD12FFFE6E100F4AD5A /* Frameworks */,
+				C3719BD22FFFE6E100F4AD5A /* Resources */,
+				C3719C152FFFE6E200F4AD5A /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C3719BF52FFFE6E100F4AD5A /* PBXTargetDependency */,
+			);
+			name = "hi-chu (iOS)";
+			packageProductDependencies = (
+			);
+			productName = "hi-chu (iOS)";
+			productReference = C3719BD42FFFE6E100F4AD5A /* hi-chu.app */;
+			productType = "com.apple.product-type.application";
+		};
+		C3719BE52FFFE6E100F4AD5A /* hi-chu (macOS) */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C3719C1D2FFFE6E200F4AD5A /* Build configuration list for PBXNativeTarget "hi-chu (macOS)" */;
+			buildPhases = (
+				C3719BE22FFFE6E100F4AD5A /* Sources */,
+				C3719BE32FFFE6E100F4AD5A /* Frameworks */,
+				C3719BE42FFFE6E100F4AD5A /* Resources */,
+				C3719C1C2FFFE6E200F4AD5A /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C3719BFF2FFFE6E200F4AD5A /* PBXTargetDependency */,
+			);
+			name = "hi-chu (macOS)";
+			packageProductDependencies = (
+			);
+			productName = "hi-chu (macOS)";
+			productReference = C3719BE62FFFE6E100F4AD5A /* hi-chu.app */;
+			productType = "com.apple.product-type.application";
+		};
+		C3719BF12FFFE6E100F4AD5A /* hi-chu Extension (iOS) */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C3719C122FFFE6E200F4AD5A /* Build configuration list for PBXNativeTarget "hi-chu Extension (iOS)" */;
+			buildPhases = (
+				C3719BEE2FFFE6E100F4AD5A /* Sources */,
+				C3719BEF2FFFE6E100F4AD5A /* Frameworks */,
+				C3719BF02FFFE6E100F4AD5A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "hi-chu Extension (iOS)";
+			packageProductDependencies = (
+			);
+			productName = "hi-chu Extension (iOS)";
+			productReference = C3719BF22FFFE6E100F4AD5A /* hi-chu Extension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		C3719BFB2FFFE6E200F4AD5A /* hi-chu Extension (macOS) */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C3719C192FFFE6E200F4AD5A /* Build configuration list for PBXNativeTarget "hi-chu Extension (macOS)" */;
+			buildPhases = (
+				C3719BF82FFFE6E200F4AD5A /* Sources */,
+				C3719BF92FFFE6E200F4AD5A /* Frameworks */,
+				C3719BFA2FFFE6E200F4AD5A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "hi-chu Extension (macOS)";
+			packageProductDependencies = (
+			);
+			productName = "hi-chu Extension (macOS)";
+			productReference = C3719BFC2FFFE6E200F4AD5A /* hi-chu Extension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		C3719BC12FFFE6E100F4AD5A /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2660;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					C3719BD32FFFE6E100F4AD5A = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					C3719BE52FFFE6E100F4AD5A = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					C3719BF12FFFE6E100F4AD5A = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					C3719BFB2FFFE6E200F4AD5A = {
+						CreatedOnToolsVersion = 26.6;
+					};
+				};
+			};
+			buildConfigurationList = C3719BC42FFFE6E100F4AD5A /* Build configuration list for PBXProject "hi-chu" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = C3719BC02FFFE6E100F4AD5A;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = C3719BD52FFFE6E100F4AD5A /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				C3719BD32FFFE6E100F4AD5A /* hi-chu (iOS) */,
+				C3719BE52FFFE6E100F4AD5A /* hi-chu (macOS) */,
+				C3719BF12FFFE6E100F4AD5A /* hi-chu Extension (iOS) */,
+				C3719BFB2FFFE6E200F4AD5A /* hi-chu Extension (macOS) */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		C3719BD22FFFE6E100F4AD5A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C3719C042FFFE6E200F4AD5A /* Icon.png in Resources */,
+				C3719BDD2FFFE6E100F4AD5A /* LaunchScreen.storyboard in Resources */,
+				C3719C022FFFE6E200F4AD5A /* Main.html in Resources */,
+				C3719C082FFFE6E200F4AD5A /* Script.js in Resources */,
+				C3719C0C2FFFE6E200F4AD5A /* Assets.xcassets in Resources */,
+				C3719BE02FFFE6E100F4AD5A /* Main.storyboard in Resources */,
+				C3719C062FFFE6E200F4AD5A /* Style.css in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C3719BE42FFFE6E100F4AD5A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C3719C052FFFE6E200F4AD5A /* Icon.png in Resources */,
+				C3719C072FFFE6E200F4AD5A /* Style.css in Resources */,
+				C3719BEC2FFFE6E100F4AD5A /* Main.storyboard in Resources */,
+				C3719C092FFFE6E200F4AD5A /* Script.js in Resources */,
+				C3719C0D2FFFE6E200F4AD5A /* Assets.xcassets in Resources */,
+				C3719C032FFFE6E200F4AD5A /* Main.html in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C3719BF02FFFE6E100F4AD5A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C3719C292FFFE6E200F4AD5A /* content.js in Resources */,
+				C3719C282FFFE6E200F4AD5A /* manifest.json in Resources */,
+				C3719C272FFFE6E200F4AD5A /* icons in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C3719BFA2FFFE6E200F4AD5A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C3719C262FFFE6E200F4AD5A /* content.js in Resources */,
+				C3719C252FFFE6E200F4AD5A /* manifest.json in Resources */,
+				C3719C242FFFE6E200F4AD5A /* icons in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		C3719BD02FFFE6E100F4AD5A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C3719C0A2FFFE6E200F4AD5A /* ViewController.swift in Sources */,
+				C3719BD82FFFE6E100F4AD5A /* AppDelegate.swift in Sources */,
+				C3719BDA2FFFE6E100F4AD5A /* SceneDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C3719BE22FFFE6E100F4AD5A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C3719C0B2FFFE6E200F4AD5A /* ViewController.swift in Sources */,
+				C3719BE92FFFE6E100F4AD5A /* AppDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C3719BEE2FFFE6E100F4AD5A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C3719C0E2FFFE6E200F4AD5A /* SafariWebExtensionHandler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C3719BF82FFFE6E200F4AD5A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C3719C0F2FFFE6E200F4AD5A /* SafariWebExtensionHandler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		C3719BF52FFFE6E100F4AD5A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C3719BF12FFFE6E100F4AD5A /* hi-chu Extension (iOS) */;
+			targetProxy = C3719BF42FFFE6E100F4AD5A /* PBXContainerItemProxy */;
+		};
+		C3719BFF2FFFE6E200F4AD5A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C3719BFB2FFFE6E200F4AD5A /* hi-chu Extension (macOS) */;
+			targetProxy = C3719BFE2FFFE6E200F4AD5A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		C3719BC72FFFE6E100F4AD5A /* Main.html */ = {
+			isa = PBXVariantGroup;
+			children = (
+				C3719BC82FFFE6E100F4AD5A /* Base */,
+			);
+			name = Main.html;
+			sourceTree = "<group>";
+		};
+		C3719BDB2FFFE6E100F4AD5A /* LaunchScreen.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				C3719BDC2FFFE6E100F4AD5A /* Base */,
+			);
+			name = LaunchScreen.storyboard;
+			sourceTree = "<group>";
+		};
+		C3719BDE2FFFE6E100F4AD5A /* Main.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				C3719BDF2FFFE6E100F4AD5A /* Base */,
+			);
+			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+		C3719BEA2FFFE6E100F4AD5A /* Main.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				C3719BEB2FFFE6E100F4AD5A /* Base */,
+			);
+			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		C3719C102FFFE6E200F4AD5A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		C3719C112FFFE6E200F4AD5A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		C3719C132FFFE6E200F4AD5A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "iOS (Extension)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "hi-chu Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.seanaujong.hi-chu.Extension";
+				PRODUCT_NAME = "hi-chu Extension";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		C3719C142FFFE6E200F4AD5A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "iOS (Extension)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "hi-chu Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.seanaujong.hi-chu.Extension";
+				PRODUCT_NAME = "hi-chu Extension";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		C3719C172FFFE6E200F4AD5A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "iOS (App)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "hi-chu";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.seanaujong.hi-chu";
+				PRODUCT_NAME = "hi-chu";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		C3719C182FFFE6E200F4AD5A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "iOS (App)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "hi-chu";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.seanaujong.hi-chu";
+				PRODUCT_NAME = "hi-chu";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		C3719C1A2FFFE6E200F4AD5A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "macOS (Extension)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "hi-chu Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.seanaujong.hi-chu.Extension";
+				PRODUCT_NAME = "hi-chu Extension";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		C3719C1B2FFFE6E200F4AD5A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "macOS (Extension)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "hi-chu Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.seanaujong.hi-chu.Extension";
+				PRODUCT_NAME = "hi-chu Extension";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		C3719C1E2FFFE6E200F4AD5A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "macOS (App)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "hi-chu";
+				INFOPLIST_KEY_NSMainStoryboardFile = Main;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.seanaujong.hi-chu";
+				PRODUCT_NAME = "hi-chu";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		C3719C1F2FFFE6E200F4AD5A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "macOS (App)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "hi-chu";
+				INFOPLIST_KEY_NSMainStoryboardFile = Main;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.seanaujong.hi-chu";
+				PRODUCT_NAME = "hi-chu";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		C3719BC42FFFE6E100F4AD5A /* Build configuration list for PBXProject "hi-chu" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C3719C102FFFE6E200F4AD5A /* Debug */,
+				C3719C112FFFE6E200F4AD5A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C3719C122FFFE6E200F4AD5A /* Build configuration list for PBXNativeTarget "hi-chu Extension (iOS)" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C3719C132FFFE6E200F4AD5A /* Debug */,
+				C3719C142FFFE6E200F4AD5A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C3719C162FFFE6E200F4AD5A /* Build configuration list for PBXNativeTarget "hi-chu (iOS)" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C3719C172FFFE6E200F4AD5A /* Debug */,
+				C3719C182FFFE6E200F4AD5A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C3719C192FFFE6E200F4AD5A /* Build configuration list for PBXNativeTarget "hi-chu Extension (macOS)" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C3719C1A2FFFE6E200F4AD5A /* Debug */,
+				C3719C1B2FFFE6E200F4AD5A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C3719C1D2FFFE6E200F4AD5A /* Build configuration list for PBXNativeTarget "hi-chu (macOS)" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C3719C1E2FFFE6E200F4AD5A /* Debug */,
+				C3719C1F2FFFE6E200F4AD5A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = C3719BC12FFFE6E100F4AD5A /* Project object */;
+}

@@ -44,13 +44,16 @@ function sourceFor(battle: ClientBattle): {data: ReturnType<typeof cachedRandbat
 }
 
 /** Pokémon hover: the information-game section (or '' while data warms). The Mega
- *  Evolution box (DOM-only) previews our active mon's Mega forme on our-view surfaces —
- *  the ⚡ verdict on a foe hover, the matchup view on our own. */
+ *  Evolution and Terastallize boxes (DOM-only) preview our active mon's Mega forme or
+ *  Tera type on our-view surfaces — the ⚡ verdict on a foe hover, the matchup view on
+ *  our own — the same preview the move tooltip already carries. */
 export function buildSection(battle: ClientBattle, pokemon: ClientPokemon): string {
   const src = sourceFor(battle);
   if (!src) return '';
-  const megaSelected = typeof document !== 'undefined' && readMegaToggled(battle, document);
-  return buildPokemonSection(battle, pokemon, src.data, megaSelected);
+  const hasDom = typeof document !== 'undefined';
+  const megaSelected = hasDom && readMegaToggled(battle, document);
+  const teraSelected = hasDom && readTeraToggled(battle, document);
+  return buildPokemonSection(battle, pokemon, src.data, megaSelected, teraSelected);
 }
 
 /** Switch-menu hover (a ServerPokemon, no battle-view Pokémon): the matchup block. */

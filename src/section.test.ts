@@ -381,6 +381,41 @@ describe('buildPokemonSection hovering THEIR Tentacruel (possible sets)', () => 
   });
 });
 
+describe('the sets view brackets a genuinely uncertain ATTACKER item instead of guessing one', () => {
+  // A synthetic, role-less entry: Weavile could be holding Life Orb (+30% own damage) or
+  // Leftovers (no offensive effect) — unlike Tentacruel's AV/Leftovers fixture above, THIS
+  // item actually changes the HOLDER's own attacking numbers, which is what the sets view's
+  // per-candidate damage needs to prove it no longer guesses one representative item.
+  const feed: RandbatsData = {
+    Weavile: {level: 78, abilities: ['Pressure'], items: ['Life Orb', 'Leftovers'], moves: ['Icicle Crash']},
+  };
+  const near = {isFar: false, sideConditions: {}, active: [] as unknown[]};
+  const far = {isFar: true, sideConditions: {}, active: [] as unknown[]};
+  const ourActive = {
+    speciesForme: 'Skarmory', level: 78, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p1: Skarmory', side: near,
+  } as unknown as ClientPokemon;
+  const foeWeavile = {
+    speciesForme: 'Weavile', level: 78, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p2: Weavile', side: far,
+  } as unknown as ClientPokemon;
+  near.active = [ourActive];
+  far.active = [foeWeavile];
+  const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far]} as unknown as ClientBattle;
+
+  it('breaks Icicle Crash out into labelled Life Orb / Leftovers outcomes, never a single guess', () => {
+    const html = buildPokemonSection(battle, foeWeavile, feed);
+    expect(html).not.toMatch(/Icicle Crash<\/b>? \(/); // no single guessed number in the Moves: line
+    expect(html).toContain('<small>Icicle Crash:</small>'); // the move's own break-out label
+    const lifeOrb = /<small>\(Life Orb\)<\/small> [\d.]+% - ([\d.]+)%/.exec(html);
+    const leftovers = /<small>\(Leftovers\)<\/small> [\d.]+% - ([\d.]+)%/.exec(html);
+    expect(lifeOrb).not.toBeNull();
+    expect(leftovers).not.toBeNull();
+    // Life Orb's +30% must actually show up as the bigger number, not just a different label.
+    expect(Number(lifeOrb![1])).toBeGreaterThan(Number(leftovers![1]));
+  });
+});
+
 describe('buildPokemonSection speed order (the ⚡ line on a foe hover)', () => {
   const {battle, active} = loadBattle();
 
@@ -451,6 +486,22 @@ describe('buildPokemonSection hovering OUR Noivern as the player (the matchup vi
     const line = /Draco Meteor: ([\d.]+)% - ([\d.]+)%/.exec(hover)!;
     const button = buildMoveSection(battle, active('Noivern'), 'Draco Meteor', data);
     expect(button).toContain(`<small>Damage:</small> ${line[1]}% - ${line[2]}%`);
+  });
+
+  it('carries the same Terastallize preview as the move tooltip — the two surfaces must not diverge', () => {
+    const teraMine = {...mine, noivernTerastallized: '', myNoivernTera: 'Fire'};
+    const plain = loadBattle(teraMine);
+    const tera = loadBattle(teraMine);
+    const plainHtml = buildPokemonSection(plain.battle, plain.active('Noivern'), data);
+    const teraHtml = buildPokemonSection(tera.battle, tera.active('Noivern'), data, false, true);
+    const plainLine = /Flamethrower: ([\d.]+)% - ([\d.]+)%/.exec(plainHtml)!;
+    const teraLine = /Flamethrower: ([\d.]+)% - ([\d.]+)%/.exec(teraHtml)!;
+    // Flamethrower is non-STAB on Flying/Dragon Noivern; Tera Fire makes it STAB (×1.5) —
+    // the same swing `buildMoveSection`'s own Tera-preview test pins.
+    expect(Number(teraLine[2])).toBeGreaterThan(Number(plainLine[2]) * 1.4);
+    // And it must be the EXACT number the move tooltip previews — one truth, two surfaces.
+    const button = buildMoveSection(tera.battle, tera.active('Noivern'), 'Flamethrower', data, true);
+    expect(button).toContain(`<small>Damage:</small> ${teraLine[1]}% - ${teraLine[2]}%`);
   });
 
   it("splits a move into labelled outcomes when the foe's item is still unknown", () => {
@@ -616,6 +667,18 @@ describe('hovering a FOE’s roster icon: OUR damage into them if they switch in
     const fainted = {...benched(active('Tentacruel')), hp: 0};
     const html = buildPokemonSection(battle, fainted, data);
     expect(html).not.toContain('<small>vs</small> <b>Tentacruel</b>');
+  });
+
+  it('previews our own pending Tera the same way every other our-view attacker site does', () => {
+    const teraMine = {...mine, noivernTerastallized: '', myNoivernTera: 'Fire'};
+    const plain = loadBattle(teraMine);
+    const tera = loadBattle(teraMine);
+    const plainHtml = buildPokemonSection(plain.battle, benched(plain.active('Tentacruel')), data);
+    const teraHtml = buildPokemonSection(tera.battle, benched(tera.active('Tentacruel')), data, false, true);
+    const plainLine = /Flamethrower: ([\d.]+)% - ([\d.]+)%/.exec(plainHtml)!;
+    const teraLine = /Flamethrower: ([\d.]+)% - ([\d.]+)%/.exec(teraHtml)!;
+    // Same Tera-Fire STAB swing pinned everywhere else this preview applies.
+    expect(Number(teraLine[2])).toBeGreaterThan(Number(plainLine[2]) * 1.4);
   });
 });
 

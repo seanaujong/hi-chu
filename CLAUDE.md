@@ -70,8 +70,11 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
       `buildableAbilities` is the guard that an ability no SET could carry narrows nothing.
     - `resolve.ts` — the resolution law: `resolveMon` merges live facts over randbats into
       the one set we calculate with; `resolveVariants` enumerates EVERY still-possible set
-      (hidden item/ability) for uncertainty-aware damage; `resolveByRole` gives one
-      resolution per surviving set (the sets view's per-block numbers). All funnel through
+      (hidden item/ability) for uncertainty-aware damage — grouped by role name
+      (`section.groupByRole`) to give the sets view's per-block damage its own
+      uncertainty-aware fan-out, the same machinery the Incoming section's attacker side
+      already used; `resolveByRole` gives one representative resolution per surviving set
+      for callers that want a single pick rather than the full fan-out. All funnel through
       `buildResolved` so "known wins" is written once.
     - `knowledge.ts` — the information game: `inferSets` renders each surviving role's
       options into a `SetKnowledge` for display (speculative values never reach the calc).
@@ -183,21 +186,34 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
 - ✅ **`teraType` is set only when the Tera is ACTIVE for that calc** — actually terastallized
   (setting it activates Tera in the calc; never speculate a Tera type; checked by
   `resolve.test.ts` "only applies a Tera type when the Pokémon has actually terastallized"),
-  with ONE sanctioned preview: OUR OWN attacker on the move tooltip when the move panel's
-  Terastallize checkbox is ticked. That isn't speculation — the type is our own private truth
-  (`readOwnTeraType` via `battle.myPokemon`; the client keeps `teraType` set whether or not the
-  Tera has been used) and activating it is the user's declared intent for the pending move. The
-  toggle lives ONLY in the DOM in both clients (`input[name=terastallize]` production,
-  `input[name=tera]` preact), so `readTeraToggled` reads the checkbox, scoped to this battle's
-  `#room-<roomid>` element so a second battle's box can't leak in; `content.ts` passes the flag
-  and `buildMoveSection` applies it — it never touches the foe's variants, the sets/mirror
-  views, or the ⚡ line, and is moot once actually terastallized. Checked by `section.test.ts`
-  ("Terastallize ticked": STAB applies and the line says Tera; no private type or already
-  Tera'd → byte-identical output) and `readState.test.ts` (`readOwnTeraType`, `readTeraToggled`
-  incl. the no-cross-room-leak case). 👁 for drift: the checkbox selector can't be probed by
-  `drift-check` (a spectator replay has no move controls) — `npm run player-check` (a real
-  two-account battle) probes it after a client update. The sets view may LIST possible Tera
-  types, but they are display-only `SetKnowledge` — they never reach the calc.
+  with ONE sanctioned preview: OUR OWN attacker on the move tooltip AND the own-hover matchup
+  view, when the move panel's Terastallize checkbox is ticked — same footing as the Mega
+  preview below, and sharing its overlay shape (`teraPreviewFor`/`applyPreviews` in
+  `section.ts`) rather than forking the "which Tera type, if any" law across the two surfaces.
+  That isn't speculation — the type is our own private truth (`readOwnTeraType` via
+  `battle.myPokemon`; the client keeps `teraType` set whether or not the Tera has been used)
+  and activating it is the user's declared intent for the pending move. The toggle lives ONLY
+  in the DOM in both clients (`input[name=terastallize]` production, `input[name=tera]`
+  preact), so `readTeraToggled` reads the checkbox, scoped to this battle's `#room-<roomid>`
+  element so a second battle's box can't leak in; `content.ts` passes the flag to both
+  `buildMoveSection` and `buildPokemonSection` — it never touches the foe's variants, the
+  sets/mirror views, or the ⚡ line (Tera never changes Speed), and is moot once actually
+  terastallized. **The two surfaces diverging here is a real, user-visible bug we hit once**:
+  before `teraPreviewFor` existed, only the move tooltip applied the preview, so a Protean/
+  Libero attacker's STAB (`@smogon/calc`'s `getStabMod` grants it only while `!pokemon.teraType`
+  — Tera, once set, overrides Protean's retype for STAB purposes even when the previewed type
+  doesn't match the move) would silently vanish on the move tooltip the instant Tera was
+  ticked with a non-matching type, while the matchup view kept crediting the full Protean
+  STAB — the same move reading two very different numbers depending on which thing you
+  hovered. Checked by `section.test.ts` ("Terastallize ticked": STAB applies and the line says
+  Tera; no private type or already Tera'd → byte-identical output; "carries the same
+  Terastallize preview as the move tooltip — the two surfaces must not diverge", watched
+  failing before `teraPreviewFor` reached `ownHoverMatchup`) and `readState.test.ts`
+  (`readOwnTeraType`, `readTeraToggled` incl. the no-cross-room-leak case). 👁 for drift: the
+  checkbox selector can't be probed by `drift-check` (a spectator replay has no move controls)
+  — `npm run player-check` (a real two-account battle) probes it after a client update. The
+  sets view may LIST possible Tera types, but they are display-only `SetKnowledge` — they
+  never reach the calc.
 - ✅ **A ticked Mega Evolution box previews OUR active mon's Mega forme — same footing as the
   Tera preview, wider reach because Mega swaps the whole forme.** The move-panel Mega box is the
   user's declared intent, and the stone in hand is our private truth, so it's not speculation.
@@ -530,6 +546,30 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   `variants.test.ts` ("collapses many sets with identical shown numbers into ONE bucket"
   and the AV split) and `section.test.ts` (the real fixture: special move splits AV vs
   Leftovers, physical move stays one line). A revealed item is just the one-set case.
+- ✅ **The sets view's per-candidate damage never guesses a single representative
+  attacker either — same law, the other direction.** `resolveByRole` used to pick one
+  item/ability per role for the whole block's numbers; `section.groupByRole` +
+  `candidateDamageByMove` now feed each role's own `resolveVariants` fan-out through
+  `incomingDamageBuckets` (the same machinery the Incoming section's attacker side
+  already used), so a role whose item/ability is genuinely unknown gets one labelled
+  outcome per still-possible value instead of one confidently-wrong number. A move with
+  a single certain outcome stays inline in the `Moves:` line exactly as before
+  (`render.moveText`); a REAL split breaks that move out into its own labelled lines
+  below the list (`render.moveBreakout`) rather than cramming multiple numbers into the
+  original tool's one-line-per-set layout. Each outcome is also colored by a coarse KO
+  tier for a fast scan down the block — red+bold (reusing `.hichu-ko`) for any real
+  single-hit KO chance, amber (reusing `.hichu-note`) for a realistic 2HKO with no OHKO
+  chance, plain for 3HKO+ (`render.koTier`/`tierWrap` — no new CSS, both colors already
+  existed). The 2HKO check needs the nHKO ladder, which the sets view now requests up to
+  turn 2 (`incomingDamageBuckets`'s `nhkoTurns` param) — the Incoming section's own call
+  passes nothing and stays exactly as compact as before; the two callers share the
+  function precisely so that "how far the ladder goes" can't fork between them. Checked
+  by `render.test.ts` ("breaks a move with 2+ distinct outcomes out of the Moves: line…"
+  and the three-tier coloring test, watched failing with `moveBreakout` unwired and with
+  `tierWrap` returning the plain text) and `section.test.ts` ("the sets view brackets a
+  genuinely uncertain ATTACKER item…", a synthetic Weavile whose Life Orb vs Leftovers
+  pool changes ITS OWN damage — unlike the Tentacruel AV/Leftovers fixture above, which
+  only matters when Tentacruel is the *defender*).
 - ✅ **Format ids are derived like PS's own `toID`** (digits kept, whole title), so bracket
   tags with extra words work — checked by `readState.test.ts` ("[Gen 9 Champions] Random
   Battle" → `gen9championsrandombattle`).

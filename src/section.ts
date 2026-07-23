@@ -12,7 +12,7 @@
 //     with damage numbers attached when the hovered mon is the opponent's.
 
 import {calcDamage, finalStatsOf, moveCategory, painSplit, speciesBody, type DamageReport} from './core/damage.js';
-import {resolveByRole, resolveMon, resolveVariants} from './core/resolve.js';
+import {resolveMon, resolveVariants} from './core/resolve.js';
 import {assumeDefenderVariants, type MoveSlant} from './core/assume.js';
 import {inferSets} from './core/knowledge.js';
 import {bucketByDamage, type DamageBucket} from './core/variants.js';
@@ -124,9 +124,9 @@ type IncomingMovesFor = (
 
 /** The feed-driven supplier: the sets view's own per-role move knowledge, crossed with
  *  `resolveVariants`' full item/ability fan-out — aligned by ROLE NAME, the same
- *  alignment `resolveByRole` already relies on for the sets view's own per-candidate
- *  damage. Never a set's first-guessed item: hidden Life Orb/Choice item splits an
- *  incoming line into labelled outcomes exactly like the move tooltip's defender side. */
+ *  alignment `groupByRole` uses for the sets view's own per-candidate damage. Never a
+ *  set's first-guessed item: hidden Life Orb/Choice item splits an incoming line into
+ *  labelled outcomes exactly like the move tooltip's defender side. */
 function randbatsIncomingMovesFor(data: RandbatsData): IncomingMovesFor {
   return (foeFacts) => {
     const entry = entryFor(data, foeFacts);
@@ -420,6 +420,40 @@ function megaSpeedApplies(gen: number): boolean {
 }
 
 /**
+ * If Terastallize is ticked for our ACTIVE mon's pending move, overlay the preview Tera
+ * type onto the resolved attacker — the same footing as the Mega preview (our own private
+ * truth plus the user's declared intent, not speculation; see `megaPreviewFor`). A pure
+ * overlay rather than a facts merge before resolution, so every our-view surface that can
+ * carry a pending Tera — the move tooltip AND the own-hover matchup view — shares one
+ * implementation instead of two copies of the "which Tera type, if any" law.
+ *
+ * Undefined when there's nothing to preview (box unticked, no private Tera type to show,
+ * already terastallized, or not our active mon this turn — Tera, like Mega, only takes
+ * effect on the turn the move is actually used, so a benched/switch-candidate mon never
+ * gets it).
+ */
+function teraPreviewFor(
+  battle: ClientBattle,
+  pokemon: ClientPokemon,
+  teraSelected: boolean,
+  publicFacts: LiveFacts,
+): ((attacker: ResolvedMon) => ResolvedMon) | undefined {
+  if (!teraSelected || publicFacts.terastallized || !isActiveMon(pokemon)) return undefined;
+  const teraType = readOwnTeraType(battle, pokemon);
+  if (!teraType) return undefined;
+  return (attacker) => ({...attacker, terastallized: true, teraType});
+}
+
+/** Applies each preview overlay in turn (Mega, then a pending Tera), skipping any that
+ *  don't apply — shared by every our-view surface that can carry both previews at once. */
+function applyPreviews(
+  base: ResolvedMon,
+  previews: readonly (((attacker: ResolvedMon) => ResolvedMon) | undefined)[],
+): ResolvedMon {
+  return previews.reduce((mon, apply) => (apply ? apply(mon) : mon), base);
+}
+
+/**
  * If a revealed move betrays that the defender might be a disguised Zoroark (see
  * illusion.ts), a resolution of that Zoroark as an extra defender — so the move tooltip
  * shows a second "vs Zoroark-Hisui" damage line rather than one confidently-wrong number.
@@ -615,6 +649,7 @@ function ownHoverMatchup(
   data: RandbatsData,
   format: {gen: number; doubles: boolean},
   megaSelected: boolean,
+  teraSelected: boolean,
   readFacts: FactsReader,
 ): string {
   const moves = readOwnMoves(battle, pokemon);
@@ -627,11 +662,15 @@ function ownHoverMatchup(
   const realAbility = ownAbilityName(battle, pokemon, entry);
   const ownFacts = {...facts, ...(realItem ? {item: realItem} : {}), ...(realAbility ? {ability: realAbility} : {})};
   const base = resolveMon(ownFacts, entry);
-  // A ticked Mega previews the Mega forme here just as on the move tooltip: its stats hit
-  // the damage every gen, its Speed hits the ⚡ line from gen 7 (megaSpeedApplies).
+  // A ticked Mega or a ticked Terastallize previews the same way as the move tooltip: their
+  // offensive stats/STAB hit this view's damage exactly like they hit the tooltip's — one
+  // preview law, two surfaces (see `teraPreviewFor`/`megaPreviewFor`). Speed stays Mega-only
+  // (its Speed hits the ⚡ line from gen 7, `megaSpeedApplies`) — Tera never changes stats,
+  // so it has nothing to add there.
   const applyMega = megaPreviewFor(battle, pokemon, megaSelected);
-  const attacker = applyMega ? applyMega(base) : base;
-  const speedAttacker = applyMega && megaSpeedApplies(format.gen) ? attacker : base;
+  const applyTera = teraPreviewFor(battle, pokemon, teraSelected, facts);
+  const attacker = applyPreviews(base, [applyMega, applyTera]);
+  const speedAttacker = applyMega && megaSpeedApplies(format.gen) ? applyMega(base) : base;
   // Our real item feeds the ⚡ line too: a Scarf we are holding is our own private
   // truth, and showing US our own speed as uncertain would be absurd.
   const speedFor = (foeFacts: LiveFacts): readonly SetVariant[] => randbatsFoeVariants(data, foeFacts);
@@ -670,6 +709,7 @@ function foeSwitchInDamage(
   data: RandbatsData,
   format: {gen: number; doubles: boolean},
   megaSelected: boolean,
+  teraSelected: boolean,
   readFacts: FactsReader,
 ): string {
   if (foeFacts.hpPercent <= 0) return ''; // fainted — can't switch in
@@ -686,8 +726,12 @@ function foeSwitchInDamage(
   const realAbility = ownAbilityName(battle, ourActive, ourEntry);
   const attackerFacts = {...ourFacts, ...(realItem ? {item: realItem} : {}), ...(realAbility ? {ability: realAbility} : {})};
   const base = resolveMon(attackerFacts, ourEntry);
+  // A ticked Mega or Tera previews the same way as every other our-view attacker site
+  // (`teraPreviewFor`/`megaPreviewFor`) — this is our ACTIVE mon's pending move, same
+  // footing as the move tooltip and the matchup view.
   const applyMega = megaPreviewFor(battle, ourActive, megaSelected);
-  const attacker = applyMega ? applyMega(base) : base;
+  const applyTera = teraPreviewFor(battle, ourActive, teraSelected, ourFacts);
+  const attacker = applyPreviews(base, [applyMega, applyTera]);
 
   const foeVariants = randbatsFoeVariants(data, foeFacts);
   if (foeVariants.length === 0) return '';
@@ -783,25 +827,49 @@ function isFoe(battle: ClientBattle, pokemon: ClientPokemon): boolean {
   return pokemon.side === battle.sides[1]; // client default: near side is sides[0]
 }
 
+/** Every still-possible set for ONE candidate role, keyed by role name — the same
+ *  role-name alignment `randbatsIncomingMovesFor` already relies on, now used to fan a
+ *  candidate's damage out over its own hidden item/ability instead of guessing one
+ *  representative set the way `resolveByRole` did for this call site before (that
+ *  function is unchanged and still tested directly in `resolve.test.ts` — just no
+ *  longer consumed here). */
+function groupByRole(variants: readonly SetVariant[]): Map<string, SetVariant[]> {
+  const out = new Map<string, SetVariant[]>();
+  for (const v of variants) {
+    const list = out.get(v.role);
+    if (list) list.push(v);
+    else out.set(v.role, [v]);
+  }
+  return out;
+}
+
 /**
- * The damage reports for `attacker`'s moves into `defender`, keyed by move id.
- * Status moves and moves the calc can't model are simply absent.
+ * The distinct damage outcomes for each of `moves`, from every still-possible variant of
+ * ONE candidate role into `defender` — the sets view's per-candidate damage, computed the
+ * same way the Incoming section already computes an uncertain ATTACKER's threat
+ * (`incomingDamageBuckets`): enumerate every item/ability the role could still be running
+ * rather than picking a representative one and hoping. A role with no real uncertainty
+ * (one variant, or every variant landing on the same number) still comes back as a single
+ * bucket with an empty label — the caller renders that inline exactly as it always has;
+ * only a REAL split (an Assault Vest that changes the number) grows a second outcome.
+ * Status moves and moves the calc can't model for this role are simply absent.
+ *
+ * Requests the nHKO ladder up to turn 2 — `render.koTier` reads its turn-2 figure to color
+ * a move '2hko' when it can't OHKO outright but a second use realistically could, so a fast
+ * scan down the block still flags danger the raw percent alone wouldn't at a glance.
  */
-function reportsByMove(
-  attacker: ResolvedMon,
+function candidateDamageByMove(
+  roleVariants: readonly SetVariant[],
   defender: ResolvedMon,
   moves: readonly string[],
   gen: number,
   field: ReturnType<typeof readFieldFacts>,
-): Map<string, DamageReport> {
-  const out = new Map<string, DamageReport>();
+  doubles: boolean,
+): Map<string, DamageBucket[]> {
+  const out = new Map<string, DamageBucket[]>();
   for (const move of moves) {
-    try {
-      const report = calcDamage(attacker, defender, move, {gen, field});
-      if (report.category !== 'Status') out.set(toId(move), report);
-    } catch {
-      // One unmodellable move shouldn't drop the whole section.
-    }
+    const buckets = incomingDamageBuckets(defender, roleVariants, move, gen, field, doubles, 2);
+    if (buckets.length > 0) out.set(toId(move), buckets);
   }
   return out;
 }
@@ -856,11 +924,13 @@ function moveDamageBuckets(
 }
 
 /**
- * The distinct damage outcomes for `moveName` from a still-uncertain FOE into a fixed
- * `defender` — the defensive half of the matchup view: what the foe's move would do
- * INTO the mon being evaluated, rather than the other way round. `attackerVariants`
- * comes from `IncomingMovesFor`, already narrowed to the roles that could carry this
- * move. No nHKO ladder here either, matching `moveDamageBuckets`' compact-view scope.
+ * The distinct damage outcomes for `moveName` from a still-uncertain ATTACKER into a fixed
+ * `defender` — shared by two callers that vary the attacker instead of the defender: the
+ * matchup view's defensive half (what a foe's move would do INTO the mon being evaluated;
+ * `attackerVariants` from `IncomingMovesFor`, no nHKO ladder — matching `moveDamageBuckets`'
+ * compact-view scope) and the sets view's per-candidate damage (`candidateDamageByMove`,
+ * which DOES request the ladder — see `nhkoTurns`). `nhkoTurns` defaults to unrequested so
+ * the Incoming section's own call stays exactly as compact as before.
  */
 function incomingDamageBuckets(
   defender: ResolvedMon,
@@ -869,8 +939,9 @@ function incomingDamageBuckets(
   gen: number,
   field: ReturnType<typeof readFieldFacts>,
   doubles: boolean,
+  nhkoTurns?: number,
 ): DamageBucket[] {
-  return scoreVariants(attackerVariants, moveName, (mon) => [mon, defender], gen, field, doubles);
+  return scoreVariants(attackerVariants, moveName, (mon) => [mon, defender], gen, field, doubles, nhkoTurns);
 }
 
 /**
@@ -901,17 +972,14 @@ export function buildMoveSection(
   const readFacts = factsReader(battle, format.gen, data);
   // Our attacker: public battle state, private identity (Illusion disguises us to us too).
   const publicFacts = ownTruth(battle, pokemon, readFacts(pokemon));
-  // Terastallize is ticked for this turn: preview the damage with the Tera active, using
-  // OUR private Tera type (an our-view surface, like the real-item read). Not speculation —
-  // the type is our own truth and activating it is the user's declared intent. Moot once
-  // actually terastallized (the public facts already carry it); absent when spectating.
-  const pendingTera = teraSelected && !publicFacts.terastallized ? readOwnTeraType(battle, pokemon) : undefined;
-  const teraFacts = pendingTera ? {terastallized: true, teraType: pendingTera} : {};
-  // Mega Evolution is ticked: preview our attacker as the Mega forme. The Mega's Attack
-  // (and typing/ability) apply the moment it evolves, on the same turn, in every gen —
-  // so this rides on the damage regardless of generation (unlike the ⚡ Speed, gen 7+).
+  // Terastallize ticked: preview OUR private Tera type. Mega Evolution ticked: preview the
+  // Mega forme's stats/ability/type. Both are the user's declared intent over our own private
+  // truth, not speculation — see `teraPreviewFor`/`megaPreviewFor`. Both apply regardless of
+  // generation (unlike the ⚡ Speed's Mega split, gen 7+) since offensive stats and STAB take
+  // effect the same turn the gimmick is used.
   const applyMega = megaPreviewFor(battle, pokemon, megaSelected);
-  const asMega = (attacker: ResolvedMon): ResolvedMon => (applyMega ? applyMega(attacker) : attacker);
+  const applyTera = teraPreviewFor(battle, pokemon, teraSelected, publicFacts);
+  const withPreviews = (attacker: ResolvedMon): ResolvedMon => applyPreviews(attacker, [applyMega, applyTera]);
 
   switch (format.kind) {
     case 'randbats': {
@@ -929,9 +997,8 @@ export function buildMoveSection(
         ...publicFacts,
         ...(realItem ? {item: realItem} : {}),
         ...(realAbility ? {ability: realAbility} : {}),
-        ...teraFacts,
       };
-      const attacker = asMega(resolveMon(attackerFacts, attackerEntry));
+      const attacker = withPreviews(resolveMon(attackerFacts, attackerEntry));
       // Name each target only when there's more than one (doubles) — singles keeps native parity.
       return foes.map((foe) => moveVsFoe(attacker, foe, moveName, format, data, battle, readFacts, foes.length > 1)).join('');
     }
@@ -948,9 +1015,8 @@ export function buildMoveSection(
         ...(realItem ? {item: realItem} : {}),
         ...(realAbility ? {ability: realAbility} : {}),
         ...(knownStats ? {knownStats} : {}),
-        ...teraFacts,
       };
-      const attacker = asMega(resolveMon(attackerFacts, entryOrMinimal(undefined, attackerFacts)));
+      const attacker = withPreviews(resolveMon(attackerFacts, entryOrMinimal(undefined, attackerFacts)));
       const variantsFor = openVariantsFor(format.gen);
       const sections = foes
         .map((foe) => openMoveVsFoe(attacker, foe, moveName, format, battle, readFacts, variantsFor, foes.length > 1))
@@ -1065,10 +1131,12 @@ function moveSectionHtml(
 
 /**
  * One candidate set → a render block, with each move's damage (foe view) attached from
- * THIS set's own item/spread/species. `species` is set only for an Illusion candidate (a
- * Zoroark the hovered mon might secretly be), which the renderer flags as such.
+ * THIS set's own item/spread/species — one or more distinct outcomes per move, bucketed
+ * over whatever the role's item/ability fan-out still leaves open. `species` is set only
+ * for an Illusion candidate (a Zoroark the hovered mon might secretly be), which the
+ * renderer flags as such.
  */
-function toBlock(c: CandidateSet, species: string | undefined, damage: Map<string, DamageReport> | undefined): CandidateBlock {
+function toBlock(c: CandidateSet, species: string | undefined, damage: Map<string, readonly DamageBucket[]> | undefined): CandidateBlock {
   return {
     name: c.name,
     ...(species ? {species} : {}),
@@ -1076,8 +1144,8 @@ function toBlock(c: CandidateSet, species: string | undefined, damage: Map<strin
     items: c.items,
     gimmicks: c.gimmicks,
     moves: c.moves.map((m): MoveKnowledgeRow => {
-      const report = damage?.get(toId(m.name));
-      return {name: m.name, known: m.known, ...(report ? {report} : {})};
+      const buckets = damage?.get(toId(m.name));
+      return {name: m.name, known: m.known, ...(buckets ? {buckets} : {})};
     }),
   };
 }
@@ -1101,10 +1169,16 @@ function withCopiedMoves(c: CandidateSet, facts: LiveFacts): CandidateSet {
  * sets by every public reveal and attaches each move's damage vs our active;
  * hovering our own Pokémon shows the mirror — what the opponent can deduce from
  * what we've made public. Returns '' when the format or species isn't covered.
- * `megaSelected` is the move panel's Mega Evolution box (content.ts reads the DOM):
- * when ticked, our-view surfaces preview our active mon's Mega forme.
+ * `megaSelected`/`teraSelected` are the move panel's gimmick checkboxes (content.ts reads
+ * the DOM): when ticked, our-view surfaces preview our active mon's Mega forme or Tera type.
  */
-export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon, data: RandbatsData | null, megaSelected = false): string {
+export function buildPokemonSection(
+  battle: ClientBattle,
+  pokemon: ClientPokemon,
+  data: RandbatsData | null,
+  megaSelected = false,
+  teraSelected = false,
+): string {
   const format = detectFormat(battle);
   if (!format) return '';
 
@@ -1113,7 +1187,7 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
 
   switch (format.kind) {
     case 'randbats':
-      return data ? randbatsPokemonSection(battle, pokemon, facts, data, format, megaSelected, readFacts) : '';
+      return data ? randbatsPokemonSection(battle, pokemon, facts, data, format, megaSelected, teraSelected, readFacts) : '';
     case 'open': {
       // No sets/mirror view (nothing to infer without a pool) and nothing on a FOE
       // hover in v1; our own mon gets the matchup view — the switch-decision answer —
@@ -1132,10 +1206,12 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
         ...(knownStats ? {knownStats} : {}),
       };
       const base = resolveMon(attackerFacts, entryOrMinimal(undefined, attackerFacts));
-      // A ticked Mega previews the forme's damage in every gen; there's no ⚡ line in an
-      // open format (no feed to read a foe Speed from), so the gen-6 Speed split is moot.
+      // A ticked Mega or Tera previews the same way as the move tooltip's open-format
+      // arm (`teraPreviewFor`/`megaPreviewFor`); there's no ⚡ line in an open format (no
+      // feed to read a foe Speed from), so Mega's gen-6 Speed split is moot either way.
       const applyMega = megaPreviewFor(battle, pokemon, megaSelected);
-      const attacker = applyMega ? applyMega(base) : base;
+      const applyTera = teraPreviewFor(battle, pokemon, teraSelected, ourFacts);
+      const attacker = applyPreviews(base, [applyMega, applyTera]);
       const html = ownMovesSection(battle, pokemon.side, attacker, moves, format, readFacts, openVariantsFor(format.gen));
       return html ? html + renderNotes([OPEN_FORMAT_NOTE]) : '';
     }
@@ -1153,6 +1229,7 @@ function randbatsPokemonSection(
   data: RandbatsData,
   format: {gen: number; doubles: boolean},
   megaSelected: boolean,
+  teraSelected: boolean,
   readFacts: FactsReader,
 ): string {
   const entry = entryFor(data, facts);
@@ -1193,12 +1270,12 @@ function randbatsPokemonSection(
 
   const blocks: CandidateBlock[] = [];
   for (const s of sources) {
-    const attackers = defender ? resolveByRole(s.facts, s.entry) : []; // aligned 1:1 with candidates
-    s.knowledge.candidates.forEach((c, i) => {
-      const attacker = attackers[i]?.mon ?? attackers[0]?.mon;
+    const variantsByRole = defender ? groupByRole(resolveVariants(s.facts, s.entry)) : new Map<string, SetVariant[]>();
+    s.knowledge.candidates.forEach((c) => {
       const shown = withCopiedMoves(c, s.facts);
-      const damage = defender && attacker && field
-        ? reportsByMove(attacker, defender, shown.moves.map((m) => m.name), format.gen, field)
+      const roleVariants = variantsByRole.get(c.name) ?? [];
+      const damage = defender && field && roleVariants.length > 0
+        ? candidateDamageByMove(roleVariants, defender, shown.moves.map((m) => m.name), format.gen, field, format.doubles)
         : undefined;
       blocks.push(toBlock(shown, s.species, damage));
     });
@@ -1224,13 +1301,13 @@ function randbatsPokemonSection(
   // Own view's at-a-glance answer: OUR moves' damage into the current foe (private
   // moveset — an our-view surface). Leads the tooltip like ⚡ does on a foe hover;
   // the mirror blocks below remain strictly public.
-  const ownMovesHtml = foe ? '' : ownHoverMatchup(battle, pokemon, facts, data, format, megaSelected, readFacts);
+  const ownMovesHtml = foe ? '' : ownHoverMatchup(battle, pokemon, facts, data, format, megaSelected, teraSelected, readFacts);
   // Foe view's own at-a-glance answer, but only for a switch-decision candidate (not
   // yet active): OUR active's damage into THIS Pokémon if it switched in. An active
   // foe already carries this number on the move tooltip, so it's withheld there —
   // see foeSwitchInDamage's own doc comment for why.
   const foeMovesHtml = foe && !isActiveMon(pokemon)
-    ? foeSwitchInDamage(battle, pokemon, facts, data, format, megaSelected, readFacts)
+    ? foeSwitchInDamage(battle, pokemon, facts, data, format, megaSelected, teraSelected, readFacts)
     : '';
 
   return speedHtml + foeMovesHtml + ownMovesHtml + renderSetsSection({candidates: blocks, extraNotes: notes});

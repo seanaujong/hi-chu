@@ -189,7 +189,7 @@ describe('renderSetsSection', () => {
     items: [{name: 'Leftovers', known: true}],
     gimmicks: [{kind: 'tera' as const, types: [{name: 'Flying', known: false}, {name: 'Grass', known: false}]}],
     moves: [
-      {name: 'Surf', known: true, report: report({move: 'Surf', percent: {min: 30, max: 36, mean: 33}})},
+      {name: 'Surf', known: true, buckets: [{label: '', report: report({move: 'Surf', percent: {min: 30, max: 36, mean: 33}})}]},
       {name: 'Haze', known: false},
     ],
   };
@@ -257,6 +257,46 @@ describe('renderSetsSection', () => {
     const html = renderSetsSection(model());
     expect(html).toContain('<b>✓ Surf</b> (30–36%)');
     expect(html).not.toContain('Haze (');
+  });
+
+  it('breaks a move with 2+ distinct outcomes out of the Moves: line into its own labelled lines', () => {
+    const uncertainItem = {
+      ...bulkySupport,
+      moves: [
+        {name: 'Draco Meteor', known: true, buckets: [
+          {label: 'Choice Specs', report: report({move: 'Draco Meteor', percent: {min: 62, max: 74, mean: 68}})},
+          {label: 'Leftovers', report: report({move: 'Draco Meteor', percent: {min: 41, max: 49, mean: 45}})},
+        ]},
+        {name: 'Haze', known: false},
+      ],
+    };
+    const html = renderSetsSection(model({candidates: [uncertainItem]}));
+    // The Moves: line names it (still ✓, still bold) but carries no number of its own —
+    // the number lives in the break-out below, never a single guessed representative.
+    expect(html).toMatch(/<small>Moves:<\/small> <b>✓ Draco Meteor<\/b>, Haze/);
+    expect(html).not.toContain('Draco Meteor</b> (');
+    expect(html).toContain('<small>Draco Meteor:</small>');
+    expect(html).toMatch(/<small>\(Choice Specs\)<\/small> 62% - 74%/);
+    expect(html).toMatch(/<small>\(Leftovers\)<\/small> 41% - 49%/);
+  });
+
+  it('colors an OHKO-risk outcome red+bold and a realistic 2HKO one amber, but leaves a 3HKO+ move plain', () => {
+    const graded = {
+      ...bulkySupport,
+      moves: [
+        {name: 'Ohko Move', known: false, buckets: [{label: '', report: report({move: 'Ohko Move', koChance: 0.4})}]},
+        {name: 'Twohko Move', known: false, buckets: [
+          {label: '', report: report({move: 'Twohko Move', koChance: 0, nhko: {base: [0, 0.6], withLeftovers: [0, 0.6]}})},
+        ]},
+        {name: 'Threehko Move', known: false, buckets: [
+          {label: '', report: report({move: 'Threehko Move', koChance: 0, nhko: {base: [0, 0, 0.9], withLeftovers: [0, 0, 0.9]}})},
+        ]},
+      ],
+    };
+    const html = renderSetsSection(model({candidates: [graded]}));
+    expect(html).toContain('<b class="hichu-ko">Ohko Move (30–36%)</b>');
+    expect(html).toContain('<span class="hichu-note">Twohko Move (30–36%)</span>');
+    expect(html).not.toMatch(/class="hichu-(ko|note)">Threehko Move/);
   });
 
   it('renders caveats as a trailing note block', () => {

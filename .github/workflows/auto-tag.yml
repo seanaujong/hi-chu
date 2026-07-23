@@ -16,9 +16,9 @@
 #
 # release-visual-check is still not something this workflow can run at all — it needs
 # an agent visually judging a live loaded-extension Chrome session, not an assertion.
-# It still belongs BEFORE the version-bump PR is merged (CLAUDE.md), and release.yml's
-# own `publish` job additionally pauses on a required manual approval (the `release`
-# environment) as a structural reminder that it happened, not a substitute for it.
+# It stays a manual step BEFORE the version-bump PR is merged (CLAUDE.md); that merge
+# is the one conscious human checkpoint in the whole pipeline, so nothing past it —
+# including release.yml's GitHub AND Chrome Web Store publish — pauses again.
 name: Auto-tag release
 
 on:

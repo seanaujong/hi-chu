@@ -1,6 +1,10 @@
 // Small pure readings of LiveFacts shared across the set-inference modules (narrow,
 // resolve, knowledge, deductions). Kept in one leaf module so those layers don't have to
 // depend on each other just to agree on "the innate ability" or "is this a Mega forme".
+// `isMegaForme` has a fifth consumer outside that group — `battle/readState.ts` — since
+// it's a dependency-free string check, not domain reasoning; a fetch-layer module is free
+// to share a leaf like this without pulling in anything the dependency-boundary test cares
+// about (see `dependency-boundaries.test.ts`).
 //
 // Pure: no DOM, no network, no @smogon/calc.
 

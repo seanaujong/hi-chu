@@ -29,67 +29,37 @@ steps stay strictly separate — **fetch** (the live page, the network), **reaso
 domain logic), **render** (model → HTML) — so a step never reaches into the DOM or the
 network unless that IS its job. Dependencies only ever point downward:
 
-```
-┌───────────────────────────────────────────────────┐
-│ content.ts                      the shell (impure)│
-│ monkey-patches Showdown's tooltip,                │
-│ triggers the fetch, hands the hover to section.ts │
-└───────────────────────────────────────────────────┘
-                          │ hover event
-                          ▼
-┌───────────────────────────────────────────────────┐
-│ section.ts                       pure orchestrator│
-│ given the battle, the hover,                      │
-│ and the data → folds FETCH → REASON               │
-│ → RENDER into one HTML string                     │
-└───────────────────────────────────────────────────┘
-                          │
-                          ▼
-┌───────────────────────────────────────────────────┐
-│ FETCH                 reads the page + the network│
-│ ┌──────────────────────┐  ┌──────────────────────┐│
-│ │ battle/readState.ts  │  │ data/randbats.ts     ││
-│ │ PS client objects    │  │ fetch + cache        ││
-│ │ → typed LiveFacts    │  │ the sets feed        ││
-│ └──────────────────────┘  └──────────────────────┘│
-└───────────────────────────────────────────────────┘
-                          │
-                          ▼
-┌───────────────────────────────────────────────────┐
-│ REASON                     pure: given x, return y│
-│ ┌──────────────────────┐  ┌──────────────────────┐│
-│ │ resolve.ts           │  │ damage.ts            ││
-│ │ given LiveFacts + a  │  │ given 2 ResolvedMon  ││
-│ │ set → one ResolvedMon│  │ + move → DamageReport││
-│ └──────────────────────┘  └──────────────────────┘│
-│ ┌──────────────────────┐  ┌──────────────────────┐│
-│ │ assume.ts            │  │ variants.ts          ││
-│ │ given LiveFacts, no  │  │ given scored variants││
-│ │ feed → 2 bracket sets│  │ → distinct buckets   ││
-│ └──────────────────────┘  └──────────────────────┘│
-│ ┌──────────────────────┐  ┌──────────────────────┐│
-│ │ speed.ts             │  │ multihit.ts          ││
-│ │ given a ResolvedMon  │  │ given per-hit + hit- ││
-│ │ → effective Speed    │  │ count PMF → total PMF││
-│ └──────────────────────┘  └──────────────────────┘│
-│ ┌──────────────────────┐  ┌──────────────────────┐│
-│ │ moves.ts             │  │ types.ts             ││
-│ │ data: multi-hit table│  │ types: shared vocab  ││
-│ │ (from PS data)       │  │ used by every stage  ││
-│ └──────────────────────┘  └──────────────────────┘│
-└───────────────────────────────────────────────────┘
-                          │
-                          ▼
-┌───────────────────────────────────────────────────┐
-│ RENDER                     pure: given x, return y│
-│ ┌──────────────────────┐                          │
-│ │ render.ts            │                          │
-│ │ given a render model │                          │
-│ │ → tooltip HTML string│                          │
-│ └──────────────────────┘                          │
-└───────────────────────────────────────────────────┘
-                          │ tooltip HTML
-                          ▼
+```mermaid
+flowchart TB
+    subgraph content["content.ts — the shell (impure)<br/>monkey-patches Showdown's tooltip, triggers the fetch"]
+        direction TB
+        subgraph section["section.ts — pure orchestrator<br/>folds FETCH → REASON → RENDER into one HTML string"]
+            direction TB
+            subgraph FETCH["FETCH — reads the page + the network"]
+                direction LR
+                readState["battle/readState.ts<br/>PS client objects → LiveFacts"]
+                randbats["data/randbats.ts<br/>fetch + cache the sets feed"]
+            end
+
+            subgraph REASON["REASON — pure: given x, return y"]
+                direction LR
+                resolve["resolve.ts<br/>LiveFacts + a set → ResolvedMon"]
+                damage["damage.ts<br/>2 ResolvedMon + move → DamageReport"]
+                assume["assume.ts<br/>LiveFacts, no feed → 2 bracket sets"]
+                variantsN["variants.ts<br/>scored variants → distinct buckets"]
+                speedN["speed.ts<br/>ResolvedMon → effective Speed"]
+                multihitN["multihit.ts<br/>per-hit + hit-count PMF → total PMF"]
+                movesN["moves.ts<br/>data: multi-hit table"]
+                typesN["types.ts<br/>shared vocab"]
+            end
+
+            subgraph RENDER["RENDER — pure: given x, return y"]
+                renderTs["render.ts<br/>render model → tooltip HTML string"]
+            end
+
+            FETCH --> REASON --> RENDER
+        end
+    end
 ```
 
 At runtime those modules fold together top to bottom. The only thing the format changes

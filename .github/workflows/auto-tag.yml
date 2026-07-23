@@ -89,5 +89,7 @@ jobs:
       contents: write
       id-token: write
       attestations: write
+    secrets: inherit # a workflow_call gets NO secrets by default — the Chrome Web
+    # Store step needs the CHROME_* repo secrets, which release.yml can't see otherwise
     with:
       tag: ${{ needs.detect.outputs.tag }}

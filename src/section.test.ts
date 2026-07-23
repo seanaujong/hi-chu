@@ -110,6 +110,14 @@ function maxPercent(html: string): number {
   return Number(m[1]);
 }
 
+/** A stand-in for a revealed-but-benched sidebar icon: the same Pokémon object, minus
+ *  its membership in its side's active slot — the one thing `isActiveMon` reads — while
+ *  everything else (the shared `.side` reference, its `ident`) stays wired up exactly
+ *  as it is for the genuine active-mon hover, so the private-team lookup still resolves. */
+function benched(pokemon: ClientPokemon): ClientPokemon {
+  return {...pokemon};
+}
+
 describe('buildMoveSection on the real captured battle (our move buttons)', () => {
   const {battle, active} = loadBattle();
 
@@ -455,9 +463,15 @@ describe('the matchup view’s defensive half — what the foe’s moves would d
   const moves = ['dracometeor', 'flamethrower', 'hurricane', 'roost'];
   const mine = {myNoivernItem: 'heavydutyboots', myNoivernMoves: moves};
 
-  it('lists Tentacruel’s own possible moves as an "Incoming:" group, after our own damage lines', () => {
+  it('omits the Incoming group for the mon actually ACTIVE on the field — hovering the foe already shows those numbers', () => {
     const {battle, active} = loadBattle(mine);
     const html = buildPokemonSection(battle, active('Noivern'), data);
+    expect(html).not.toContain('Incoming');
+  });
+
+  it('lists Tentacruel’s own possible moves as an "Incoming:" group for a switch-decision candidate (a revealed bench mon), after our own damage lines', () => {
+    const {battle, active} = loadBattle(mine);
+    const html = buildPokemonSection(battle, benched(active('Noivern')), data);
     expect(html).toContain('<small>Incoming:</small>');
     // Every one of Tentacruel's Bulky Support moves should show up with a damage range.
     expect(html).toMatch(/Surf: [\d.]+% - [\d.]+%/);
@@ -470,20 +484,20 @@ describe('the matchup view’s defensive half — what the foe’s moves would d
     // Knock Off boosted 1.5× by our real Heavy-Duty Boots — real-item awareness applies to
     // the DEFENSIVE side too, not just our own attacks.
     const {battle, active} = loadBattle(mine);
-    const html = buildPokemonSection(battle, active('Noivern'), data);
+    const html = buildPokemonSection(battle, benched(active('Noivern')), data);
     const incoming = html.slice(html.indexOf('<small>Incoming:</small>'));
     expect(incoming).toMatch(/Knock Off: [\d.]+% - [\d.]+%/);
   });
 
   it('marks a move Tentacruel has actually used with the sets view’s own ✓', () => {
     const {battle, active} = loadBattle({...mine, tentacruelMoveTrack: ['Surf']});
-    const html = buildPokemonSection(battle, active('Noivern'), data);
+    const html = buildPokemonSection(battle, benched(active('Noivern')), data);
     const incoming = html.slice(html.indexOf('<small>Incoming:</small>'));
     expect(incoming).toContain('<b>✓ Surf</b>:');
     expect(incoming).not.toContain('✓ Knock Off');
   });
 
-  it('reaches the switch menu too — the only surface a benched mon’s incoming threat can appear on', () => {
+  it('reaches the switch menu too — the only OTHER surface a benched mon’s incoming threat can appear on', () => {
     const {battle} = loadBattle();
     const server: unknown = {
       ident: 'p1: Noivern', details: 'Noivern, L82, F', condition: '272/272',
@@ -498,7 +512,7 @@ describe('the matchup view’s defensive half — what the foe’s moves would d
   it('is randbats-only — an open format has no move pool to enumerate, so it renders nothing', () => {
     const {battle, active} = loadBattle(mine);
     const openBattle = {...battle, tier: '[Gen 9] OU'} as ClientBattle;
-    const html = buildPokemonSection(openBattle, active('Noivern'), null);
+    const html = buildPokemonSection(openBattle, benched(active('Noivern')), null);
     expect(html).not.toContain('Incoming');
   });
 });
@@ -600,7 +614,7 @@ describe('the ⚡ line on OUR side of the pair (matchup view + switch menu)', ()
 // and a spectator replay carries no `myPokemon` to drive the own-side surfaces at all.
 
 /** A Custom Game battle: our Dragonite active vs their Tentacruel, private team wired. */
-function openBattle(over: {tier?: string; gameType?: string; myStats?: Record<string, number>; myItem?: string; myMoves?: string[]; foeItem?: string; foeDexAbilities?: Record<string, string>} = {}): {
+function openBattle(over: {tier?: string; gameType?: string; myStats?: Record<string, number>; myItem?: string; myAbility?: string; myMoves?: string[]; foeItem?: string; foeDexAbilities?: Record<string, string>} = {}): {
   battle: ClientBattle;
   active: (name: string) => ClientPokemon;
 } {
@@ -635,6 +649,7 @@ function openBattle(over: {tier?: string; gameType?: string; myStats?: Record<st
         details: 'Dragonite, L100',
         condition: '386/386',
         item: over.myItem ?? '',
+        ability: over.myAbility ?? '',
         moves: over.myMoves ?? ['earthquake', 'tripleaxel', 'roost'],
         maxhp: 386,
         ...(over.myStats ? {stats: over.myStats} : {}),
@@ -707,6 +722,17 @@ describe('open formats (no set feed): the move tooltip', () => {
       .toBeGreaterThan(bucketMax(buildMoveSection(plain.battle, plain.active('Dragonite'), 'Earthquake', null), 'uninvested'));
   });
 
+  it('uses OUR real ability, in the client’s id form — a silent ability the public battle view has not revealed', () => {
+    // The public battle-view Pokémon (a bare stub here, `ability: ''`) never learns our
+    // OWN ability until something reveals it in the log — Aerilate would otherwise be
+    // invisible to our own move's damage. Aerilate turns Return (Normal) into a
+    // STAB Flying move with a 1.2× boost on top: a dramatic, unmistakable signal.
+    const plain = openBattle({myMoves: ['return']});
+    const aerilate = openBattle({myMoves: ['return'], myAbility: 'aerilate'});
+    expect(bucketMax(buildMoveSection(aerilate.battle, aerilate.active('Dragonite'), 'Return', null), 'uninvested'))
+      .toBeGreaterThan(bucketMax(buildMoveSection(plain.battle, plain.active('Dragonite'), 'Return', null), 'uninvested'));
+  });
+
   it('keeps the foe-item caveats silent with nothing revealed, but still applies a revealed item', () => {
     // No item pool → itemStanding finds no holders → no "if Leftovers"/"if Focus Sash".
     const {battle, active} = openBattle();
@@ -745,6 +771,19 @@ describe('open formats: the own-hover matchup view and the switch menu', () => {
   it('renders nothing on a FOE hover (v1: the information game needs a pool)', () => {
     const {battle, active} = openBattle();
     expect(buildPokemonSection(battle, active('Tentacruel'), null)).toBe('');
+  });
+
+  it('uses OUR real ability here too — the matchup view is a second attacker-resolution site', () => {
+    const returnMax = (b: ReturnType<typeof openBattle>) => {
+      const m = /Return: <small>\(uninvested\)<\/small> [\d.]+% - ([\d.]+)%/.exec(
+        buildPokemonSection(b.battle, b.active('Dragonite'), null),
+      );
+      if (!m) throw new Error('no Return line');
+      return Number(m[1]);
+    };
+    const plain = openBattle({myMoves: ['return']});
+    const aerilate = openBattle({myMoves: ['return'], myAbility: 'aerilate'});
+    expect(returnMax(aerilate)).toBeGreaterThan(returnMax(plain));
   });
 
   it('builds the switch-menu block from the private ServerPokemon, exact stats included', () => {

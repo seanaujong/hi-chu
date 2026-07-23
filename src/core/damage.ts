@@ -105,6 +105,18 @@ function knownItem(gen: Gen, item: string | undefined): string | undefined {
   return gen.items.get(toID(item))?.name;
 }
 
+/**
+ * The same id→name quirk as `knownItem`, for ability: `@smogon/calc`'s `Pokemon`
+ * constructor takes whatever string it's given verbatim (`options.ability || ...`, no
+ * normalization), and every ability-gated mechanic in the calc compares `this.ability`
+ * against a display name ("Huge Power") — so an id-form ability ("hugepower", the shape
+ * `battle.myPokemon` carries via `readOwnAbility`) would silently apply nothing at all.
+ */
+function knownAbility(gen: Gen, ability: string | undefined): string | undefined {
+  if (ability === undefined) return undefined;
+  return gen.abilities.get(toID(ability))?.name;
+}
+
 const STAT_IDS: readonly StatID[] = ['hp', 'atk', 'def', 'spa', 'spd', 'spe'];
 
 /**
@@ -235,6 +247,7 @@ function solvedSpread(gen: Gen, mon: ResolvedMon): ReturnType<typeof spreadForFi
  *  Exported for core/speed.ts, which reads the same Pokemon's effective Speed. */
 export function buildPokemon(gen: Gen, mon: ResolvedMon, curHP?: number): Pokemon {
   const item = knownItem(gen, mon.item);
+  const ability = knownAbility(gen, mon.ability);
   // Exact server-reported finals win over the assumed spread — expressed as an
   // equivalent spread because that's the only form that survives calculate()'s clone.
   const solved = solvedSpread(gen, mon);
@@ -244,7 +257,7 @@ export function buildPokemon(gen: Gen, mon: ResolvedMon, curHP?: number): Pokemo
     nature: solved?.nature ?? mon.nature,
     evs: solved?.evs ?? mon.evs,
     ivs: solved?.ivs ?? mon.ivs,
-    ...(mon.ability !== undefined ? {ability: mon.ability} : {}),
+    ...(ability !== undefined ? {ability} : {}),
     ...(item !== undefined ? {item} : {}),
     ...(mon.abilityOn ? {abilityOn: true} : {}),
     ...(mon.status !== undefined ? {status: mon.status} : {}),
@@ -371,10 +384,14 @@ export function calcDamage(
   }
 
   // --- Multi-hit: the corrected path -----------------------------------------
+  // Compared against `atk`'s already-dex-resolved ability/item, not the raw ResolvedMon
+  // fields — an own-side read (`readOwnAbility`/`readOwnItem`) can hand those in id form
+  // ("skilllink"), which would never string-match the display name a bare `attacker.item`
+  // read expects.
   const mods = {
-    skillLink: attacker.ability === 'Skill Link',
-    loadedDice: attacker.item === 'Loaded Dice',
-    wideLens: attacker.item === 'Wide Lens',
+    skillLink: atk.ability === 'Skill Link',
+    loadedDice: atk.item === 'Loaded Dice',
+    wideLens: atk.item === 'Wide Lens',
   };
   const counts = hitCountPmf(profile.spec, mods);
 

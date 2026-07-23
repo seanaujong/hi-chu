@@ -99,6 +99,17 @@ describe('a species the calc dex does not know (a Champions-invented Mega)', () 
     expect(specsId.total.max).toBeGreaterThan(itemless.total.max);
   });
 
+  it('a known ability applies in id form too — normalized to the dex name for the calc', () => {
+    // The calc's mechanics compare abilities by display name and silently IGNORE any
+    // other form. battle.myPokemon carries "hugepower" — without normalization the
+    // doubled Attack would vanish and the number would silently read ability-less.
+    const powerId = calcDamage(mon({speciesForme: 'Azumarill', ability: 'hugepower'}), arbok, 'Play Rough', {gen: 9, field: noField});
+    const powerName = calcDamage(mon({speciesForme: 'Azumarill', ability: 'Huge Power'}), arbok, 'Play Rough', {gen: 9, field: noField});
+    const abilityless = calcDamage(mon({speciesForme: 'Azumarill'}), arbok, 'Play Rough', {gen: 9, field: noField});
+    expect(powerId.total).toEqual(powerName.total);
+    expect(powerId.total.max).toBeGreaterThan(abilityless.total.max);
+  });
+
   it('a species the calc DOES know keeps its canonical record — dex data changes nothing', () => {
     const bogus = {baseStats: {hp: 1, atk: 1, def: 1, spa: 1, spd: 1, spe: 1}, types: ['Normal']};
     const withDex = calcDamage(mon({speciesForme: 'Arbok', level: 54, speciesData: bogus}), mega, 'Crunch', {gen: 9, field: noField});
@@ -212,6 +223,28 @@ describe('hit-count modifiers', () => {
     ]);
     expect(r.total.min).toBe(r.multiHit!.perHit.min * 4);
     expect(r.total.max).toBe(r.multiHit!.perHit.max * 5);
+  });
+
+  it('Skill Link/Loaded Dice still apply in id form — compared against the dex-resolved atk, not the raw field', () => {
+    // An own-side read (readOwnAbility/readOwnItem) can hand these in id form
+    // ("skilllink", "loadeddice"). A bare `attacker.ability === 'Skill Link'` on the
+    // ResolvedMon would silently miss it; buildPokemon's `atk` is already resolved.
+    const skillLinkId = calcDamage(
+      mon({speciesForme: 'Cloyster', nature: 'Adamant', ability: 'skilllink'}),
+      mon({speciesForme: 'Tyranitar'}),
+      'Icicle Spear',
+    );
+    expect(skillLinkId.multiHit!.hits.distribution).toEqual([[5, 1]]);
+
+    const loadedDiceId = calcDamage(
+      mon({speciesForme: 'Breloom', nature: 'Adamant', item: 'loadeddice'}),
+      mon({speciesForme: 'Tyranitar'}),
+      'Bullet Seed',
+    );
+    expect(loadedDiceId.multiHit!.hits.distribution).toEqual([
+      [4, 0.5],
+      [5, 0.5],
+    ]);
   });
 });
 

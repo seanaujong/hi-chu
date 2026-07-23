@@ -9,6 +9,7 @@ import {
   tookEntryHazardDamage,
   switchedIntoStealthRockUnharmed,
   readOwnItem,
+  readOwnAbility,
   readOwnServerPokemon,
   readOwnMoves,
   readOwnStats,
@@ -452,6 +453,33 @@ describe('readOwnItem (your private item, for your own move damage only)', () =>
 
   it('treats an empty item string as no item', () => {
     expect(readOwnItem(battle([{ident: 'p1: Iron Bundle', item: ''}]), mon)).toBeUndefined();
+  });
+});
+
+describe('readOwnAbility (your private CURRENT ability, for your own move damage only)', () => {
+  // The public battle-view Pokémon only learns an ability once something reveals it in
+  // the log, even for our own active — so a silent ability (Huge Power here) would
+  // otherwise be invisible to our own damage calc until something else reveals it.
+  const battle = (myPokemon?: unknown): ClientBattle =>
+    ({gen: 9, tier: '[Gen 9] Random Battle', sides: [], myPokemon} as unknown as ClientBattle);
+  const mon = clientMon({ident: 'p1: Azumarill'});
+
+  it("reads the viewer's own CURRENT ability by ident (id form)", () => {
+    expect(readOwnAbility(battle([{ident: 'p1: Azumarill', ability: 'hugepower', baseAbility: 'hugepower'}]), mon)).toBe(
+      'hugepower',
+    );
+  });
+
+  it('reads the infected ability once something (e.g. Mummy) has changed it mid-battle', () => {
+    // baseAbility stays the innate one; ability is what the request reports as CURRENT —
+    // readOwnAbility deliberately reads the current one, matching the public field's role.
+    expect(readOwnAbility(battle([{ident: 'p1: Azumarill', ability: 'mummy', baseAbility: 'hugepower'}]), mon)).toBe('mummy');
+  });
+
+  it('is undefined when spectating (no myPokemon), when nothing matches the ident, or in gen ≤6 (no live field)', () => {
+    expect(readOwnAbility(battle(undefined), mon)).toBeUndefined();
+    expect(readOwnAbility(battle([{ident: 'p1: Cetitan', ability: 'slushrush'}]), mon)).toBeUndefined();
+    expect(readOwnAbility(battle([{ident: 'p1: Azumarill'}]), mon)).toBeUndefined();
   });
 });
 

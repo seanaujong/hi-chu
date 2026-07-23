@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2020"],
+    "types": [],
+    "noEmit": true
+  },
+  "include": ["core/**/*.ts", "battle/**/*.ts", "section.ts", "section.test.ts", "data/lookup.ts", "data/lookup.test.ts"]
+}

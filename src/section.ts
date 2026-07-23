@@ -42,7 +42,7 @@ import type {
 } from './core/types.js';
 import {transformCopy} from './core/transform.js';
 import {applySwitchInHazards} from './core/hazards.js';
-import {pickEntry, megaEntryForItem, megaEntriesFor} from './data/randbats.js';
+import {pickEntry, megaEntryForItem, megaEntriesFor} from './data/lookup.js';
 import {
   toLiveFacts,
   readBehaviors,

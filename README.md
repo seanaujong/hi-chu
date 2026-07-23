@@ -31,7 +31,7 @@ network unless that IS its job. Dependencies only ever point downward:
 
 ```
 ┌───────────────────────────────────────────────────┐
-│ content.ts                      the shell (impure)│
+│ content.ts                the shell (impure) · DOM│
 │ monkey-patches Showdown's tooltip,                │
 │ triggers the fetch, hands the hover to section.ts │
 └───────────────────────────────────────────────────┘
@@ -58,7 +58,7 @@ network unless that IS its job. Dependencies only ever point downward:
 ┌───────────────────────────────────────────────────┐
 │ REASON                     pure: given x, return y│
 │ ┌──────────────────────┐  ┌──────────────────────┐│
-│ │ resolve.ts           │  │ damage.ts            ││
+│ │ resolve.ts           │  │ damage.ts      (calc)││
 │ │ given LiveFacts + a  │  │ given 2 ResolvedMon  ││
 │ │ set → one ResolvedMon│  │ + move → DamageReport││
 │ └──────────────────────┘  └──────────────────────┘│
@@ -68,7 +68,7 @@ network unless that IS its job. Dependencies only ever point downward:
 │ │ feed → 2 bracket sets│  │ → distinct buckets   ││
 │ └──────────────────────┘  └──────────────────────┘│
 │ ┌──────────────────────┐  ┌──────────────────────┐│
-│ │ speed.ts             │  │ multihit.ts          ││
+│ │ speed.ts       (calc)│  │ multihit.ts          ││
 │ │ given a ResolvedMon  │  │ given per-hit + hit- ││
 │ │ → effective Speed    │  │ count PMF → total PMF││
 │ └──────────────────────┘  └──────────────────────┘│
@@ -181,7 +181,11 @@ is *where the foe's possibilities come from* — everything below that seam is s
 ### The shell
 
 - **`src/data/randbats.ts`** — fetches and caches the set feed (memory + `localStorage`
-  with a TTL).
+  with a TTL). The only file in the codebase that touches the network.
+- **`src/data/lookup.ts`** — pure reads over a feed already in hand: `pickEntry`, the two
+  Mega lookups, the Champions stat-point conversion. Split out of `randbats.ts` so a caller
+  that only needs the lookups, like `section.ts`, doesn't have to depend on the file that
+  also calls `fetch`.
 - **`src/battle/readState.ts`** — reads Showdown's untyped client objects into our
   typed `LiveFacts` and `FieldFacts` (weather, terrain, the defender's screens). The
   structural `ClientPokemon`/`ClientBattle`/`ClientSide` interfaces document exactly

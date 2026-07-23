@@ -31,8 +31,12 @@ import {survivingItems} from './deductions.js';
  *
  * All three can only ever REJECT every role, never select one. Narrowing on nothing is the
  * honest answer; rejecting everything is a lie about the set.
+ *
+ * Exported because it's also the general "which species could this format's feed build
+ * with ability X" check — `section.ts` reuses it to discover Illusion holders from the
+ * feed itself rather than a hardcoded species list.
  */
-function buildableAbilities(entry: RandbatsEntry): ReadonlySet<string> {
+export function buildableAbilities(entry: RandbatsEntry): ReadonlySet<string> {
   const pool = [...entry.abilities, ...Object.values(entry.roles ?? {}).flatMap((r) => r.abilities)];
   return new Set(pool.map(toId));
 }

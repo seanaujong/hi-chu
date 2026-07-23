@@ -3,13 +3,22 @@
 # the published artifact was built by THIS workflow from THIS commit — turning "trust
 # me, it's safe" into a check. See README → "Verifying a release".
 #
-# Tag a release with the version already in package.json/manifest.json, e.g.:
-#   git tag v0.2.0 && git push origin v0.2.0
+# Normally reached via auto-tag.yml, which creates and pushes the v* tag itself once
+# a version bump lands on main, then calls this workflow directly (workflow_call) —
+# a tag pushed by the default GITHUB_TOKEN doesn't cascade-trigger the `push: tags`
+# event below, so the chain has to be explicit. The tag trigger still works standalone
+# as a manual escape hatch: git tag v0.2.0 && git push origin v0.2.0.
 name: Release
 
 on:
   push:
     tags: ['v*']
+  workflow_call:
+    inputs:
+      tag:
+        description: The v* tag to release (defaults to the triggering ref's tag name)
+        required: false
+        type: string
 
 permissions:
   contents: write # create the GitHub Release
@@ -19,8 +28,12 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RELEASE_TAG }} # explicit: workflow_call's default ref is the CALLER's (main), not this tag
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
@@ -45,6 +58,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$GITHUB_REF_NAME" hi-chu-*.zip SHA256SUMS \
-            --title "$GITHUB_REF_NAME" \
+          gh release create "$RELEASE_TAG" hi-chu-*.zip SHA256SUMS \
+            --title "$RELEASE_TAG" \
             --notes "Signed build provenance is attached. Verify the download with \`gh attestation verify hi-chu-*.zip --repo $GITHUB_REPOSITORY\`, then see the README's \"Verifying a release\" section for the full check."

@@ -1,0 +1,64 @@
+# Tags and releases automatically once a version bump lands on main, so cutting a
+# release never depends on a human's local git matching what actually merged (the
+# risk: tagging a stale local main misses commits that merged after your last pull).
+# Fires on every push to main, but is a no-op unless package.json's version has no
+# matching tag yet — i.e. unless this push WAS a version-bump merge.
+#
+# What this does NOT change: npm run release-check and the release-visual-check skill
+# still need a real browser/human eyes, so they stay manual gates run BEFORE the
+# version-bump PR is merged (see CLAUDE.md → "Cutting a release"). This workflow only
+# takes over the mechanical step after that: tag the merged commit, then build+publish.
+name: Auto-tag release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write # create the tag and the GitHub Release
+  id-token: write # OIDC token so Sigstore can sign the attestation (release.yml)
+  attestations: write # record the provenance attestation (release.yml)
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Read the version and check whether it's already released
+        id: check
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          MANIFEST_VERSION=$(node -p "require('./public/manifest.json').version")
+          if [ "$PKG_VERSION" != "$MANIFEST_VERSION" ]; then
+            echo "::error::package.json version ($PKG_VERSION) and public/manifest.json version ($MANIFEST_VERSION) disagree — bump both by hand before merging." >&2
+            exit 1
+          fi
+
+          TAG="v$PKG_VERSION"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Tag this commit
+        if: steps.check.outputs.should_release == 'true'
+        run: |
+          git tag "${{ steps.check.outputs.tag }}"
+          git push origin "${{ steps.check.outputs.tag }}"
+
+  release:
+    needs: tag
+    if: needs.tag.outputs.should_release == 'true'
+    uses: ./.github/workflows/release.yml
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    with:
+      tag: ${{ needs.tag.outputs.tag }}

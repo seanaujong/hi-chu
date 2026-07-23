@@ -322,9 +322,8 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   each guard watched failing) and `readState.test.ts` (`readMegaToggled`, `readMegaForme` incl. the
   already-Mega and no-stone guards). 👁 for drift like Tera, on a mega-capable format — gen 9
   randbats has no Megas, so use `node scripts/player-check.mjs gen9championsrandombattle`. It
-  probes `readMegaForme`'s live source (the stone→forme dex map, plus any stone-holder in the
-  private team — verified live: Gengar/Gengarite → Gengar-Mega, Dragonite/Dragoninite →
-  Dragonite-Mega); `battle.dex.items` is also readable in a spectator replay, so `drift-check`
+  probes `readMegaForme`'s live source: the stone→forme dex map, against real stone-holders in
+  the private team. `battle.dex.items` is also readable in a spectator replay, so `drift-check`
   guards the map shape too. The checkbox SELECTOR still needs the Mega mon ACTIVE with the move
   menu open (a random battle rarely obliges) — a team format that forces a Mega lead is the
   reliable way to exercise it end to end.
@@ -603,20 +602,19 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   can likewise land on a *borrowed* ability (a Skill Swap before the innate one was ever
   revealed). A feed role only ever lists a species' REAL abilities, so such a name can only
   ever REJECT every role, never select one — every Calyrex-Shadow hover read "⚠ matched no
-  known set" from the moment it switched in (replay gen9randombattle-2648347259, reproduced
-  live). So `innateAbility` verifies the reported name against the species' own dex ability
-  slots (`speciesData.abilities`, the tolerant client-dex read `assume.ts` already relies on)
-  and returns undefined when it isn't one of them: it tells us nothing, so it narrows nothing.
-  Absent dex slots (older client, a fixture with no `battle.dex`) the name is taken as given,
-  exactly as before — a pure false-rejection filter that can't cost real narrowing power.
+  known set" from the moment it switched in. So `innateAbility` verifies the reported name
+  against the species' own dex ability slots (`speciesData.abilities`, the tolerant
+  client-dex read `assume.ts` already relies on) and returns undefined when it isn't one of
+  them: it tells us nothing, so it narrows nothing. Absent dex slots (older client, a
+  fixture with no `battle.dex`) the name is taken as given — a pure false-rejection filter
+  that can't cost real narrowing power.
   `deductions.ts` reads the same `innateAbility` (its inline copy was the second home for the
   law) — **and that is now what this check is FOR**: role narrowing is governed by the
   stronger pool law above (a name no set was built with narrows nothing), but `deductions.ts`
   has no pool to test against and must not trust a bogus name either, or a borrowed ability
   would let it conclude "not Sheer Force" and rule out a Life Orb the mon may really hold.
   Checked by `resolve.test.ts` ("an ability the species cannot have narrows nothing" —
-  the umbrella and borrowed cases, both watched failing with the check reverted, and both
-  reproduced/cured against the live replay with the shipped bundle).
+  the umbrella and borrowed cases, both watched failing with the check reverted).
 - ✅ **Damage under a hidden item/ability is split by DISTINCT outcome, not by set.**
   When the target's item is unknown, `resolveVariants` enumerates every still-possible
   set and the move tooltip shows one labelled line per *distinct* damage result — but
@@ -660,9 +658,8 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   native `.tooltip-section` divider `border-top:1px solid #888; padding:2px 4px` plus a
   slight grey panel `rgba(0,0,0,.045)`), and the two colour value-adds the original lacks
   (red KO, orange caveat). Each candidate set is one `.hichu-block`; the move tooltip is
-  one. Don't reintroduce custom `font-size`/`opacity`/colour on the shell — that's exactly
-  what read as muddy. (Verified live against the real old extension and under Showdown's
-  own stylesheet via `room.tooltips.showPokemonTooltip`.)
+  one. Custom `font-size`/`opacity`/colour on the shell clashes with the native chrome
+  around it — don't reintroduce it.
 - 👁 **No summary header on the sets view.** The per-set blocks speak for themselves;
   there is no "Possible sets (N of M) · dmg vs …" line (removed by request). Checked by
   `render.test.ts` ("omits the summary header entirely").
@@ -771,10 +768,10 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   out of scope: speed order, not turn order. New client reads (`tailwind` in
   `sideConditions`, `trickroom` in `pseudoWeather`) → probed by `npm run drift-check`. The
   BENCH ⚡ needs a private team, so a spectator replay can't reach it: `npm run player-check`
-  probes it on both sides of the format split (randbats must render one per bench block, an
-  open format none), verified live — five bench mons, each its own speed vs the foe active.
-  Checked by `speed.test.ts`, `render.test.ts` (verdict/aside/Trick Room/tie lines; the ⚡
-  between header and move lines), and `section.test.ts` (real fixture: "⚡ you move first —
+  probes it on both sides of the format split, confirming randbats renders one ⚡ line per
+  bench block and an open format renders none. Checked by `speed.test.ts`, `render.test.ts`
+  (verdict/aside/Trick Room/tie lines; the ⚡ between header and move lines), and
+  `section.test.ts` (real fixture: "⚡ you move first —
   249 vs 216" leads the foe tooltip AND the matchup block, byte-identical; the switch menu's
   Scarf/paralysis/no-boosts reads; the mirror and the open format have no ⚡).
 - ✅ **Unburden's ×2 Speed is armed via an explicit `abilityOn` flag, not inferred from
@@ -860,9 +857,8 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   `set.evs` as per-stat points and puts `max(2·points − 1, 0)` where mainline puts
   `IV + ⌊EV/4⌋` (IVs hardcoded 31). Fed literally to `@smogon/calc`, the feed-wide `11`
   deflates every stat on BOTH mons — raw damage roughly cancels, but the shown PERCENT
-  inflates because the defender's max HP is the denominator (replay
-  gen9championsrandombattle-2646312545: Poltergeist into Arbok read "min 47%" for a true
-  42.9%). `randbats.championsStatPointsToEvs` converts with `EV = 8·points − 4` (exact:
+  inflates because the defender's max HP is the denominator.
+  `randbats.championsStatPointsToEvs` converts with `EV = 8·points − 4` (exact:
   `⌊(8p−4)/4⌋ = 2p−1`), keyed on the format id inside `fetchRandbats` — mainline feeds' `evs`
   ARE EVs and pass through untouched — and the localStorage cache is versioned
   (`STORAGE_VERSION`) so a stale unconverted copy can't outlive an update. Checked by

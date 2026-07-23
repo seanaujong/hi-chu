@@ -85,19 +85,29 @@ Pokémon / Showdown? See the [Glossary](#glossary) at the bottom.
 
 ## How it's built
 
-The design is a small pure core behind a thin shell. Three steps stay strictly separate —
-**fetch** (the live page, the network), **reason** (the domain logic), **render** (model →
-HTML) — so a step never reaches into the DOM or the network unless that IS its job. The
-shell (`content.ts`) is the only thing that folds them together; everything below it is an
-ordinary, testable function, and dependencies only ever point downward:
+The design is a small pure core behind a thin shell, and the shell itself splits in two:
+`content.ts` is the only *impure* piece — it monkey-patches Showdown's tooltip and touches
+the DOM/network directly — but it hands the actual work to `section.ts`, which is pure
+(no DOM, no cache, no network of its own) and does the real folding. Below that, three
+steps stay strictly separate — **fetch** (the live page, the network), **reason** (the
+domain logic), **render** (model → HTML) — so a step never reaches into the DOM or the
+network unless that IS its job. Dependencies only ever point downward:
 
 ```
 ┌───────────────────────────────────────────────────┐
-│ content.ts                               the shell│
-│ hooks PS tooltip,                                 │
-│ folds FETCH → REASON → RENDER into one HTML string│
+│ content.ts                      the shell (impure)│
+│ monkey-patches Showdown's tooltip,                │
+│ triggers the fetch, hands the hover to section.ts │
 └───────────────────────────────────────────────────┘
-                          │ for each hover
+                          │ hover event
+                          ▼
+┌───────────────────────────────────────────────────┐
+│ section.ts                       pure orchestrator│
+│ given the battle, the hover,                      │
+│ and the data → folds FETCH → REASON               │
+│ → RENDER into one HTML string                     │
+└───────────────────────────────────────────────────┘
+                          │
                           ▼
 ┌───────────────────────────────────────────────────┐
 │ FETCH                 reads the page + the network│
@@ -247,7 +257,15 @@ is *where the foe's possibilities come from* — everything below that seam is s
   `world: "MAIN"` runs it in the page's own JS context (Chrome Manifest V3, "MV3") so it
   can reach Showdown's objects. It *monkey-patches* (wraps at runtime)
   `BattleTooltips.prototype.showPokemonTooltip` and appends our section. Everything is
-  wrapped so our code can never break Showdown's own tooltip.
+  wrapped so our code can never break Showdown's own tooltip. It stays trivial on purpose —
+  it triggers the feed fetch, reads the Tera/Mega toggles, and hands everything else to
+  `section.ts`.
+- **`src/section.ts`** — the actual orchestration, and the reason `content.ts` can stay
+  trivial: given the live battle, the hovered thing, and the feed data, it folds
+  fetch → reason → render into the tooltip's HTML string. It's pure itself (no DOM, no
+  cache, no network — `content.ts` owns that plumbing and hands the cached data in), which
+  is what lets `section.test.ts` drive the exact code path a live hover runs, against a
+  real captured battle, without a browser.
 
 ### The multi-hit fix (the value-add)
 

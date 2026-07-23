@@ -13,82 +13,28 @@ Battle helpers, one hover away. hi-chu is a small browser extension that enriche
 Pokémon Showdown's in-battle tooltips — hover a Pokémon or one of your move buttons and it
 fills in what you'd otherwise tab out to a calculator or a set dump for:
 
-**Damage works in every format.** The set-inference features below need a published list of
-what a Pokémon might be running, which exists only for Random Battles — so those are
-Random-Battle-only, and every other format (OU, VGC, Custom Game) gets the damage surfaces.
+- **How much damage you'll do.** Hover a move button, or one of your own Pokémon (benched
+  included), for its damage into the current opponent — KO%, granular multi-hit math (a
+  Bullet Seed's random 2–5 hits, integrated properly, not `hits × one roll`), and a
+  reality-aware calc that reads the live battle: active Tera/Mega (with a preview for a
+  ticked-but-not-yet-used one), status, boosts, weather, terrain, and screens. Works in
+  every format.
+- **What the opponent might be running.** *(Random Battles.)* Hovering a Pokémon narrows
+  the randbats sets it could still be, using only what's actually been made public — moves
+  used, revealed item, ability, active Tera. Works both directions: what the foe could
+  still have (and what their kit would do to a Pokémon you're considering switching in), and
+  what they've figured out about you.
+- **Who moves first.** *(Random Battles.)* A ⚡ speed verdict for the active matchup, or for
+  a benched Pokémon right in the switch menu — Scarf, paralysis, Tailwind, and Trick Room all
+  feed it.
 
-- **Which sets are still possible.** *(Random Battles.)* Hovering a Pokémon narrows the
-  randbats sets it could
-  still be running, using *only* what the battle has made public — moves used, revealed item
-  (held, consumed, or knocked off), ability, and any active Terastallization. On the opponent
-  it answers "what could they still have?"; on your own it mirrors "what have they figured out
-  about me?".
-- **Would a switch match up better?** Hovering one of your own Pokémon — benched ones
-  included, whose move buttons you can't hover — leads with each of its moves' damage into
-  the current opponent, KO chance attached. Your real moveset and item are read from your
-  private team, so the numbers are exact; if the foe's hidden item would change a number
-  (an Assault Vest they may or may not hold), the line splits into labelled outcomes
-  instead of guessing. *(Random Battles.)* Right below it, an `Incoming:` group answers the
-  other half of the same question — what the foe's own possible moves would do INTO the
-  Pokémon you're considering, so a switch decision reads both "can it threaten?" and "does
-  it survive?" without leaving the tooltip. A move the foe has actually used is marked ✓,
-  same as the set-inference view.
-- **What if they switch in?** *(Random Battles.)* Hovering one of the opponent's roster
-  icons — a Pokémon they've already revealed but isn't out right now, or one team preview
-  showed but they've never sent in — answers the mirror question: your active's damage into
-  *that* Pokémon, as though it just switched in, entry hazards on their side included. It's
-  silent once the Pokémon is actually active, since the move tooltip already shows that number.
-- **Who moves first.** *(Random Battles.)* Speed order is a fact about a *pair*, so the ⚡
-  verdict appears on both halves of it. Hovering an opponent leads with your active's
-  effective Speed against theirs. Hovering one of your own Pokémon — **including a benched
-  one in the switch menu** — heads its "vs \<foe\>" block with the same verdict, so you can
-  ask "do I outspeed if I send this in?" before committing to the switch. Randbats makes the
-  numbers *exact* (the level is public and the spread is fixed), so the only real unknowns
-  are the ones the set inference already tracks: a still-possible Choice Scarf or weather
-  ability shows up as an "if Choice Scarf: they do" aside, and only when it genuinely
-  survives the evidence. Paralysis, stat stages, Tailwind, and weather all feed the number;
-  Trick Room flips the verdict. Your own side is read from your private team, so a Scarf
-  you're holding counts — and a benched Pokémon carries no stat stages, because it enters
-  with none. In doubles, a foe hover gives one line per active of yours, and your own hover
-  one per foe.
-- **Honest numbers where the sets aren't published.** In a format with no set list, the
-  opponent's EVs are genuinely unknowable — so instead of guessing one number, hi-chu shows
-  the two that *bracket* the truth: `uninvested` and `max HP/Def` (or `max HP/SpD` against a
-  special move). The real answer is between them. Your own side stays exact — Showdown tells
-  your client your Pokémon's real stats, and hi-chu uses them. A ⚠ note says plainly what's
-  assumed. This is also the easiest way to check a specific interaction: build the Pokémon
-  you care about in a Custom Game and hover the move.
-- **Granular multi-hit damage.** Some moves (Bullet Seed, Rock Blast) hit a *random* 2–5
-  times, each hit rolling its own damage. The tooltip shows the per-hit damage range, the
-  expected number of hits, and a *true* KO chance (probability of knocking the target out)
-  that integrates over both the per-hit rolls and the random hit count.
-- **Reality-aware calcs.** It reads the live battle, so an *active* Terastallization, the
-  current status, stat boosts, revealed ability/item, current HP, **weather, terrain, and
-  the defender's screens** all feed the calc. Tick the **Terastallize** checkbox in the
-  move panel and your move damage previews the Tera as already active (your own Tera type,
-  read from your private team) — so Tera Dark + Knock Off shows the boosted number before
-  you commit. Tick **Mega Evolution** and it previews your active Pokémon's Mega forme the
-  same way: the Mega's stats, ability, and typing feed the damage (so Charizard-Mega-X's
-  Tough Claws and 130 Attack show *before* you evolve), and its Speed feeds the ⚡ speed
-  verdict too — except in Gen 6, where a Pokémon kept its base Speed the turn it Mega
-  Evolved. It also follows a Pokémon that has **changed forme mid-battle** — Meloetta-Pirouette
-  after Relic Song, Aegislash-Blade, Darmanitan-Zen, and so on — because the forme's own stats
-  and typing are what the calc must see; and a **Transformed** Pokémon (Ditto's Imposter) is
-  calculated as the one it copied, right down to hitting at *its own* level while wearing the
-  target's stats. The math is delegated to `@smogon/calc`, so
-  interactions resolve correctly — e.g. a *burn* normally halves a physical attacker's damage,
-  but the ability **Guts** ignores that, and the calc gets it right.
-
-The set inference works across most Random Battle formats — standard Gen 9, older gens, and
-variants like **[Gen 9] Champions** (with Mega / Z-Move sets surfaced where a format has
-them). The damage surfaces work anywhere.
-
-hi-chu grew out of the excellent, closed-source [Randbats Tooltip][orig] — a tool worth
-leaning on that had gone a while without updates and tripped on a few formats. This is a
-fresh, open take on the same convenience: same open data feed
-([`pkmn.github.io/randbats`][feed]) and the same community damage library
-([`@smogon/calc`][calc], maintained by Smogon), built to stay maintained. New to competitive
-Pokémon / Showdown? See the [Glossary](#glossary) at the bottom.
+The set-inference side needs Random Battles (standard Gen 9, older gens, and variants like
+**[Gen 9] Champions**); damage works everywhere, exact on your own side and honestly
+bracketed (never guessed) on the foe's when no set list exists. hi-chu is a fresh,
+open-source take on the older, closed-source [Randbats Tooltip][orig], built on the same
+open data feed ([`pkmn.github.io/randbats`][feed]) and damage library ([`@smogon/calc`][calc],
+maintained by Smogon). New to competitive Pokémon / Showdown? See the
+[Glossary](#glossary) at the bottom.
 
 ## How it's built
 

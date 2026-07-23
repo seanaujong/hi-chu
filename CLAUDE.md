@@ -89,8 +89,12 @@ actually happened on GitHub:
    `tag` create+push `vX.Y.Z` at that exact merged commit — never a stale local `main` — and
    `release` hand off to `release.yml` (`workflow_call`, since a tag pushed by the default
    `GITHUB_TOKEN` doesn't cascade-trigger `release.yml`'s own `push: tags` event, so the
-   chain has to be explicit). It also guards that `package.json` and `public/manifest.json`
-   report the same version, failing loudly if the by-hand manifest bump was forgotten.
+   chain has to be explicit — and needs its own `secrets: inherit`, since a `workflow_call`
+   gets ZERO secret access by default even though it's the same repo; without it the Chrome
+   Web Store step below silently received empty strings for every secret and failed, on the
+   first live run this whole pipeline made). It also guards that `package.json` and
+   `public/manifest.json` report the same version, failing loudly if the by-hand manifest
+   bump was forgotten.
 2. **`release.yml`** builds the zip, hashes it, attests build provenance (see README's
    "Verifying a release"), publishes the GitHub release, then pushes the SAME zip live to
    the **Chrome Web Store** via `chrome-webstore-upload-cli` — the one piece that used to

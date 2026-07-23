@@ -214,15 +214,11 @@ is *where the foe's possibilities come from* — everything below that seam is s
 
 ### The pure core (`src/core`)
 
-- **`multihit.ts`** — the probability law. It represents damage and hit counts as
-  PMFs (probability mass functions) and *convolves* them (computes the distribution of a
-  sum of independent random variables) — one per-hit roll summed over the hit-count distribution. This is the fix for `@smogon/calc`, which models *k* hits as
-  `k × one shared roll` (perfectly correlated) — both the variance and the hit-count
-  randomness are wrong there. The exact hit-count distributions (35/35/15/15, Skill
-  Link, Loaded Dice, and the stop-at-miss law for moves that check 90% accuracy before
-  every hit — Population Bomb, Triple Axel, Triple Kick, where Loaded Dice deletes the
-  checks and Wide Lens lifts each to 99%) are taken from Showdown's
-  `sim/battle-actions.ts` and `data/items.ts`.
+- **`multihit.ts`** — the multi-hit fix: `@smogon/calc` treats a *k*-hit move as
+  `k × one shared roll` (wrong on both counts), so this convolves independent per-hit
+  rolls over the real hit-count distribution — Skill Link, Loaded Dice, and the
+  multiaccuracy stop-at-miss law included, sourced from Showdown's own
+  `sim/battle-actions.ts`/`data/items.ts`.
 - **`moves.ts`** — the multi-hit move table, derived from Showdown's `data/moves.ts`:
   each move's hit spec, its per-hit accuracy if it checks one, and — for Triple Axel
   (20/40/60) and Triple Kick (10/20/30), the only two — each hit's own base power.
@@ -239,11 +235,10 @@ is *where the foe's possibilities come from* — everything below that seam is s
   the move attacks) crossed with the species' possible abilities, and reuses `resolve.ts`'s
   "revealed facts always win" writer so that law is written once. It deliberately skips the
   set-narrowing step: there are no candidate sets to narrow.
-- **`damage.ts`** — wraps `@smogon/calc`. For multi-hit moves it asks the calc for one
-  hit at a time — one run for a uniform-power move, one per hit's true base power for
-  Triple Axel/Triple Kick — and runs the convolution over those per-hit rolls. It also
-  turns your Pokémon's server-reported final stats into an equivalent EV/nature spread,
-  which is the only form of them that survives the calc's internal copy of each Pokémon.
+- **`damage.ts`** — wraps `@smogon/calc`, running it once per hit for multi-hit moves
+  and feeding `multihit.ts`'s convolution. It also turns your Pokémon's server-reported
+  final stats into an equivalent EV/nature spread, the only form that survives the
+  calc's internal copy of each Pokémon.
 - **`speed.ts`** — the speed-order law. Effective Speed per still-possible set — the
   arithmetic (Scarf, paralysis, Tailwind, boosts, weather abilities) delegated to
   `@smogon/calc`'s `getFinalSpeed` — with identical numbers collapsed into distinct
@@ -273,39 +268,6 @@ is *where the foe's possibilities come from* — everything below that seam is s
   cache, no network — `content.ts` owns that plumbing and hands the cached data in), which
   is what lets `section.test.ts` drive the exact code path a live hover runs, against a
   real captured battle, without a browser.
-
-### The multi-hit fix (the value-add)
-
-`@smogon/calc` treats a *k*-hit move as `k × one shared roll`: every hit rolls the same,
-and the hit count is fixed. Both are wrong. `core/multihit.ts` instead treats each hit as
-an independent roll and the hit count as a random variable, and convolves them:
-
-```
-┌────────────────────────────────────────────────────────────────┐
-│ inputs                                                         │
-│ • 16 per-hit damage rolls  (each 1/16, uniform)                │
-│ • hit-count PMF  —  2:35%  3:35%  4:15%  5:15%                 │
-└────────────────────────────────────────────────────────────────┘
-                                 │
-                                 ▼
-┌────────────────────────────────────────────────────────────────┐
-│ core/multihit.ts                                               │
-│ convolve one per-hit roll over the hit count,                  │
-│ each hit rolling INDEPENDENTLY                                 │
-└────────────────────────────────────────────────────────────────┘
-                                 │
-                                 ▼
-┌────────────────────────────────────────────────────────────────┐
-│ result                                                         │
-│ total-damage PMF  →  KO%  ·  expected  ·  per-hit range        │
-└────────────────────────────────────────────────────────────────┘
-
-┌────────────────────────────────────────────────────────────────┐
-│ what @smogon/calc does instead  (the bug)                      │
-│ k × one SHARED roll  →  variance too wide,                     │
-│ and the hit count is ignored entirely                          │
-└────────────────────────────────────────────────────────────────┘
-```
 
 For exact shapes and signatures, read the source and the `*.test.ts` files next to each
 module — the tests are the worked examples (and pin the numbers against Showdown).

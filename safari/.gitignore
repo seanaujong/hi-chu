@@ -1,0 +1,8 @@
+# Xcode per-user / generated state — not portable across machines
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+DerivedData/
+.build/
+*.dSYM
+*.dSYM.zip

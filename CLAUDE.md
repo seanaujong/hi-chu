@@ -66,9 +66,18 @@ hazards on switch-in, Illusion, a foe's roster-icon hover. It drives the REAL lo
 in an actual Chrome session rather than injecting the bundle (a live `https://` Showdown page
 mixed-content-blocks a locally-served script, and inlining the ~500KB bundle into a tool call
 is impractical) — so it needs one manual step first: `npm run build`, then Load Unpacked (or
-hit reload) on `dist/` at `chrome://extensions`. Once tagging is safe: `git tag vX.Y.Z && git
-push origin vX.Y.Z` triggers `release.yml` (build + provenance attestation — see README's
-"Verifying a release").
+hit reload) on `dist/` at `chrome://extensions`.
+
+Once tagging is safe, bump the version FIRST — `release.yml` tags whatever's already in the
+files, it doesn't write them. `npm version --no-git-tag-version X.Y.Z` updates
+`package.json`/`package-lock.json`; `public/manifest.json`'s `version` field needs the same
+bump by hand. That's a normal change to a protected file, so it goes through the same
+branch + PR + merge as anything else (see Contributing, below) — only once it's merged does
+`git tag vX.Y.Z <merged-sha> && git push origin vX.Y.Z` trigger `release.yml` (build +
+provenance attestation — see README's "Verifying a release"). Afterward, `gh release edit
+vX.Y.Z --notes '...'` to prepend a human-readable summary of what's new before the
+provenance-verification boilerplate `release.yml` already writes — see any past release for
+the shape.
 
 ## Contributing — every change goes through a branch + PR
 `main` is protected, locally and on GitHub. `npm install`'s `prepare` script points git at

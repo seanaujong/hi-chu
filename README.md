@@ -31,6 +31,11 @@ Random-Battle-only, and every other format (OU, VGC, Custom Game) gets the damag
   Pokémon you're considering, so a switch decision reads both "can it threaten?" and "does
   it survive?" without leaving the tooltip. A move the foe has actually used is marked ✓,
   same as the set-inference view.
+- **What if they switch in?** *(Random Battles.)* Hovering one of the opponent's roster
+  icons — a Pokémon they've already revealed but isn't out right now, or one team preview
+  showed but they've never sent in — answers the mirror question: your active's damage into
+  *that* Pokémon, as though it just switched in, entry hazards on their side included. It's
+  silent once the Pokémon is actually active, since the move tooltip already shows that number.
 - **Who moves first.** *(Random Battles.)* Speed order is a fact about a *pair*, so the ⚡
   verdict appears on both halves of it. Hovering an opponent leads with your active's
   effective Speed against theirs. Hovering one of your own Pokémon — **including a benched

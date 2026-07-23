@@ -10,31 +10,14 @@
 </p>
 
 Battle helpers, one hover away. hi-chu is a small browser extension that enriches
-Pokémon Showdown's in-battle tooltips — hover a Pokémon or one of your move buttons and it
-fills in what you'd otherwise tab out to a calculator or a set dump for:
+Pokémon Showdown's in-battle tooltips:
 
-- **How much damage you'll do.** Hover a move button, or one of your own Pokémon (benched
-  included), for its damage into the current opponent — KO%, granular multi-hit math (a
-  Bullet Seed's random 2–5 hits, integrated properly, not `hits × one roll`), and a
-  reality-aware calc that reads the live battle: active Tera/Mega (with a preview for a
-  ticked-but-not-yet-used one), status, boosts, weather, terrain, and screens. Works in
-  every format.
-- **What the opponent might be running.** *(Random Battles.)* Hovering a Pokémon narrows
-  the randbats sets it could still be, using only what's actually been made public — moves
-  used, revealed item, ability, active Tera. Works both directions: what the foe could
-  still have (and what their kit would do to a Pokémon you're considering switching in), and
-  what they've figured out about you.
-- **Who moves first.** *(Random Battles.)* A ⚡ speed verdict for the active matchup, or for
-  a benched Pokémon right in the switch menu — Scarf, paralysis, Tailwind, and Trick Room all
-  feed it.
+- How much damage will each move do?
+- What Random Battles set is the opponent Pokémon running?
+- Who's faster?
 
-The set-inference side needs Random Battles (standard Gen 9, older gens, and variants like
-**[Gen 9] Champions**); damage works everywhere, exact on your own side and honestly
-bracketed (never guessed) on the foe's when no set list exists. hi-chu is a fresh,
-open-source take on the older, closed-source [Randbats Tooltip][orig], built on the same
-open data feed ([`pkmn.github.io/randbats`][feed]) and damage library ([`@smogon/calc`][calc],
-maintained by Smogon). New to competitive Pokémon / Showdown? See the
-[Glossary](#glossary) at the bottom.
+Grabs set data from [`pkmn.github.io/randbats`][feed] and calculates damage with
+[`@smogon/calc`][calc].
 
 ## How it's built
 
@@ -253,12 +236,8 @@ matching `main`'s GitHub branch protection.
 
 ## Verifying a release
 
-Rather than *asking* you to trust it, hi-chu lets you **check** it. Every tagged
-release ships with a Sigstore-signed [build-provenance attestation][slsa] and a
-`SHA256SUMS` file, so you can confirm the published extension was built by this repo's
-CI from a specific commit — not tampered with, not someone else's code.
-
-**Prove where the download came from** (needs the [GitHub CLI][gh-cli]):
+Every tagged release ships with a Sigstore-signed [build-provenance attestation][slsa]
+and a `SHA256SUMS` file:
 
 ```sh
 gh attestation verify hi-chu-0.2.0.zip --repo seanaujong/hi-chu

@@ -29,33 +29,73 @@ steps stay strictly separate — **fetch** (the live page, the network), **reaso
 domain logic), **render** (model → HTML) — so a step never reaches into the DOM or the
 network unless that IS its job. Dependencies only ever point downward:
 
-```mermaid
-flowchart TB
-    subgraph content["content.ts — the shell (impure) · DOM"]
-        subgraph section["section.ts — pure orchestrator"]
-            subgraph FETCH["FETCH — reads the page + the network"]
-                readState["battle/readState.ts<br/>PS client objects → LiveFacts"]
-                randbats["data/randbats.ts<br/>fetch + cache the sets feed"]
-            end
-
-            subgraph REASON["REASON — pure: given x, return y"]
-                resolve["resolve.ts<br/>LiveFacts + a set → ResolvedMon"]
-                damage["damage.ts (calc)<br/>2 ResolvedMon + move → DamageReport"]
-                assume["assume.ts<br/>LiveFacts, no feed → 2 bracket sets"]
-                variantsN["variants.ts<br/>scored variants → distinct buckets"]
-                speedN["speed.ts (calc)<br/>ResolvedMon → effective Speed"]
-                multihitN["multihit.ts<br/>per-hit + hit-count PMF → total PMF"]
-                movesN["moves.ts<br/>data: multi-hit table"]
-                typesN["types.ts<br/>shared vocab"]
-            end
-
-            subgraph RENDER["RENDER — pure: given x, return y"]
-                renderTs["render.ts<br/>render model → tooltip HTML string"]
-            end
-
-            FETCH --> REASON --> RENDER
-        end
-    end
+```
+┌──────────────────────────────────────────────────────────────┐
+│ content.ts                           the shell (impure) · DOM│
+│ monkey-patches Showdown's tooltip,                           │
+│ triggers the fetch, hands the hover to section.ts            │
+└──────────────────────────────────────────────────────────────┘
+                                │ hover event
+                                ▼
+┌──────────────────────────────────────────────────────────────┐
+│ section.ts                                  pure orchestrator│
+│ given the battle, the hover, and the data                    │
+│ → folds FETCH → REASON → RENDER into one HTML string         │
+└──────────────────────────────────────────────────────────────┘
+──────────── the pipeline — FETCH → REASON → RENDER ────────────
+                                │
+                                ▼
+┌──────────────────────────────────────────────────────────────┐
+│ FETCH                            reads the page + the network│
+│ ┌───────────────────────────┐   ┌───────────────────────────┐│
+│ │ battle/readState.ts       │   │ data/randbats.ts          ││
+│ │ PS client objects         │   │ fetch + cache             ││
+│ │ → typed LiveFacts         │   │ the sets feed             ││
+│ └───────────────────────────┘   └───────────────────────────┘│
+└──────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌──────────────────────────────────────────────────────────────┐
+│ REASON                                pure: given x, return y│
+│ ┌───────────────────────────┐   ┌───────────────────────────┐│
+│ │ resolve.ts                │   │ damage.ts           (calc)││
+│ │ LiveFacts + a set         │   │ 2 ResolvedMon + move      ││
+│ │ → one ResolvedMon         │   │ → DamageReport            ││
+│ └───────────────────────────┘   └───────────────────────────┘│
+│ ┌───────────────────────────┐   ┌───────────────────────────┐│
+│ │ assume.ts                 │   │ variants.ts               ││
+│ │ LiveFacts, no feed        │   │ scored variants           ││
+│ │ → 2 bracket sets          │   │ → distinct buckets        ││
+│ └───────────────────────────┘   └───────────────────────────┘│
+│ ┌───────────────────────────┐   ┌───────────────────────────┐│
+│ │ speed.ts            (calc)│   │ multihit.ts               ││
+│ │ a ResolvedMon             │   │ per-hit + hit-count       ││
+│ │ → effective Speed         │   │ PMF → total PMF           ││
+│ └───────────────────────────┘   └───────────────────────────┘│
+│ ┌───────────────────────────┐   ┌───────────────────────────┐│
+│ │ moves.ts                  │   │ types.ts                  ││
+│ │ data: multi-hit table     │   │ shared vocab              ││
+│ │ (from PS data)            │   │ used by every stage       ││
+│ └───────────────────────────┘   └───────────────────────────┘│
+└──────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌──────────────────────────────────────────────────────────────┐
+│ RENDER                                pure: given x, return y│
+│ ┌───────────────────────────────────────────────────────────┐│
+│ │ render.ts                                                 ││
+│ │ given a render model                                      ││
+│ │ → tooltip HTML string                                     ││
+│ └───────────────────────────────────────────────────────────┘│
+└──────────────────────────────────────────────────────────────┘
+                                │ tooltip HTML
+                                ▼
+──────────── the pipeline — FETCH → REASON → RENDER ────────────
+┌──────────────────────────────────────────────────────────────┐
+│ section.ts                                  pure orchestrator│
+│ the folded pipeline result                                   │
+│ → handed back to content.ts as one HTML string               │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 At runtime those modules fold together top to bottom. The only thing the format changes

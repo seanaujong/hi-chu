@@ -289,7 +289,7 @@ module — the tests are the worked examples (and pin the numbers against Showdo
 
 ```sh
 npm install
-npm test          # the math, the merge, the render, field effects, and an end-to-end run on real data
+npm test          # the math, the merge, the render, field effects, the dependency boundary, and an end-to-end run on real data
 npm run typecheck
 npm run build     # bundles to dist/ (content.js + manifest.json)
 npm run watch     # rebuild on save

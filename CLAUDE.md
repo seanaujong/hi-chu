@@ -48,17 +48,17 @@ npm run drift-check   # LOCAL, needs Chrome: runs readState against a live repla
 ## Cutting a release
 CI's `check` job (typecheck + Vitest) gates every push, but it can't reach the client-shape
 drift and `myPokemon`-only invariants tagged 👁 below — those need a real browser and (for
-the private-team reads) two real accounts. Before tagging a release, run the fuller local gate:
+the private-team reads) a real battle. Before tagging a release, run the fuller local gate:
 ```sh
 npm run release-check   # build + check + drift-check + player-check, in order
 ```
-`player-check` needs `PS_ACCOUNT1`/`PS_ACCOUNT2` env vars for two throwaway
-play.pokemonshowdown.com accounts (see the invariants section's `myPokemon` bullet). The same
-two live checks also run on demand via `.github/workflows/e2e.yml`
-(`gh workflow run e2e.yml`) — manual `workflow_dispatch` only, never on every push, since
-Showdown throttles logins per IP and a flaky live-account run shouldn't block unrelated work.
-Its credentials live in the `release-e2e` GitHub Environment (not a repo secret), so a run can
-require reviewer approval before it touches real accounts.
+`player-check` battles against a throwaway, self-hosted Showdown server it starts itself
+(`scripts/lib/local-server.mjs` — cloned + `npm install`ed into the gitignored `.ps-server/`
+on first run, a one-time cost of about a minute), not real play.pokemonshowdown.com accounts —
+see the invariants section's `myPokemon` bullet. The same two live checks also run on demand
+via `.github/workflows/e2e.yml` (`gh workflow run e2e.yml`) — manual `workflow_dispatch` only,
+never on every push, since it's a real browser plus a from-scratch server build on a cold
+cache and a flaky live-site run shouldn't block unrelated work.
 
 Then run the **`release-visual-check`** skill for a human-eyes pass, through Claude-in-Chrome,
 over the surfaces neither script above reaches at all: Tera/Mega preview toggling, doubles,
@@ -898,18 +898,19 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   invisible to drift-check. Run it on BOTH sides of the format split — `npm run
   player-check` (randbats) and `node scripts/player-check.mjs gen9hackmonscup` (an OPEN
   format that still needs no teambuilder, so the assumed-spread path gets a real request
-  JSON; this is what caught the open-format switch menu). Player-check logs two throwaway
-  accounts into the real site
-  (`PS_ACCOUNT1="name:password" PS_ACCOUNT2=… npm run player-check`; credentials via env,
-  never committed), has them battle each other, and probes exactly those reads with the
-  shipped bundle, forfeiting when done. **Showdown throttles `act=login` per IP**, so a run
-  started soon after another routinely has its first attempt silently go nowhere — `login()`
-  retries with backoff and says so. A real refusal is told apart at the source (`action.php`
-  answers `{"actionerror":"Wrong password."}`; a throttle answers nothing) and fails fast,
-  so a bad password never hides behind the retry loop. Both are 👁 not ✅ because they need a browser + the
-  live site, so they can't run in `npm run check`/CI — run them by hand after a client
-  update. If either flags drift (or a calc looks wrong), re-derive from the PS source below
-  and update `readState.ts` and its tests in lockstep.
+  JSON; this is what caught the open-format switch menu). Player-check battles against a
+  throwaway server it self-hosts (`scripts/lib/local-server.mjs`, cloned from
+  `smogon/pokemon-showdown` and run with `noguestsecurity` — no password, no login server,
+  no per-IP throttle, no credentials to manage), joins two clients to it (renamed via a bare
+  `/trn NAME`), has them battle each other, and probes exactly those reads with the shipped
+  bundle, forfeiting when done. The CLIENT is still the real, production one throughout — a
+  self-hosted server's `http://localhost` redirects to the actual `play.pokemonshowdown.com`
+  bundle wired to our local server's websocket (`server/README.md`) — only the game SERVER
+  and its account handling are local. Both drift-check and player-check are 👁 not ✅ because
+  they need a real browser (drift-check also needs the live site, for the replay), so they
+  can't run in `npm run check`/CI — run them by hand after a client update. If either flags
+  drift (or a calc looks wrong), re-derive from the PS source below and update `readState.ts`
+  and its tests in lockstep.
 
 ## Pointers
 - `README.md` — full architecture, diagrams, install steps, known limitations.

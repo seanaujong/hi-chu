@@ -7,7 +7,7 @@
 // and the Terastallize preview. Being a player is the whole point of this script; it is
 // `player-check`'s harness pointed at a camera instead of at assertions.
 //
-//   PS_ACCOUNT1="name:password" PS_ACCOUNT2="name:password" npm run screenshots
+//   npm run screenshots
 //   node scripts/screenshots.mjs gen9ou      # an open format: bracketed damage, no ⚡/sets
 //   TURNS=8 npm run screenshots              # play deeper before shooting
 //

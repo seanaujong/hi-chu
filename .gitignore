@@ -17,6 +17,10 @@ store-screenshots/
 # get copied into demo/ and store-screenshots/ by hand.
 screenshots/
 
+# The self-hosted Showdown server `player-check`/`screenshots` battle against (see
+# scripts/lib/local-server.mjs) — cloned + npm installed on first run, not repo content.
+.ps-server/
+
 # Xcode's own build cache for the Safari port (safari/hi-chu/) — regenerable, huge,
 # machine-specific; the Xcode project source itself is tracked.
 safari/build/

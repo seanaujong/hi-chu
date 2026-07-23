@@ -45,6 +45,17 @@ Pokémon. (The logic is covered end-to-end by tests; only this hover needs a hum
 npm run drift-check   # LOCAL, needs Chrome: runs readState against a live replay (see below)
 ```
 
+## Contributing — every change goes through a branch + PR
+`main` is protected, locally and on GitHub. `npm install`'s `prepare` script points git at
+`.githooks/` (`pre-commit` refuses a commit while on `main`; `pre-push` refuses a push to
+`main` on any remote) — the local half of the same rule GitHub's branch protection enforces
+server-side. A direct commit/push attempt fails with an explicit message, not silently.
+So the default workflow for any change, including doc-only ones, is: branch
+(`git checkout -b <name>`), commit at a green `npm run check` checkpoint (same
+commit-on-your-own default as always — no need to ask before committing), push the branch,
+then open the PR with `gh pr create`. Treat the PR as the normal way to finish a task, not
+a separate ask each time — the hooks exist so this is the only path that works anyway.
+
 ## Architecture — where to make a change
 A **pure core + thin browser shell**. Dependencies point one way: the shell uses the
 core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in `README.md`.)

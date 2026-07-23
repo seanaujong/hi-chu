@@ -180,6 +180,15 @@ export interface LiveFacts {
    * `resolve.buildResolved`, so every surface sees the same copy.
    */
   readonly transformedInto?: TransformCopy;
+  /**
+   * This Pokémon's own accuracy/evasion stat stage, in [-6, 6] — absent means unboosted
+   * (0). Read ONLY by the multi-hit per-hit-accuracy law (`core/multihit.ts`): the
+   * attacker's `accuracyBoost` and the defender's `evasionBoost` combine there. Neither
+   * reaches the damage calc directly — accuracy/evasion stages don't change a move's
+   * damage, only whether it lands.
+   */
+  readonly accuracyBoost?: number;
+  readonly evasionBoost?: number;
 }
 
 /**
@@ -327,4 +336,8 @@ export interface ResolvedMon {
   /** See `LiveFacts.timesAttacked` — carried through so the damage layer can compute
    *  Rage Fist's actual power, something @smogon/calc's own move data doesn't model. */
   readonly timesAttacked: number;
+  /** See `LiveFacts.accuracyBoost`/`evasionBoost` — carried through for the multi-hit
+   *  per-hit-accuracy law only; never passed to the damage calc itself. */
+  readonly accuracyBoost?: number;
+  readonly evasionBoost?: number;
 }

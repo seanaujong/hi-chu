@@ -327,6 +327,57 @@ describe('Population Bomb checks 90% accuracy before every hit after the first',
   });
 });
 
+// No randbats set pairs any of these with a multiaccuracy move — they only ever fire in a
+// Custom Game/Free-For-All battle. Each expected-hits figure is the geometric sum Σ p^k
+// (k=0..n-1) at the per-hit chance `multihit.test.ts` pins directly.
+describe('Compound Eyes / Hustle / No Guard / accuracy boosts reach the multiaccuracy trio', () => {
+  const tyranitar = mon({speciesForme: 'Tyranitar'});
+
+  it('Hustle: Triple Kick’s per-hit chance drops to 72% — ≈2.24 expected hits', () => {
+    const r = calcDamage(mon({speciesForme: 'Hitmontop', nature: 'Adamant', ability: 'Hustle'}), tyranitar, 'Triple Kick');
+    expect(r.multiHit!.hits.expected).toBeCloseTo(1 + 0.72 + 0.72 ** 2, 10);
+  });
+
+  it('No Guard on the ATTACKER guarantees all three Triple Axel hits', () => {
+    const r = calcDamage(mon({speciesForme: 'Weavile', nature: 'Jolly', ability: 'No Guard'}), tyranitar, 'Triple Axel');
+    expect(r.multiHit!.hits.distribution).toEqual([[3, 1]]);
+  });
+
+  it('No Guard on the DEFENDER also guarantees every Population Bomb hit', () => {
+    const maushold = mon({speciesForme: 'Maushold', nature: 'Jolly', ability: 'Technician'});
+    const r = calcDamage(maushold, mon({...tyranitar, ability: 'No Guard'}), 'Population Bomb');
+    expect(r.multiHit!.hits.distribution).toEqual([[10, 1]]);
+  });
+
+  it('a -1 accuracy stage alone drops Triple Kick’s per-hit chance to 67.5%', () => {
+    const r = calcDamage(mon({speciesForme: 'Hitmontop', nature: 'Adamant', accuracyBoost: -1}), tyranitar, 'Triple Kick');
+    expect(r.multiHit!.hits.expected).toBeCloseTo(1 + 0.675 + 0.675 ** 2, 10);
+  });
+
+  it('that same -1 stage silently drops a Compound Eyes bonus — same hit count as boost alone', () => {
+    const boostedAlone = calcDamage(
+      mon({speciesForme: 'Hitmontop', nature: 'Adamant', accuracyBoost: -1}),
+      tyranitar,
+      'Triple Kick',
+    );
+    const withCompoundEyes = calcDamage(
+      mon({speciesForme: 'Hitmontop', nature: 'Adamant', ability: 'Compound Eyes', accuracyBoost: -1}),
+      tyranitar,
+      'Triple Kick',
+    );
+    expect(withCompoundEyes.multiHit!.hits.expected).toBeCloseTo(boostedAlone.multiHit!.hits.expected, 10);
+  });
+
+  it('the DEFENDER’s evasion stage — not the attacker’s — feeds the per-hit check', () => {
+    const r = calcDamage(
+      mon({speciesForme: 'Weavile', nature: 'Jolly'}),
+      mon({...tyranitar, evasionBoost: 1}),
+      'Triple Axel',
+    );
+    expect(r.multiHit!.hits.expected).toBeCloseTo(1 + 0.675 + 0.675 ** 2, 10); // mirrors acc -1
+  });
+});
+
 describe('active Tera is folded into the calc', () => {
   it('a Tera-Normal Extreme Speed hits harder than the same move untera’d', () => {
     const base = mon({speciesForme: 'Dragonite', nature: 'Adamant'});

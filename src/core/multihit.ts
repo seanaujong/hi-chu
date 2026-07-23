@@ -41,6 +41,21 @@ export interface HitCountMods {
   readonly loadedDice: boolean;
   /** Wide Lens — raises each per-hit accuracy check (×4505/4096, PS rounding: 90 → 99). */
   readonly wideLens: boolean;
+  /** Compound Eyes — ×5325/4096 (≈1.3) on every per-hit check. See `perHitChance`. */
+  readonly compoundEyes: boolean;
+  /** Hustle — ×3277/4096 (≈0.8) on every per-hit check of a PHYSICAL move (the caller
+   *  gates this on the move's category, mirroring PS's own `move.category === 'Physical'`
+   *  guard — all three multiaccuracy moves happen to be physical, so it is always active
+   *  when Hustle is the ability, but the law stays honest about why). */
+  readonly hustle: boolean;
+  /** No Guard, on EITHER combatant — every hit after the first is guaranteed, bypassing
+   *  every other modifier below (boosts, Compound Eyes, Hustle, Wide Lens) entirely. */
+  readonly noGuard: boolean;
+  /** The attacker's own accuracy stat stage. Clamped to [-6, 6] internally, same as PS's
+   *  `clampIntRange`. */
+  readonly accuracyStage: number;
+  /** The defender's evasion stat stage. Clamped to [-6, 6] internally. */
+  readonly evasionStage: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -112,14 +127,73 @@ function baseRangePmf(min: number, max: number): Pmf {
   return pmfFromSamples(samples);
 }
 
+/** PS's boost-stage accuracy multiplier table (`battle-actions.ts`'s own `boostTable`),
+ *  indexed by |stage| (1..6); index 0 is unused (a stage of 0 needs no lookup below). */
+const ACCURACY_BOOST_TABLE = [1, 4 / 3, 5 / 3, 2, 7 / 3, 8 / 3, 3];
+
+function clampStage(stage: number): number {
+  return Math.max(-6, Math.min(6, stage));
+}
+
 /**
- * The chance one per-hit accuracy check passes, as a probability. Wide Lens applies its
- * 4505/4096 with PS's own round-half-down `modify()` (90 → 99). Other accuracy modifiers
- * (accuracy/evasion boosts, Compound Eyes, Hustle, No Guard) are deliberately out of
- * scope — no randbats set pairs one with a multiaccuracy move.
+ * PS combines simultaneous item/ability accuracy modifiers (Compound Eyes, Hustle, Wide
+ * Lens) via its own fixed-point chain-and-truncate (`Battle#chainModify`, arithmetic in
+ * 4096ths): starting from the identity (4096 = ×1), each contributor's own numerator (already
+ * scaled to 4096ths — every one of ours already is) folds in as `((combined × next) +
+ * 2048) >> 12`. At most two of these are ever simultaneously true in practice (one ability
+ * plus Wide Lens — Compound Eyes and Hustle can never coexist, being abilities), so the
+ * combination is order-independent regardless of which is folded in first. Returns
+ * undefined when nothing modifies accuracy at all, so the caller can skip the whole-number
+ * gate below too — PS never even runs the event in that case.
+ */
+function combinedAccuracyModifier(mods: HitCountMods): number | undefined {
+  const numerators: number[] = [];
+  if (mods.compoundEyes) numerators.push(5325);
+  if (mods.hustle) numerators.push(3277);
+  if (mods.wideLens) numerators.push(4505);
+  if (numerators.length === 0) return undefined;
+  return numerators.reduce((combined, n) => Math.floor((combined * n + 2048) / 4096), 4096);
+}
+
+/**
+ * The chance one per-hit accuracy check (hit 2 onward of a multiaccuracy move) passes, as
+ * a probability. Mirrors PS's own per-hit branch (`battle-actions.ts`'s `if (move.multiaccuracy
+ * && hit > 1)`) — a genuinely DIFFERENT formula from an ordinary move's (or this move's own
+ * hit 1) accuracy check, which this codebase never models anyway: every damage calc already
+ * conditions on the shown move connecting, so hit 1 is certain here regardless.
+ *
+ * Three things, in PS's own order:
+ *   1. No Guard on EITHER side skips everything else — always hits.
+ *   2. The attacker's accuracy stage and the defender's evasion stage apply as two
+ *      SEPARATE, un-truncated floating-point multiplies/divides (`accuracy *=
+ *      ACCURACY_BOOST_TABLE[stage]` or the reciprocal) — NOT the single combined,
+ *      integer-truncated stage a move's hit-1 check uses.
+ *   3. Only THEN does an item/ability modifier (`combinedAccuracyModifier`) apply — and
+ *      only when the boost-adjusted value from step 2 is still a whole, non-negative
+ *      number. This is a real PS quirk, not an approximation: its event system only
+ *      re-applies an accumulated `chainModify` to a numeric event value when that value is
+ *      an integer (`relayVar === Math.abs(Math.floor(relayVar))`); a boost combination that
+ *      leaves a fractional intermediate (e.g. a lone -1 accuracy stage on a 90-accuracy
+ *      move: 90 / (4/3) = 67.5) silently drops any Compound Eyes/Hustle/Wide Lens bonus for
+ *      that hit. Every branch here — including this one — was verified by driving the real
+ *      `pokemon-showdown` simulator package directly (forcing every check to log its
+ *      incoming accuracy value), not derived from reading the source alone.
  */
 export function perHitChance(accuracyPercent: number, mods: HitCountMods): number {
-  const acc = mods.wideLens ? Math.trunc((accuracyPercent * 4505 + 2048 - 1) / 4096) : accuracyPercent;
+  if (mods.noGuard) return 1;
+
+  let acc = accuracyPercent;
+  const accStage = clampStage(mods.accuracyStage);
+  acc = accStage > 0 ? acc * ACCURACY_BOOST_TABLE[accStage]! : acc / ACCURACY_BOOST_TABLE[-accStage]!;
+  const evaStage = clampStage(mods.evasionStage);
+  if (evaStage > 0) acc /= ACCURACY_BOOST_TABLE[evaStage]!;
+  else if (evaStage < 0) acc *= ACCURACY_BOOST_TABLE[-evaStage]!;
+
+  const modifier4096 = combinedAccuracyModifier(mods);
+  if (modifier4096 !== undefined && acc === Math.abs(Math.floor(acc))) {
+    acc = Math.trunc((acc * modifier4096 + 2047) / 4096);
+  }
+
   return Math.min(1, acc / 100);
 }
 

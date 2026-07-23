@@ -218,7 +218,9 @@ is *where the foe's possibilities come from* — everything below that seam is s
   `k × one shared roll` (wrong on both counts), so this convolves independent per-hit
   rolls over the real hit-count distribution — Skill Link, Loaded Dice, and the
   multiaccuracy stop-at-miss law included, sourced from Showdown's own
-  `sim/battle-actions.ts`/`data/items.ts`.
+  `sim/battle-actions.ts`/`data/items.ts`. Every per-hit accuracy modifier is modeled
+  too — Compound Eyes, Hustle, No Guard, accuracy/evasion stat stages — verified against
+  the real simulator, not just its source (see `CLAUDE.md`).
 - **`moves.ts`** — the multi-hit move table, derived from Showdown's `data/moves.ts`:
   each move's hit spec, its per-hit accuracy if it checks one, and — for Triple Axel
   (20/40/60) and Triple Kick (10/20/30), the only two — each hit's own base power.
@@ -337,35 +339,6 @@ additionally signed by Google — but these two checks are what tie it back to h
 > note it isn't "trusted" yet — a reputation signal Google grants new extensions over
 > time, not a finding about the code. The checks above are the concrete answer to "is
 > this safe?": verify the provenance and the source hash yourself.
-
-## Known limitations (v1)
-
-- **Outside Random Battles, only the damage surfaces run.** The information game (possible
-  sets, the mirror, the ⚡ speed line, the Illusion tell) needs a published list of what a
-  Pokémon might be running; without one there is nothing to narrow, so hovering an opponent
-  in, say, OU shows nothing rather than a guess. Two things could change that: a set pool
-  built from Smogon usage statistics, and the deductions that need no pool at all (a landed
-  hit with no item revealed still rules out Life Orb; taking Stealth Rock damage still rules
-  out Heavy-Duty Boots).
-- **Assumed foe spreads bracket rather than pin.** In an open format the two damage lines
-  span uninvested to fully invested; a real spread lands between them. The foe's item is
-  never assumed either — only a revealed one applies.
-- **Per-hit accuracy modifiers stop at Wide Lens.** The multiaccuracy moves (Population
-  Bomb, Triple Axel, Triple Kick) model their 90%-per-hit checks exactly, including
-  Wide Lens (→99%) and Loaded Dice (deletes the checks) — but accuracy/evasion boosts,
-  Compound Eyes, Hustle, and No Guard are out of scope; no randbats set pairs one with
-  a multiaccuracy move.
-- **Hazards are modelled only for a switch-in preview.** An already-active mon's live HP
-  already reflects anything that's happened to it, so Stealth Rock/Spikes stay out of the
-  damage `Field` everywhere else — only weather, terrain, and screens feed it. But a
-  benched mon's *current* HP doesn't yet include the hazard chip it would take switching
-  in, so the switch-menu/bench-hover "Incoming: does it survive?" check (`core/hazards.ts`)
-  applies that chip first — Rock-effectiveness-scaled Stealth Rock, grounded-only Spikes,
-  Heavy-Duty Boots/Magic Guard blocking both. Toxic Spikes and Gravity/Ingrain-forced
-  grounding are out of scope (see `CLAUDE.md`).
-- **Speed order is not turn order.** The ⚡ line answers "who is faster" — priority moves
-  (Aqua Jet, Grassy Glide), Gale Wings, and Quick Claw are out of scope, and the native
-  tooltip already lists the moves themselves.
 
 ## Glossary
 

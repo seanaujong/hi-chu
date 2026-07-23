@@ -267,6 +267,8 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, spe
     ...(p.prevItem ? {prevItem: p.prevItem} : {}),
     ...(gender ? {gender} : {}),
     ...(speciesData ? {speciesData} : {}),
+    ...(p.boosts['accuracy'] ? {accuracyBoost: p.boosts['accuracy']} : {}),
+    ...(p.boosts['evasion'] ? {evasionBoost: p.boosts['evasion']} : {}),
   };
   return facts;
 }

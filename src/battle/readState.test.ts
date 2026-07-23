@@ -133,6 +133,12 @@ describe('toLiveFacts', () => {
     expect(f.boosts).toEqual({atk: 2, spe: -1});
   });
 
+  it('reads accuracy/evasion boosts separately from the six calc-relevant stats', () => {
+    const f = toLiveFacts(clientMon({boosts: {atk: 2, accuracy: 1, evasion: 0}}));
+    expect(f.accuracyBoost).toBe(1);
+    expect(f.evasionBoost).toBeUndefined(); // 0 means unboosted, same as an absent stat
+  });
+
   it('carries a consumed/knocked-off item as prevItem', () => {
     const f = toLiveFacts(clientMon({item: '', prevItem: 'Sitrus Berry'}));
     expect(f.item).toBeUndefined();

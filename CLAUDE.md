@@ -625,6 +625,21 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   harmless there. Checked by `resolve.test.ts` ("arms Unburden…": armed on a confirmed loss,
   not a mere absence, not for a different ability) and `speed.test.ts` ("doubles Speed for
   Unburden once armed…", pinning the ×2 itself) — both watched failing with the flag never set.
+- ✅ **The fetch/reason/render split is a checked import graph, not just a description.**
+  `dependency-boundaries.test.ts` turns three prose claims into predicates that fail the
+  build: (1) the only runtime dependency, `@smogon/calc`, is imported by exactly
+  `core/damage.ts` and `core/speed.ts` — every other core module's own header comment
+  ("Pure: no DOM, no network, no @smogon/calc") was only ever a convention until now; (2)
+  nothing under `src/core/` imports from `battle/`, `data/`, `content.ts`, or `section.ts` —
+  the "dependencies only point downward" rule this file and the README both assert in
+  prose; (3) `render.ts`'s only imports from sibling core modules are `import type` — it
+  knows the SHAPE reasoning produced (`DamageBucket`, `SpeedOutcome`, …) and never calls a
+  reasoning function, which is what makes "render" its own step rather than a label on
+  code that's still entangled with "reason". Widening any of these allowlists is a
+  deliberate edit to the test itself, not a silent import creeping in elsewhere. Checked by
+  `dependency-boundaries.test.ts` (all three guards watched failing: a stray `@smogon/calc`
+  import outside the two files, a `core/facts.ts` import of `battle/readState.ts`, and a
+  value import of `resolve.ts` added to `render.ts`).
 - 👁 **Where we correct @smogon/calc** (things it should arguably handle but doesn't, that we
   own): `multihit.ts` (the multi-hit model above) and the **item id→name quirk** — the calc
   silently *ignores* an item passed in id form (`heavydutyboots`), applying nothing. Fixed at

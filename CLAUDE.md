@@ -647,26 +647,16 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   genuinely uncertain ATTACKER item…", a synthetic Weavile whose Life Orb vs Leftovers
   pool changes ITS OWN damage — unlike the Tentacruel AV/Leftovers fixture above, which
   only matters when Tentacruel is the *defender*).
-- ✅ **Format ids are derived like PS's own `toID`** (digits kept, whole title), so bracket
-  tags with extra words work — checked by `readState.test.ts` ("[Gen 9 Champions] Random
-  Battle" → `gen9championsrandombattle`).
-- 👁 **Match native tooltip styling; inject almost no CSS.** The original Randbats
-  Tooltip looks crisp because it reuses Showdown's own markup — `<p>` at 12px black,
-  `<small>` grey labels, set names as inline `<span style="text-decoration:underline">`,
-  `<b>` for confirmed facts — and inherits every font/size/colour. `render.ts` does the
-  same. `TOOLTIP_STYLE` has exactly one structural rule, `.hichu-block` (reproduces the
-  native `.tooltip-section` divider `border-top:1px solid #888; padding:2px 4px` plus a
-  slight grey panel `rgba(0,0,0,.045)`), and the two colour value-adds the original lacks
-  (red KO, orange caveat). Each candidate set is one `.hichu-block`; the move tooltip is
-  one. Custom `font-size`/`opacity`/colour on the shell clashes with the native chrome
-  around it — don't reintroduce it.
-- 👁 **No summary header on the sets view.** The per-set blocks speak for themselves;
-  there is no "Possible sets (N of M) · dmg vs …" line (removed by request). Checked by
-  `render.test.ts` ("omits the summary header entirely").
-- 👁 **Move tooltip is at parity with the native `Damage: X% - Y%` line** — no "vs
-  <target>" preamble (native already names the target), and a **non-damaging move gets
-  no section at all** (`renderMoveSection` returns `''`). KO% and the multi-hit `Hits:`
-  line ride along only when they apply. Checked by `render.test.ts` / `section.test.ts`.
+- ✅ **Format ids are derived like PS's own `toID`** — see the comment on `readState.ts`'s
+  format-id derivation. Checked by `readState.test.ts` ("[Gen 9 Champions] Random Battle"
+  → `gen9championsrandombattle`).
+- 👁 **`render.ts` matches native tooltip styling and layout almost CSS-free — see its own
+  docblocks, not restated here.** `TOOLTIP_STYLE`'s comment owns the near-zero-CSS approach
+  (`.hichu-block` reproduces the native `.tooltip-section` divider; don't add custom
+  font-size/opacity/colour beyond the two value-adds it already names); `renderMoveSection`'s
+  covers native `Damage:`-line parity and why a non-damaging move gets no section at all;
+  `renderSetsSection`'s covers the no-summary-header decision. Checked by `render.test.ts`
+  ("omits the summary header entirely", among others) and `section.test.ts`.
 - ✅ **Foe-level item facts qualifying the KO/nHKO lines read the RESOLVED variants,
   never raw facts.** `section.itemStanding` grades an item 'certain' (every surviving
   set holds it, incl. a revealed one) / 'possible' / absent from `resolveVariants`
@@ -680,29 +670,18 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   attacker-side items), so this covers the real cases. Checked by `section.test.ts`
   ("foe-level item facts…") and `render.test.ts` (the caveat's three honesty gates;
   guards watched failing with each gate removed).
-- ✅ **Own the hit-count model** in `multihit.ts` (`@smogon/calc` collapses multi-hit to
-  `k × one shared roll` and ignores Skill Link / Loaded Dice). This includes the
-  **multiaccuracy trio** (Population Bomb, Triple Axel, Triple Kick): each hit after the
-  first passes its own 90% check or the move stops — the stop-at-miss law, conditioned on
-  hit 1 landing (every damage calc assumes the shown move connects). Loaded Dice DELETES
-  the checks (PS `data/items.ts`); Wide Lens lifts each to 99% with PS's own rounding (the
-  real Maushold/Smeargle item). **Every other per-hit accuracy modifier is modeled too** —
-  Compound Eyes (×5325/4096), Hustle (×3277/4096, physical moves only), No Guard (either
-  combatant, bypasses the check entirely), and the attacker's accuracy / defender's evasion
-  stat stages — mirroring PS's own per-hit branch (`battle-actions.ts`'s `multiaccuracy &&
-  hit > 1`), a genuinely DIFFERENT formula from a move's hit-1 check (out of scope, as
-  above — hit 1 is always conditioned on landing): the boost stages apply as two SEPARATE,
-  un-truncated float multiplies (not hit 1's combined, integer-truncated stage), and an
-  item/ability modifier only lands when that boost-adjusted value is still a whole number —
-  PS's own event system silently drops an accumulated `chainModify` otherwise, a quirk
-  `perHitChance` reproduces exactly rather than approximates. No
-  randbats set pairs one of these with a multiaccuracy move, so this only ever fires in a
-  Custom Game/Free-For-All battle. Verified by driving the real `pokemon-showdown` simulator
-  package directly (forcing every per-hit check to log its incoming accuracy value), not
-  derived from reading the source alone. Checked by `multihit.test.ts` (distributions,
-  stop-at-miss, `perHitChance` incl. every modifier above and the whole-number-drop quirk,
-  the "independent rolls narrow the distribution" guard) and `damage.test.ts` (the same
-  cases run end-to-end through Triple Kick/Triple Axel/Population Bomb).
+- ✅ **Own the hit-count model — `multihit.ts`'s own header and `perHitChance`'s docblock
+  own the mechanics, not restated here.** `@smogon/calc` collapses multi-hit to `k × one
+  shared roll` and models none of the multiaccuracy trio's (Population Bomb, Triple Axel,
+  Triple Kick) per-hit accuracy checks (Skill Link, Loaded Dice, Wide Lens, Compound Eyes,
+  Hustle, No Guard, boost stages, and a real PS rounding quirk that silently drops a
+  modifier — all verified by driving the real `pokemon-showdown` simulator package
+  directly, not derived from reading the source alone). No randbats set pairs one of these
+  with a multiaccuracy move, so this only ever fires in a Custom Game/Free-For-All battle.
+  Checked by `multihit.test.ts` (distributions, stop-at-miss, `perHitChance` incl. every
+  modifier and the whole-number-drop quirk, the "independent rolls narrow the distribution"
+  guard) and `damage.test.ts` (the same cases run end-to-end through Triple Kick/Triple
+  Axel/Population Bomb).
 - ✅ **Variable-power multi-hit is computed per hit, through a stand-in move.** Triple
   Axel (20/40/60) and Triple Kick (10/20/30) get one calc run per hit's true BP, convolved
   over the stop-at-miss counts — exact, not the calc's correlated estimate. The trap: the
@@ -846,24 +825,16 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   ×1.5, Leftovers keeps "healing"). Checked by `resolve.test.ts` ("resolves to NO item once it
   has been knocked off / consumed"). Knock Off's own ×1.5-on-item boost is `@smogon/calc`'s job
   and works once the resolved item is right.
-- ✅ **A held Mega stone resolves to the Mega set, not the base forme.** A mon holding a stone
-  is running the Mega set even pre-evolution, but its live forme is still the base one, so
-  `entryFor` (via `data.megaEntryForItem`) redirects the lookup to the Mega entry — found by
-  the STONE in its item pool, because Champions keys Mega sets irregularly ("Floette-Mega" for
-  a Floette-Eternal holding Floettite). Checked by `randbats.test.ts` ("finds the Mega set by
-  its stone").
-- ✅ **The Champions feed's `evs` are STAT POINTS, not EVs — converted at fetch.** Champions
-  has no EVs/IVs: Showdown's mod (`data/mods/champions/scripts.ts`, `statModify`) reads
-  `set.evs` as per-stat points and puts `max(2·points − 1, 0)` where mainline puts
-  `IV + ⌊EV/4⌋` (IVs hardcoded 31). Fed literally to `@smogon/calc`, the feed-wide `11`
-  deflates every stat on BOTH mons — raw damage roughly cancels, but the shown PERCENT
-  inflates because the defender's max HP is the denominator.
-  `randbats.championsStatPointsToEvs` converts with `EV = 8·points − 4` (exact:
-  `⌊(8p−4)/4⌋ = 2p−1`), keyed on the format id inside `fetchRandbats` — mainline feeds' `evs`
-  ARE EVs and pass through untouched — and the localStorage cache is versioned
-  (`STORAGE_VERSION`) so a stale unconverted copy can't outlive an update. Checked by
-  `randbats.test.ts` ("champions stat points convert to mainline EVs" pins Arbok's real
-  156 max HP at L54, plus the format-id keying through `fetchRandbats`).
+- ✅ **A held Mega stone resolves to the Mega set, not the base forme.** — see
+  `megaEntryForItem`'s own comment in `lookup.ts`. Checked by `randbats.test.ts` ("finds
+  the Mega set by its stone").
+- ✅ **The Champions feed's `evs` are STAT POINTS, not EVs — converted at fetch, not
+  restated here.** `lookup.championsStatPointsToEvs`'s own comment owns the formula and
+  why (Champions has no EVs/IVs; feeding points straight to `@smogon/calc` deflates every
+  stat and inflates the shown percent); `randbats.ts`'s `STORAGE_VERSION` comment covers
+  why a stale unconverted cache can't outlive an update. Checked by `randbats.test.ts`
+  ("champions stat points convert to mainline EVs" pins Arbok's real max HP at L54, plus
+  the format-id keying through `fetchRandbats`).
 - ✅ **A species or item the calc's dex doesn't know must not break the hover.** Champions
   invents Megas (Chandelure-Mega) and stones (Chandelurite) that never existed in a mainline
   game: the species crashes `new Pokemon` (no base stats to read) and the stone crashes gen-9
@@ -900,10 +871,9 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   throw via a Proxy that throws on any property read — decoupled from section.ts's actual
   internals) and `randbats.test.ts` ("logs to console.error when the fetch itself
   fails…", distinguishing a rejected fetch from an unsupported-format response).
-- ✅ **Four revealed moves = the full moveset; stop speculating.** A Pokémon has four move
-  slots, so once `revealedMoves.length >= 4`, `inferSets` drops the role's remaining pool from
-  the display (every shown move is a confirmed ✓). Checked by `knowledge.test.ts` ("stops
-  speculating once all four move slots are revealed").
+- ✅ **Four revealed moves = the full moveset; stop speculating.** — see `inferSets`'s own
+  comment in `knowledge.ts`. Checked by `knowledge.test.ts` ("stops speculating once all
+  four move slots are revealed").
 - ◐ **Doubles: the calc's game type is set and both foes are shown.** `detectFormat.doubles`
   (a randbats feed id containing "doubles", else the client's `gameType`) flows to
   `damage.buildField` as `gameType: 'Doubles'` so

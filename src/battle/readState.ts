@@ -8,6 +8,7 @@
 
 import type {FieldFacts, FullStats, LiveFacts, SpeciesData, StatID, StatusName, TerrainName, WeatherName} from '../core/types.js';
 import {isMegaForme} from '../core/facts.js';
+import type {OwnSideHazards} from '../core/hazards.js';
 
 export interface ClientPokemon {
   readonly speciesForme: string;
@@ -780,6 +781,21 @@ const TERRAIN_BY_ID: Readonly<Record<string, TerrainName>> = {
 /** Is the side condition with this id ("tailwind", "reflect", …) active on `side`? */
 function hasSideCondition(side: ClientSide | undefined, id: string): boolean {
   return Boolean(side?.sideConditions?.[id]);
+}
+
+/** The entry hazards up on `side` — what a mon switching INTO it would trigger. Read
+ *  only where a switch-in is actually being previewed (see `core/hazards.ts`); every
+ *  other damage read deliberately ignores hazards. `sideConditions`' values are really
+ *  `unknown` (the client ships no types), so the layer count is narrowed defensively
+ *  rather than trusted as a tuple — malformed data falls back to 0 layers, never a
+ *  false hazard. */
+export function readOwnHazards(side: ClientSide | undefined): OwnSideHazards {
+  const spikes = side?.sideConditions?.['spikes'];
+  const layer = Array.isArray(spikes) && typeof spikes[1] === 'number' ? spikes[1] : 0;
+  return {
+    stealthRock: hasSideCondition(side, 'stealthrock'),
+    spikesLayers: Math.max(0, Math.min(3, Math.round(layer))),
+  };
 }
 
 /**

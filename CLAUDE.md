@@ -710,9 +710,41 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   `section.test.ts` ("a labelled damage section for EACH foe"). Still ◐ — the sets-view *threat*
   calc uses only our first active (`findOpposingActive`), and doubles-only field effects (Friend
   Guard, Follow Me) aren't modelled; set inference itself is format-agnostic and correct.
-- 👁 **Hazards are deliberately not modelled** — they change switch-in HP, not a move's
-  damage, and live HP is already read. Only weather/terrain/screens feed the calc. (Scope
-  decision; no check — don't "add" hazards to the damage Field.)
+- ✅ **Hazards are modelled ONLY for a switch-in preview — everywhere else, still a
+  deliberate no.** The original reasoning ("hazards change switch-in HP, not a move's
+  damage, and live HP is already read") holds for an already-active mon, but broke once
+  the switch-menu/bench-hover matchup view (`Incoming:`) started answering "does it
+  survive if I send it in?" — a benched mon's CURRENT HP doesn't yet reflect the Stealth
+  Rock/Spikes chip it would take on the way in. `core/hazards.ts` owns the law:
+  `computeHazardFraction` builds a calc `Pokemon` (reusing `damage.buildPokemon`, the same
+  precedent `speed.ts` set) and sums Stealth Rock's fraction (Rock's type effectiveness —
+  Tera-aware, mirroring the calc's own `Pokemon.hasType` check, since a mon that
+  terastallized earlier keeps that typing after switching out — divided by 8) with
+  Spikes' flat per-layer fraction (1/8, 1/6, 1/4), the latter gated on **grounded-ness**,
+  a concept this codebase models nowhere else: `isGrounded` is deep-imported from the same
+  non-public `@smogon/calc/dist/mechanics/util` module as `getFinalSpeed` (`dependency-
+  boundaries.test.ts`'s allow-list now names `hazards.ts` alongside `damage.ts`/`speed.ts`
+  for exactly this reason). Heavy-Duty Boots or Magic Guard zeroes it outright — and
+  neither is ever uncertain here, unlike the foe-hidden-item bucketing elsewhere, because
+  a switch candidate is OUR OWN mon, always resolved from the private team. `applySwitchInHazards`
+  reduces `hpPercent` (floored at 0) and is applied ONCE, before `ownMovesSection`'s
+  per-foe loop (hazards are one-time and side-wide, so doubles-safe by construction), at
+  exactly the two call sites that preview a mon NOT yet on the field: `buildSwitchSection`
+  (always — a switch-menu candidate is benched by construction) and `ownHoverMatchup`'s
+  non-active branch (guarded by the same `isActiveMon` check that already withholds the
+  `Incoming` group from an active mon). A mon hazards alone would faint before it can act
+  gets a dedicated `<small>Incoming:</small> faints to Stealth Rock/Spikes before it can
+  act` line instead of a misleadingly-computed KO — `calcDamage` floors remaining HP at 1,
+  so piping in a true 0 would render a technically-real but dishonest "100% to KO at 0%
+  HP". Checked by `hazards.test.ts` (pinned Rock-effectiveness tiers, Spikes layers,
+  grounding exceptions incl. Iron Ball forcing it, Boots/Magic Guard zeroing both, the Tera
+  case), `readState.test.ts` (`readOwnHazards`, defensively narrowing `sideConditions`'
+  really-`unknown` values), and `section.test.ts` (both call sites, the faints-outright
+  note, and the active-mon path staying byte-identical — guards watched failing). Toxic
+  Spikes (poisons at end of turn, doesn't affect surviving the next hit), G-Max Steelsurge
+  (Dynamax-only), and Gravity/Ingrain/Smack Down forced-grounding are explicit v1 cuts, not
+  oversights. 👁 for drift: `sideConditions`' Spikes layer index is a new client field read
+  — `npm run drift-check` guards its shape.
 - ✅ **Strict TS** (`exactOptionalPropertyTypes`, `verbatimModuleSyntax`): pass optional
   fields with conditional spreads `...(x !== undefined ? {k: x} : {})`, never `{k: x}`.
   Checked by `npm run typecheck`.

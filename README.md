@@ -386,9 +386,14 @@ additionally signed by Google — but these two checks are what tie it back to h
   Wide Lens (→99%) and Loaded Dice (deletes the checks) — but accuracy/evasion boosts,
   Compound Eyes, Hustle, and No Guard are out of scope; no randbats set pairs one with
   a multiaccuracy move.
-- **Hazards are intentionally not modelled** — Stealth Rock/Spikes change switch-in HP,
-  not a move's damage, and we already read the defender's live HP. Only weather, terrain,
-  and screens feed the calc.
+- **Hazards are modelled only for a switch-in preview.** An already-active mon's live HP
+  already reflects anything that's happened to it, so Stealth Rock/Spikes stay out of the
+  damage `Field` everywhere else — only weather, terrain, and screens feed it. But a
+  benched mon's *current* HP doesn't yet include the hazard chip it would take switching
+  in, so the switch-menu/bench-hover "Incoming: does it survive?" check (`core/hazards.ts`)
+  applies that chip first — Rock-effectiveness-scaled Stealth Rock, grounded-only Spikes,
+  Heavy-Duty Boots/Magic Guard blocking both. Toxic Spikes and Gravity/Ingrain-forced
+  grounding are out of scope (see `CLAUDE.md`).
 - **Speed order is not turn order.** The ⚡ line answers "who is faster" — priority moves
   (Aqua Jet, Grassy Glide), Gale Wings, and Quick Claw are out of scope, and the native
   tooltip already lists the moves themselves.

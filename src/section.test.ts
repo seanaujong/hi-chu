@@ -26,11 +26,16 @@ const data = fixture.randbats as unknown as RandbatsData;
  * The client's classes are untyped and cyclic, so the reconstruction casts through
  * `unknown` — the shapes match readState's structural interfaces.
  */
-function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; nearTailwind?: boolean; foeDitto?: 'transformed' | 'plain'} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
+function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; foeDitto?: 'transformed' | 'plain'} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
   const sides: ClientSide[] = fixture.battle.sides.map((s, i) => {
     // Tailwind blows on OUR side (index 0) only — the asymmetry is the point: it must
     // double our speed and leave the foe's alone, whichever side a caller orients on.
-    const sideConditions = {...s.sideConditions, ...(i === 0 && over.nearTailwind ? {tailwind: ['tailwind', 1]} : {})};
+    const sideConditions = {
+      ...s.sideConditions,
+      ...(i === 0 && over.nearTailwind ? {tailwind: ['tailwind', 1]} : {}),
+      ...(i === 0 && over.nearStealthRock ? {stealthrock: ['Stealth Rock', 1]} : {}),
+      ...(i === 0 && over.nearSpikes !== undefined ? {spikes: ['Spikes', over.nearSpikes]} : {}),
+    };
     const side = {isFar: i === 1, sideConditions, active: [] as (ClientPokemon | null)[]};
     side.active = s.active.map((p) => {
       const terastallized = p.speciesForme === 'Noivern' && over.noivernTerastallized !== undefined
@@ -54,6 +59,9 @@ function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: strin
           ? {moveTrack: over.tentacruelMoveTrack.map((m) => [m, 0])}
           : {}),
         ...(over.fullHp ? {hp: p.maxhp} : {}),
+        ...(p.speciesForme === 'Noivern' && over.myNoivernHpPercent !== undefined
+          ? {hp: Math.round(p.maxhp * over.myNoivernHpPercent)}
+          : {}),
       } as unknown as ClientPokemon;
     });
     return side as unknown as ClientSide;
@@ -515,6 +523,36 @@ describe('the matchup view’s defensive half — what the foe’s moves would d
     const html = buildPokemonSection(openBattle, benched(active('Noivern')), null);
     expect(html).not.toContain('Incoming');
   });
+
+  it('factors in switch-in hazard damage for a bench candidate: at 50% HP, Sludge Bomb has no KO chance — Stealth Rock chips 25%, tipping it into a guaranteed KO', () => {
+    // Choice Specs (Noivern's OTHER entry-level item option, alongside Heavy-Duty Boots)
+    // rather than an arbitrary item: ownItemName only honours an item actually in the
+    // resolved entry's pool, and it's item-inert on the DEFENSIVE side either way (it
+    // only boosts the holder's own offense) — so this isolates the hazard effect alone.
+    const without = loadBattle({...mine, myNoivernItem: 'choicespecs', myNoivernHpPercent: 0.5});
+    const withHazard = loadBattle({...mine, myNoivernItem: 'choicespecs', myNoivernHpPercent: 0.5, nearStealthRock: true});
+    const baseline = buildPokemonSection(without.battle, benched(without.active('Noivern')), data);
+    const html = buildPokemonSection(withHazard.battle, benched(withHazard.active('Noivern')), data);
+    expect(baseline).not.toContain('Sludge Bomb: 30.7% - 36.1% ·');
+    expect(html).toContain('Sludge Bomb: 30.7% - 36.1% · <span class="hichu-ko">guaranteed KO</span> at 25% HP');
+  });
+
+  it('never touches a Heavy-Duty Boots holder — same numbers with or without hazards up', () => {
+    const withHazards = loadBattle({...mine, nearStealthRock: true});
+    const without = loadBattle(mine);
+    const withHtml = buildPokemonSection(withHazards.battle, benched(withHazards.active('Noivern')), data);
+    const withoutHtml = buildPokemonSection(without.battle, benched(without.active('Noivern')), data);
+    expect(withHtml).toEqual(withoutHtml);
+    expect(withHtml).not.toContain('at ');
+  });
+
+  it('never adjusts the mon actually ACTIVE on the field — its live HP is already accurate', () => {
+    const withHazards = loadBattle({...mine, myNoivernItem: 'leftovers', nearStealthRock: true});
+    const without = loadBattle({...mine, myNoivernItem: 'leftovers'});
+    const withHtml = buildPokemonSection(withHazards.battle, withHazards.active('Noivern'), data);
+    const withoutHtml = buildPokemonSection(without.battle, without.active('Noivern'), data);
+    expect(withHtml).toEqual(withoutHtml);
+  });
 });
 
 describe('buildSwitchSection (the switch menu: a ServerPokemon, NO battle-view Pokémon)', () => {
@@ -567,6 +605,29 @@ describe('buildSwitchSection (the switch menu: a ServerPokemon, NO battle-view P
     // and carries no boost of its own (a bench mon has none to carry).
     const {battle: b} = loadBattle({tentacruelBoosts: {spe: 2}});
     expect(buildSwitchSection(b, server(), data)).toContain('— 249 vs 432');
+  });
+
+  it('factors in Stealth Rock on switch-in when the candidate does not hold Heavy-Duty Boots: at 50% HP, Sludge Bomb has no KO chance — Stealth Rock chips 25%, tipping it into a guaranteed KO', () => {
+    const {battle: b} = loadBattle({nearStealthRock: true});
+    const baseline = buildSwitchSection(battle, server({item: 'leftovers', condition: '136/272'}), data);
+    const html = buildSwitchSection(b, server({item: 'leftovers', condition: '136/272'}), data);
+    expect(baseline).not.toContain('Sludge Bomb: 30.7% - 36.1% ·');
+    expect(html).toContain('Sludge Bomb: 30.7% - 36.1% · <span class="hichu-ko">guaranteed KO</span> at 25% HP');
+  });
+
+  it('never touches a Heavy-Duty Boots holder on the switch menu — same numbers with or without hazards up', () => {
+    const {battle: b} = loadBattle({nearStealthRock: true});
+    const withHazard = buildSwitchSection(b, server({condition: '136/272'}), data); // default item: heavydutyboots
+    const without = buildSwitchSection(battle, server({condition: '136/272'}), data);
+    expect(withHazard).toEqual(without);
+    expect(withHazard).not.toContain('guaranteed KO');
+  });
+
+  it('renders a faints-outright note, no Incoming lines, when hazards alone would faint the switch-in', () => {
+    const {battle: b} = loadBattle({nearStealthRock: true});
+    const html = buildSwitchSection(b, server({item: 'leftovers', condition: '20/274'}), data);
+    expect(html).toContain('<small>Incoming:</small> faints to Stealth Rock/Spikes before it can act');
+    expect(html).not.toMatch(/Surf: [\d.]+% - [\d.]+%/);
   });
 });
 

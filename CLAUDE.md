@@ -149,7 +149,10 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
   - `types.ts` — shared vocabulary (`LiveFacts`, `RandbatsEntry`, `ResolvedMon`,
     `SetVariant`, `SetKnowledge`, `FieldFacts`).
 - `src/battle/readState.ts` — Showdown's untyped client objects → typed `LiveFacts`/`FieldFacts`.
-- `src/data/randbats.ts` — fetch + cache the set feed.
+- `src/data/randbats.ts` — fetch + cache the set feed; the only file that touches the network.
+- `src/data/lookup.ts` — pure reads over an already-fetched feed (`pickEntry`, the Mega
+  lookups, the Champions stat-point conversion) — split out of `randbats.ts` so `section.ts`
+  can depend on the lookups without also depending on a file that calls `fetch`.
 - `src/section.ts` — pure shell orchestration, one builder per tooltip surface:
   `buildMoveSection(battle, pokemon, moveName, data)` for move-button hovers and
   `buildPokemonSection(battle, pokemon, data)` for Pokémon hovers (foe → possible sets
@@ -765,18 +768,40 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
 - ✅ **The fetch/reason/render split is a checked import graph, not just a description.**
   `dependency-boundaries.test.ts` turns three prose claims into predicates that fail the
   build: (1) the only runtime dependency, `@smogon/calc`, is imported by exactly
-  `core/damage.ts` and `core/speed.ts` — every other core module's own header comment
-  ("Pure: no DOM, no network, no @smogon/calc") was only ever a convention until now; (2)
-  nothing under `src/core/` imports from `battle/`, `data/`, `content.ts`, or `section.ts` —
-  the "dependencies only point downward" rule this file and the README both assert in
-  prose; (3) `render.ts`'s only imports from sibling core modules are `import type` — it
-  knows the SHAPE reasoning produced (`DamageBucket`, `SpeedOutcome`, …) and never calls a
-  reasoning function, which is what makes "render" its own step rather than a label on
-  code that's still entangled with "reason". Widening any of these allowlists is a
+  `core/damage.ts`, `core/speed.ts`, and `core/hazards.ts` — every other core module's own
+  header comment ("Pure: no DOM, no network, no @smogon/calc") was only ever a convention
+  until now; (2) nothing under `src/core/` imports from `battle/`, `data/`, `content.ts`, or
+  `section.ts` — the "dependencies only point downward" rule this file and the README both
+  assert in prose; (3) `render.ts`'s only imports from sibling core modules are `import
+  type` — it knows the SHAPE reasoning produced (`DamageBucket`, `SpeedOutcome`, …) and
+  never calls a reasoning function, which is what makes "render" its own step rather than a
+  label on code that's still entangled with "reason". Widening any of these allowlists is a
   deliberate edit to the test itself, not a silent import creeping in elsewhere. Checked by
   `dependency-boundaries.test.ts` (all three guards watched failing: a stray `@smogon/calc`
-  import outside the two files, a `core/facts.ts` import of `battle/readState.ts`, and a
+  import outside the three files, a `core/facts.ts` import of `battle/readState.ts`, and a
   value import of `resolve.ts` added to `render.ts`).
+- ✅ **"No DOM, no network" is typechecked everywhere except the two files whose job it is,
+  not just proven by import direction.** The dependency-graph test above shows core never
+  *imports* the DOM/network modules — but nothing stopped a file from reaching for the raw
+  globals (`document`, `window`, `fetch`) directly, without importing anything.
+  `src/tsconfig.pure.json` closes that gap: it drops the `DOM` lib and sets `types: []`
+  (`@types/node`'s `web-globals/fetch.d.ts` otherwise declares a global `fetch` even with
+  `DOM` absent, since it's referenced unconditionally from `@types/node`'s own `index.d.ts`),
+  so any file it covers that touches `document`, `window`, or `fetch` fails `tsc --noEmit -p
+  src/tsconfig.pure.json` with "cannot find name" — a real compile error, not a review-only
+  convention. It covers `core/**`, `battle/readState.ts`, and `section.ts` — everything
+  except `content.ts` (the one file allowed to touch the DOM) and `data/randbats.ts` (the one
+  file allowed to touch the network). `section.ts` and `data/lookup.ts` (its own pure reads
+  over an already-fetched feed) join it too: `section.ts` used to import straight from
+  `data/randbats.ts` for `pickEntry`/`megaEntryForItem`/`megaEntriesFor`, and since one `tsc`
+  program shares its compiler options across every file it transitively pulls in, including
+  `section.ts` here would have dragged `randbats.ts`'s own legitimate `fetch`/`localStorage`
+  calls under the same DOM-free lib and failed to compile — the split (see `src/data/
+  lookup.ts` above) exists *because of* this check, not incidentally alongside it. Wired into
+  `npm run typecheck` (and so `npm run check`/CI) as a second `tsc` invocation alongside the
+  root project's. Checked by running it against a probe `document.title`/`fetch(...)`
+  reference dropped into `core/facts.ts` and separately into `section.ts`, watching each
+  fail, then reverting.
 - 👁 **Where we correct @smogon/calc** (things it should arguably handle but doesn't, that we
   own): `multihit.ts` (the multi-hit model above) and the **item id→name quirk** — the calc
   silently *ignores* an item passed in id form (`heavydutyboots`), applying nothing. Fixed at

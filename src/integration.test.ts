@@ -10,7 +10,7 @@ import sample from './__fixtures__/gen9.sample.json';
 import {toLiveFacts, type ClientBattle, type ClientPokemon, type ClientSide} from './battle/readState.js';
 import {resolveMon} from './core/resolve.js';
 import {calcDamage, type DamageReport} from './core/damage.js';
-import {pickEntry} from './data/randbats.js';
+import {pickEntry} from './data/lookup.js';
 import {buildMoveSection, buildPokemonSection} from './section.js';
 import type {FieldFacts, RandbatsData} from './core/types.js';
 

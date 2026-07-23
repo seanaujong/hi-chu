@@ -32,6 +32,25 @@ describe('install (tooltip monkey-patch)', () => {
     expect(t.showMoveTooltip({name: 'Shadow Ball'}, '', {speciesForme: 'Gengar'})).toBe('NATIVE-MOVE(Shadow Ball)');
   });
 
+  it('logs to console.error when the augmentation throws, without breaking the native tooltip', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const Fake = FakeTooltips as unknown as {prototype: Record<string, unknown>};
+      install(Fake);
+      const t = new FakeTooltips() as unknown as Patched & {battle: unknown};
+      // A Proxy that throws on ANY property read forces our section to throw,
+      // regardless of exactly which field it happens to touch first — decoupled
+      // from section.ts's internals, unlike crafting a specific malformed battle.
+      t.battle = new Proxy({}, {get: () => { throw new Error('boom'); }});
+      expect(t.showPokemonTooltip({speciesForme: 'Gengar'})).toBe('NATIVE(Gengar)');
+      expect(t.showMoveTooltip({name: 'Shadow Ball'}, '', {speciesForme: 'Gengar'})).toBe('NATIVE-MOVE(Shadow Ball)');
+      expect(consoleSpy).toHaveBeenCalledWith('[hi-chu] showPokemonTooltip augmentation failed:', expect.any(Error));
+      expect(consoleSpy).toHaveBeenCalledWith('[hi-chu] showMoveTooltip augmentation failed:', expect.any(Error));
+    } finally {
+      consoleSpy.mockRestore();
+    }
+  });
+
   it('never throws when battle state is missing', () => {
     const Fake = FakeTooltips as unknown as {prototype: Record<string, unknown>};
     install(Fake);

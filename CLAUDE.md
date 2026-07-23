@@ -877,7 +877,8 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   invents Megas (Chandelure-Mega) and stones (Chandelurite) that never existed in a mainline
   game: the species crashes `new Pokemon` (no base stats to read) and the stone crashes gen-9
   Knock Off mechanics (`item.megaEvolves` read off a missing record) — so every hover facing
-  one silently lost its section (`content.ts` swallows the throw). Two fallbacks in `damage.ts`:
+  one lost its section with no visible sign why (`content.ts` catches the throw — see the
+  console.error bullet below for what changed there). Two fallbacks in `damage.ts`:
   `unknownSpeciesOverrides` feeds the calc the CLIENT dex's base data — `readState.readSpeciesData`
   reads `battle.dex.species.get(...)`, the same read the client's own tooltip does, into
   `LiveFacts.speciesData`, validated whole-or-nothing ("never lie") — used ONLY when
@@ -889,6 +890,25 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   `damage.test.ts` ("a species the calc dex does not know…"), `readState.test.ts`
   (`readSpeciesData`), and `resolve.test.ts` (pass-through). `battle.dex` is a new client
   read → probed by `npm run drift-check` (verified against the live client).
+- ✅ **A bug that reaches either of the two catch-alls is logged, never fully silent —
+  but still never breaks anything the user is looking at.** `content.ts`'s `append()`
+  (guarding both tooltip hooks) and `randbats.ts`'s feed fetch (a genuine network/parse
+  failure, distinct from the already-handled "unsupported format" `!res.ok` branch) both
+  `console.error` a `[hi-chu] …` line with the real error before falling back — the native
+  tooltip, or an info-less hover, looks identical either way, but DevTools now shows
+  something happened instead of nothing. There is no telemetry beyond that and none is
+  planned by default: `manifest.json`'s `host_permissions` grant only the randbats feed
+  host, so the extension is technically incapable of phoning an error anywhere off the
+  page even if it wanted to — this reads private battle data (`myPokemon`), so a real
+  phone-home decision needs its own deliberate call, not a default. The OTHER catches in
+  the codebase (`section.ts`'s two, `damage.ts`'s `safeDesc`, `randbats.ts`'s cache reads)
+  stay silent on purpose — each guards a genuinely EXPECTED branch (a move outside the
+  calc's dex, an immune matchup, a cold/corrupted cache) with its own inline rationale, not
+  a bug, so logging there would just be noise on ordinary battles. Checked by
+  `content.test.ts` ("logs to console.error when the augmentation throws…", forcing the
+  throw via a Proxy that throws on any property read — decoupled from section.ts's actual
+  internals) and `randbats.test.ts` ("logs to console.error when the fetch itself
+  fails…", distinguishing a rejected fetch from an unsupported-format response).
 - ✅ **Four revealed moves = the full moveset; stop speculating.** A Pokémon has four move
   slots, so once `revealedMoves.length >= 4`, `inferSets` drops the role's remaining pool from
   the display (every shown move is a confirmed ✓). Checked by `knowledge.test.ts` ("stops

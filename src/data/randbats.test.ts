@@ -21,4 +21,16 @@ describe('fetchRandbats keys the stat-point conversion on the format id', () => 
     const mainline = await fetchRandbats('gen9randombattle');
     expect(pickEntry(mainline!, 'Arbok')!.evs).toEqual({hp: 11});
   });
+
+  it('logs to console.error when the fetch itself fails — distinct from an unsupported format, which stays silent', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new Error('network down'))));
+      const data = await fetchRandbats('gen9anythinggoes'); // unused elsewhere in this file — its own cache slot
+      expect(data).toBeNull();
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('gen9anythinggoes'), expect.any(Error));
+    } finally {
+      consoleSpy.mockRestore();
+    }
+  });
 });

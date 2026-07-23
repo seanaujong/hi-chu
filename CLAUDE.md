@@ -79,7 +79,11 @@ So the default workflow for any change, including doc-only ones, is: branch
 (`git checkout -b <name>`), commit at a green `npm run check` checkpoint (same
 commit-on-your-own default as always — no need to ask before committing), push the branch,
 then open the PR with `gh pr create`. Treat the PR as the normal way to finish a task, not
-a separate ask each time — the hooks exist so this is the only path that works anyway.
+a separate ask each time — the hooks exist so this is the only path that works anyway. In a
+Claude Code session, prefer opening that branch in a git worktree (`EnterWorktree`) over
+switching branches in place — the main checkout's `dist/` build (loaded unpacked in Chrome
+for manual verification) and any other in-progress branch stay undisturbed while the change
+is in flight.
 
 ## Architecture — where to make a change
 A **pure core + thin browser shell**. Dependencies point one way: the shell uses the
@@ -645,11 +649,25 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   **multiaccuracy trio** (Population Bomb, Triple Axel, Triple Kick): each hit after the
   first passes its own 90% check or the move stops — the stop-at-miss law, conditioned on
   hit 1 landing (every damage calc assumes the shown move connects). Loaded Dice DELETES
-  the checks (PS `data/items.ts`); Wide Lens lifts each to 99% with PS's own rounding
-  (the real Maushold/Smeargle item — other accuracy modifiers are a scope decision, no
-  randbats set pairs one with these moves). Checked by `multihit.test.ts` (distributions,
-  stop-at-miss, `perHitChance`, the "independent rolls narrow the distribution" guard)
-  and `damage.test.ts`.
+  the checks (PS `data/items.ts`); Wide Lens lifts each to 99% with PS's own rounding (the
+  real Maushold/Smeargle item). **Every other per-hit accuracy modifier is modeled too** —
+  Compound Eyes (×5325/4096), Hustle (×3277/4096, physical moves only), No Guard (either
+  combatant, bypasses the check entirely), and the attacker's accuracy / defender's evasion
+  stat stages — mirroring PS's own per-hit branch (`battle-actions.ts`'s `multiaccuracy &&
+  hit > 1`), a genuinely DIFFERENT formula from a move's hit-1 check (out of scope, as
+  above — hit 1 is always conditioned on landing): the boost stages apply as two SEPARATE,
+  un-truncated float multiplies (not hit 1's combined, integer-truncated stage), and an
+  item/ability modifier only lands when that boost-adjusted value is still a whole number —
+  PS's own event system silently drops an accumulated `chainModify` otherwise (e.g. a lone
+  -1 accuracy stage on a 90-accuracy move: 90/(4/3) = 67.5, so Compound Eyes' bonus never
+  applies that hit; `perHitChance` reproduces this exactly, not an approximation of it). No
+  randbats set pairs one of these with a multiaccuracy move, so this only ever fires in a
+  Custom Game/Free-For-All battle. Verified by driving the real `pokemon-showdown` simulator
+  package directly (forcing every per-hit check to log its incoming accuracy value), not
+  derived from reading the source alone. Checked by `multihit.test.ts` (distributions,
+  stop-at-miss, `perHitChance` incl. every modifier above and the whole-number-drop quirk,
+  the "independent rolls narrow the distribution" guard) and `damage.test.ts` (the same
+  cases run end-to-end through Triple Kick/Triple Axel/Population Bomb).
 - ✅ **Variable-power multi-hit is computed per hit, through a stand-in move.** Triple
   Axel (20/40/60) and Triple Kick (10/20/30) get one calc run per hit's true BP, convolved
   over the stop-at-miss counts — exact, not the calc's correlated estimate. The trap: the

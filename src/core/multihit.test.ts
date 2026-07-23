@@ -30,7 +30,16 @@ function expectPmf(pmf: Pmf, expected: Record<number, number>) {
 }
 
 describe('hitCountPmf', () => {
-  const none = {skillLink: false, loadedDice: false, wideLens: false};
+  const none = {
+    skillLink: false,
+    loadedDice: false,
+    wideLens: false,
+    compoundEyes: false,
+    hustle: false,
+    noGuard: false,
+    accuracyStage: 0,
+    evasionStage: 0,
+  };
 
   it('2-5 move with no mods is 35/35/15/15 (matches PS sample table)', () => {
     expectPmf(hitCountPmf({kind: 'range', min: 2, max: 5}, none), {
@@ -69,7 +78,16 @@ describe('hitCountPmf', () => {
 });
 
 describe('per-hit accuracy (multiaccuracy): the stop-at-miss law', () => {
-  const none = {skillLink: false, loadedDice: false, wideLens: false};
+  const none = {
+    skillLink: false,
+    loadedDice: false,
+    wideLens: false,
+    compoundEyes: false,
+    hustle: false,
+    noGuard: false,
+    accuracyStage: 0,
+    evasionStage: 0,
+  };
   const tripleAxel = {kind: 'fixed', hits: 3, accuracyPerHit: 90} as const;
   const populationBomb = {kind: 'fixed', hits: 10, accuracyPerHit: 90} as const;
 
@@ -103,6 +121,79 @@ describe('per-hit accuracy (multiaccuracy): the stop-at-miss law', () => {
     expect(perHitChance(100, {...none, wideLens: true})).toBe(1);
     const wide = hitCountPmf(populationBomb, {...none, wideLens: true});
     expect(expectedValue(wide)).toBeCloseTo((1 - 0.99 ** 10) / 0.01, 10); // ≈9.56 hits
+  });
+});
+
+// Every value below was pinned by driving the real `pokemon-showdown` simulator package
+// directly (a Custom Game battle, `Battle#randomChance` monkey-patched to log its incoming
+// accuracy argument) — not derived from reading the source alone. No randbats set pairs
+// Compound Eyes, Hustle, No Guard, or a boosted accuracy/evasion stage with a multiaccuracy
+// move, so these only ever fire in a Custom/Free-For-All battle.
+describe('per-hit accuracy: Compound Eyes, Hustle, No Guard, accuracy/evasion boosts', () => {
+  const none = {
+    skillLink: false,
+    loadedDice: false,
+    wideLens: false,
+    compoundEyes: false,
+    hustle: false,
+    noGuard: false,
+    accuracyStage: 0,
+    evasionStage: 0,
+  };
+
+  it('Compound Eyes alone pushes 90 past 100 — a guaranteed hit, not 130%', () => {
+    // 90 × 5325/4096, PS-truncated, is 117 — over the accuracy cap.
+    expect(perHitChance(90, {...none, compoundEyes: true})).toBe(1);
+  });
+
+  it('Hustle alone: 90 → 72% (×3277/4096, physical multiaccuracy moves only)', () => {
+    expect(perHitChance(90, {...none, hustle: true})).toBeCloseTo(0.72, 10);
+  });
+
+  it('Hustle + Wide Lens combine via PS’s own fixed-point chain: 90 → 79%', () => {
+    expect(perHitChance(90, {...none, hustle: true, wideLens: true})).toBeCloseTo(0.79, 10);
+  });
+
+  it('No Guard on either side always hits, overriding every other modifier', () => {
+    expect(perHitChance(90, {...none, noGuard: true})).toBe(1);
+    // Even a crushing accuracy stage can't undo it.
+    expect(perHitChance(90, {...none, noGuard: true, accuracyStage: -6})).toBe(1);
+  });
+
+  it('a lone accuracy stage applies as an un-truncated float, not PS’s combined hit-1 stage', () => {
+    expect(perHitChance(90, {...none, accuracyStage: -1})).toBeCloseTo(0.675, 10);
+    expect(perHitChance(90, {...none, accuracyStage: -2})).toBeCloseTo(0.54, 10);
+    expect(perHitChance(90, {...none, accuracyStage: -6})).toBeCloseTo(0.3, 10);
+    expect(perHitChance(90, {...none, accuracyStage: 6})).toBe(1); // 270% → capped
+  });
+
+  it('the defender’s evasion stage applies as its own separate step, same table', () => {
+    expect(perHitChance(90, {...none, evasionStage: 1})).toBeCloseTo(0.675, 10); // mirrors acc -1
+    expect(perHitChance(90, {...none, evasionStage: -6})).toBe(1); // 270% → capped
+  });
+
+  it('accuracy and evasion stages combine sequentially (accuracy first, then evasion)', () => {
+    expect(perHitChance(90, {...none, accuracyStage: -1, evasionStage: 1})).toBeCloseTo(0.50625, 10);
+  });
+
+  it('a fractional boost-adjusted accuracy silently drops the item/ability bonus — a real ' +
+    'PS quirk (its event system only re-applies a chained modifier to a WHOLE number)', () => {
+    // 90 / (4/3) = 67.5, not an integer — Compound Eyes' ×5325/4096 never gets re-applied.
+    const boostedAlone = perHitChance(90, {...none, accuracyStage: -1});
+    const boostedWithCompoundEyes = perHitChance(90, {...none, accuracyStage: -1, compoundEyes: true});
+    expect(boostedWithCompoundEyes).toBe(boostedAlone);
+    expect(boostedWithCompoundEyes).toBeCloseTo(0.675, 10);
+
+    // Same drop for a WIDE LENS bonus, and for a different fractional stage (-4 → 38.57…%).
+    expect(perHitChance(90, {...none, accuracyStage: -1, wideLens: true})).toBe(boostedAlone);
+    const dashFour = perHitChance(90, {...none, accuracyStage: -4});
+    expect(perHitChance(90, {...none, accuracyStage: -4, compoundEyes: true})).toBe(dashFour);
+  });
+
+  it('a WHOLE-number boost-adjusted accuracy lets the item/ability bonus through as normal', () => {
+    // -2 accuracy stage: 90/(5/3) = 54, an integer — Compound Eyes DOES apply from there.
+    // 54 × 5325/4096, PS-truncated, is 70.
+    expect(perHitChance(90, {...none, accuracyStage: -2, compoundEyes: true})).toBeCloseTo(0.7, 10);
   });
 });
 

@@ -12,6 +12,7 @@ import {calculate, calcStat, Generations, Pokemon, Move, Field, toID, type Gener
 import type {FieldFacts, FullStats, ResolvedMon, SpeciesData, StatID} from './types.js';
 import {multiHitProfile} from './moves.js';
 import {
+  type HitCountMods,
   type Pmf,
   hitCountPmf,
   pmfFromSamples,
@@ -387,11 +388,18 @@ export function calcDamage(
   // Compared against `atk`'s already-dex-resolved ability/item, not the raw ResolvedMon
   // fields — an own-side read (`readOwnAbility`/`readOwnItem`) can hand those in id form
   // ("skilllink"), which would never string-match the display name a bare `attacker.item`
-  // read expects.
-  const mods = {
+  // read expects. No Guard is checked on BOTH built Pokémon for the same reason.
+  // accuracyStage/evasionStage come straight off the plain ResolvedMon facts, not the
+  // calc-built Pokemon — they never reach the calc (see `ResolvedMon.accuracyBoost`).
+  const mods: HitCountMods = {
     skillLink: atk.ability === 'Skill Link',
     loadedDice: atk.item === 'Loaded Dice',
     wideLens: atk.item === 'Wide Lens',
+    compoundEyes: atk.ability === 'Compound Eyes',
+    hustle: atk.ability === 'Hustle' && category === 'Physical',
+    noGuard: atk.ability === 'No Guard' || def.ability === 'No Guard',
+    accuracyStage: attacker.accuracyBoost ?? 0,
+    evasionStage: defender.evasionBoost ?? 0,
   };
   const counts = hitCountPmf(profile.spec, mods);
 

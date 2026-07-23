@@ -959,31 +959,26 @@ function moveSectionHtml(
 
   // The live Tera is shared by every variant (it's a revealed fact, not a hidden set).
   const defenderTera = defenderVariants[0]?.mon.teraType;
-  // How firmly THIS BUCKET's own sets hold `itemId` — graded per bucket, never over the
-  // whole pool: a damage split can be mutually exclusive with the item (a set holding
-  // Assault Vest never also holds Leftovers), so a pool-wide 'possible' would wrongly
-  // caveat a bucket whose own sets can't carry it. A revealed item is 'certain', a
-  // still-open pool entry 'possible', and a knocked-off/consumed item counts as nothing
-  // at all (resolveVariants already dropped it; a gone Leftovers heals no one).
-  const itemStanding = (variants: readonly SetVariant[], itemId: string): 'certain' | 'possible' | undefined => {
-    const holders = variants.filter((v) => toId(v.mon.item ?? '') === itemId).length;
+  // How firmly the foe holds `itemId`, read from the RESOLVED variants — so a revealed item
+  // is 'certain', a still-open pool entry 'possible', and a knocked-off/consumed item counts
+  // as nothing at all (resolveVariants already dropped it; a gone Leftovers heals no one).
+  const itemStanding = (itemId: string): 'certain' | 'possible' | undefined => {
+    const holders = defenderVariants.filter((v) => toId(v.mon.item ?? '') === itemId).length;
     if (holders === 0) return undefined;
-    return holders === variants.length ? 'certain' : 'possible';
+    return holders === defenderVariants.length ? 'certain' : 'possible';
   };
   // Leftovers changes the nHKO ladder (recovery between turns) and Focus Sash denies a
-  // single-hit KO from full HP — foe-level facts that qualify a bucket's own line without
-  // changing its damage roll.
-  const outcomes = buckets.map((b) => {
-    const variants = b.variants ?? [];
-    const leftovers = itemStanding(variants, 'leftovers');
-    const focusSash = itemStanding(variants, 'focussash');
-    return {...b, ...(leftovers ? {leftovers} : {}), ...(focusSash ? {focusSash} : {})};
-  });
+  // single-hit KO from full HP — foe-level facts that qualify the lines without changing
+  // the damage rolls, shown only when there's a single outcome to attach them to.
+  const leftovers = buckets.length === 1 ? itemStanding('leftovers') : undefined;
+  const focusSash = buckets.length === 1 ? itemStanding('focussash') : undefined;
   return renderMoveSection({
     defenderHpPercent: defenderFacts.hpPercent,
     extraNotes: [],
-    buckets: outcomes,
+    buckets,
     ...(targetLabel ? {targetLabel} : {}),
+    ...(leftovers ? {leftovers} : {}),
+    ...(focusSash ? {focusSash} : {}),
     ...(attacker.teraType ? {attackerTera: attacker.teraType} : {}),
     ...(defenderTera ? {defenderTera} : {}),
   });

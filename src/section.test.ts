@@ -294,19 +294,6 @@ describe('buildMoveSection when the target item is still unknown (the Assault Ve
     expect(Number(av![1])).toBeLessThan(Number(lefto![1]));
   });
 
-  it('carries the nHKO ladder on the Leftovers bucket, and never leaks it onto the Assault Vest bucket', () => {
-    // Within the non-AV bucket, EVERY surviving set holds Leftovers (it's the only other
-    // item in this pool), so that bucket grades 'certain' — the same recovery-aware figure
-    // the fully-revealed case shows below. The AV bucket's own sets can never hold
-    // Leftovers, so its line must stay bare — a pool-wide caveat would have lied here.
-    const html = buildMoveSection(battle, noivern(), 'Draco Meteor', data);
-    const lines = [...html.matchAll(/<p>(.*?)<\/p>/g)].map((m) => m[1]!);
-    const leftoversLine = lines.find((l) => l.includes('Damage (Leftovers)'))!;
-    const avLine = lines.find((l) => l.includes('Damage (Assault Vest)'))!;
-    expect(leftoversLine).toMatch(/\dHKO \d+%/);
-    expect(avLine).not.toMatch(/HKO/);
-  });
-
   it('does NOT split a physical move — Assault Vest leaves it identical (no dupes)', () => {
     // U-turn is physical; AV boosts only SpD, so both items deal the same → one line.
     const html = buildMoveSection(battle, noivern(), 'U-turn', data);

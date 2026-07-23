@@ -48,43 +48,56 @@ npm run drift-check   # LOCAL, needs Chrome: runs readState against a live repla
 ## Cutting a release
 CI's `check` job (typecheck + Vitest) gates every push, but it can't reach the client-shape
 drift and `myPokemon`-only invariants tagged 👁 below — those need a real browser and (for
-the private-team reads) a real battle. Before tagging a release, run the fuller local gate:
-```sh
-npm run release-check   # build + check + drift-check + player-check, in order
-```
-`player-check` battles against a throwaway, self-hosted Showdown server it starts itself
-(`scripts/lib/local-server.mjs` — cloned + `npm install`ed into the gitignored `.ps-server/`
-on first run, a one-time cost of about a minute), not real play.pokemonshowdown.com accounts —
-see the invariants section's `myPokemon` bullet. The same two live checks also run on demand
-via `.github/workflows/e2e.yml` (`gh workflow run e2e.yml`) — manual `workflow_dispatch` only,
-never on every push, since it's a real browser plus a from-scratch server build on a cold
-cache and a flaky live-site run shouldn't block unrelated work.
+the private-team reads) a real battle. That gap used to mean remembering to run a fuller
+local gate before tagging; it no longer does — see below, everything past the version bump
+is automatic. `npm run release-check` (build + check + drift-check + player-check, in order)
+still exists and is worth running locally while iterating, since it's much faster to debug a
+failure on your own machine than in a CI log; `player-check` battles against a throwaway,
+self-hosted Showdown server it starts itself (`scripts/lib/local-server.mjs` — cloned +
+`npm install`ed into the gitignored `.ps-server/` on first run, a one-time cost of about a
+minute), not real play.pokemonshowdown.com accounts — see the invariants section's
+`myPokemon` bullet. `.github/workflows/e2e.yml` still runs the same two live checks on
+demand (`gh workflow run e2e.yml`) for probing a specific format outside the release flow.
 
-Then run the **`release-visual-check`** skill for a human-eyes pass, through Claude-in-Chrome,
-over the surfaces neither script above reaches at all: Tera/Mega preview toggling, doubles,
-hazards on switch-in, Illusion, a foe's roster-icon hover. It drives the REAL loaded extension
-in an actual Chrome session rather than injecting the bundle (a live `https://` Showdown page
+Bump the version FIRST — `release.yml` releases whatever's already in the files, it doesn't
+write them. `npm version --no-git-tag-version X.Y.Z` updates `package.json`/`package-
+lock.json`; `public/manifest.json`'s `version` field needs the same bump by hand. That's a
+normal change to a protected file, so it goes through the same branch + PR + merge as
+anything else (see Contributing, below) — but **before merging that PR**, run the
+**`release-visual-check`** skill for a human-eyes pass, through Claude-in-Chrome, over the
+surfaces nothing scripted reaches at all: Tera/Mega preview toggling, doubles, hazards on
+switch-in, Illusion, a foe's roster-icon hover. It drives the REAL loaded extension in an
+actual Chrome session rather than injecting the bundle (a live `https://` Showdown page
 mixed-content-blocks a locally-served script, and inlining the ~500KB bundle into a tool call
 is impractical) — so it needs one manual step first: `npm run build`, then Load Unpacked (or
-hit reload) on `dist/` at `chrome://extensions`.
+hit reload) on `dist/` at `chrome://extensions`. This is the one gate that stays manual on
+principle: it needs an agent or a human actually judging what's on screen, which nothing
+below can assert.
 
-Once tagging is safe, bump the version FIRST — `release.yml` releases whatever's already
-in the files, it doesn't write them. `npm version --no-git-tag-version X.Y.Z` updates
-`package.json`/`package-lock.json`; `public/manifest.json`'s `version` field needs the same
-bump by hand. That's a normal change to a protected file, so it goes through the same
-branch + PR + merge as anything else (see Contributing, below).
+Everything else is automatic and runs on `main` once that PR merges, chained through two
+workflows so a release can never again depend on a human's local git or memory matching what
+actually happened on GitHub:
+1. **`.github/workflows/auto-tag.yml`** runs on every push to `main`, but is a no-op unless
+   `package.json`'s version has no matching tag yet — i.e. unless this push WAS the
+   version-bump merge. When it is: `verify` runs the exact `npm run release-check` a human
+   used to run by hand, gating everything after it — nothing gets tagged, let alone
+   released, unless build + typecheck/tests + drift-check + player-check are all green
+   (drift-check hits the *live* replay site, so a flaky run here is retried by re-running
+   the job, not by bumping the version again, since no tag was ever created). Only then does
+   `tag` create+push `vX.Y.Z` at that exact merged commit — never a stale local `main` — and
+   `release` hand off to `release.yml` (`workflow_call`, since a tag pushed by the default
+   `GITHUB_TOKEN` doesn't cascade-trigger `release.yml`'s own `push: tags` event, so the
+   chain has to be explicit). It also guards that `package.json` and `public/manifest.json`
+   report the same version, failing loudly if the by-hand manifest bump was forgotten.
+2. **`release.yml`** builds the zip, hashes it, and attests build provenance (see README's
+   "Verifying a release") in a `build` job that runs immediately — then a `publish` job
+   targets the `release` GitHub Environment, which requires one manual approval (configured
+   via the repo's Environments settings) before `gh release create` actually runs. That
+   pause is a structural reminder that `release-visual-check` happened, not a replacement for
+   it — approving doesn't re-run anything, it just says "yes, I did the human pass."
 
-Tagging itself is automatic, not a manual step — `.github/workflows/auto-tag.yml` runs on
-every push to `main` and is a no-op unless `package.json`'s version has no matching tag yet.
-The moment the version-bump PR above merges, it tags that exact merged commit as
-`vX.Y.Z` and calls `release.yml` directly (`workflow_call`, since a tag pushed by the
-default `GITHUB_TOKEN` doesn't cascade-trigger `release.yml`'s own `push: tags` event) to
-build + attest provenance (see README's "Verifying a release"). This exists specifically so
-a release can never be cut from a stale local `main` — the tag always lands on the commit
-GitHub itself just merged, not on whatever your last `git pull` happened to catch. It also
-guards that `package.json` and `public/manifest.json` report the same version, failing loudly
-if the by-hand manifest bump was forgotten. A manual escape hatch still works if you ever need
-it: `git tag vX.Y.Z <merged-sha> && git push origin vX.Y.Z` triggers `release.yml` the same way.
+A manual escape hatch still works if the automation is ever down: `git tag vX.Y.Z
+<merged-sha> && git push origin vX.Y.Z` triggers `release.yml` the same way, standalone.
 Afterward, `gh release edit vX.Y.Z --notes '...'` to prepend a human-readable summary of
 what's new before the provenance-verification boilerplate `release.yml` already writes —
 see any past release for the shape.

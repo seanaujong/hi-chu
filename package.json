@@ -1,6 +1,6 @@
 {
   "name": "hi-chu",
-  "version": "0.19.0",
+  "version": "0.19.3",
   "description": "hi-chu: Pokémon Showdown random-battle tooltips with per-move damage, true multi-hit KO%, and reveal-narrowed set possibilities.",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "icons": "node scripts/make-icons.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p src/tsconfig.pure.json",
     "check": "npm run typecheck && npm run test",
     "drift-check": "node scripts/drift-check.mjs",
     "player-check": "node scripts/player-check.mjs",

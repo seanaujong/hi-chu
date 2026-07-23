@@ -10,7 +10,7 @@ import sample from './__fixtures__/gen9.sample.json';
 import {toLiveFacts, type ClientBattle, type ClientPokemon, type ClientSide} from './battle/readState.js';
 import {resolveMon} from './core/resolve.js';
 import {calcDamage, type DamageReport} from './core/damage.js';
-import {pickEntry} from './data/randbats.js';
+import {pickEntry} from './data/lookup.js';
 import {buildMoveSection, buildPokemonSection} from './section.js';
 import type {FieldFacts, RandbatsData} from './core/types.js';
 
@@ -120,5 +120,35 @@ describe('current HP changes the KO math (Multiscale)', () => {
     const fullOutrage = full.find((r) => r.move === 'Outrage')!;
     const hurtOutrage = hurt.find((r) => r.move === 'Outrage')!;
     expect(hurtOutrage.koChance).toBeGreaterThan(fullOutrage.koChance);
+  });
+});
+
+// Illusion suspects (section.ts) are discovered by scanning the FEED for whichever species
+// it lists with the Illusion ability, not by matching a hardcoded "Zoroark" name — so this
+// feed deliberately hands the ability to a species that has never had it in reality. If
+// discovery secretly still keyed on the literal name, this whole suspicion would never fire.
+const illusionData = {
+  Tyranitar: {level: 100, abilities: [], items: [], roles: {R: {abilities: ['Sand Stream'], items: ['Leftovers'], teraTypes: [], moves: ['Crunch']}}},
+  Magikarp: {level: 100, abilities: [], items: [], roles: {R: {abilities: ['Swift Swim'], items: ['Leftovers'], teraTypes: [], moves: ['Splash', 'Tackle']}}},
+  Pikachu: {level: 100, abilities: [], items: [], roles: {R: {abilities: ['Illusion'], items: ['Leftovers'], teraTypes: [], moves: ['Splash', 'Thunder Wave']}}},
+} as unknown as RandbatsData;
+
+describe('Illusion suspects are discovered from the feed, not a hardcoded species name', () => {
+  it('flags a shown Magikarp as a possible disguised Pikachu once it reveals a move only Pikachu’s pool has', () => {
+    const battle = makeBattle(
+      clientMon({speciesForme: 'Tyranitar'}),
+      clientMon({speciesForme: 'Magikarp', moveTrack: [['Thunder Wave', 32]]}),
+    );
+    const html = buildMoveSection(battle, ourActive(battle), 'Crunch', illusionData);
+    expect(html).toContain('Pikachu');
+  });
+
+  it('stays silent when every revealed move already fits the shown species', () => {
+    const battle = makeBattle(
+      clientMon({speciesForme: 'Tyranitar'}),
+      clientMon({speciesForme: 'Magikarp', moveTrack: [['Tackle', 32]]}),
+    );
+    const html = buildMoveSection(battle, ourActive(battle), 'Crunch', illusionData);
+    expect(html).not.toContain('Pikachu');
   });
 });

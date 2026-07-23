@@ -31,23 +31,19 @@ network unless that IS its job. Dependencies only ever point downward:
 
 ```mermaid
 flowchart TB
-    subgraph content["content.ts — the shell (impure)<br/>monkey-patches Showdown's tooltip, triggers the fetch"]
-        direction TB
-        subgraph section["section.ts — pure orchestrator<br/>folds FETCH → REASON → RENDER into one HTML string"]
-            direction TB
+    subgraph content["content.ts — the shell (impure) · DOM"]
+        subgraph section["section.ts — pure orchestrator"]
             subgraph FETCH["FETCH — reads the page + the network"]
-                direction LR
                 readState["battle/readState.ts<br/>PS client objects → LiveFacts"]
                 randbats["data/randbats.ts<br/>fetch + cache the sets feed"]
             end
 
             subgraph REASON["REASON — pure: given x, return y"]
-                direction LR
                 resolve["resolve.ts<br/>LiveFacts + a set → ResolvedMon"]
-                damage["damage.ts<br/>2 ResolvedMon + move → DamageReport"]
+                damage["damage.ts (calc)<br/>2 ResolvedMon + move → DamageReport"]
                 assume["assume.ts<br/>LiveFacts, no feed → 2 bracket sets"]
                 variantsN["variants.ts<br/>scored variants → distinct buckets"]
-                speedN["speed.ts<br/>ResolvedMon → effective Speed"]
+                speedN["speed.ts (calc)<br/>ResolvedMon → effective Speed"]
                 multihitN["multihit.ts<br/>per-hit + hit-count PMF → total PMF"]
                 movesN["moves.ts<br/>data: multi-hit table"]
                 typesN["types.ts<br/>shared vocab"]
@@ -151,7 +147,11 @@ is *where the foe's possibilities come from* — everything below that seam is s
 ### The shell
 
 - **`src/data/randbats.ts`** — fetches and caches the set feed (memory + `localStorage`
-  with a TTL).
+  with a TTL). The only file in the codebase that touches the network.
+- **`src/data/lookup.ts`** — pure reads over a feed already in hand: `pickEntry`, the two
+  Mega lookups, the Champions stat-point conversion. Split out of `randbats.ts` so a caller
+  that only needs the lookups, like `section.ts`, doesn't have to depend on the file that
+  also calls `fetch`.
 - **`src/battle/readState.ts`** — reads Showdown's untyped client objects into our
   typed `LiveFacts` and `FieldFacts` (weather, terrain, the defender's screens). The
   structural `ClientPokemon`/`ClientBattle`/`ClientSide` interfaces document exactly

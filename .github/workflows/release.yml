@@ -1,15 +1,31 @@
 # Publishes a verifiable release when a v* tag is pushed. Each release carries a
 # signed SLSA build-provenance attestation and a SHA256SUMS file, so anyone can prove
 # the published artifact was built by THIS workflow from THIS commit — turning "trust
-# me, it's safe" into a check. See README → "Verifying a release".
+# me, it's safe" into a check. See README → "Verifying a release". Also pushes the
+# same build live to the Chrome Web Store, so a tagged release is the only manual
+# step left — everything downstream of it, GitHub AND the store, is automatic.
 #
-# Tag a release with the version already in package.json/manifest.json, e.g.:
-#   git tag v0.2.0 && git push origin v0.2.0
+# Normally reached via auto-tag.yml, which creates and pushes the v* tag itself once
+# a version bump lands on main, then calls this workflow directly (workflow_call) —
+# a tag pushed by the default GITHUB_TOKEN doesn't cascade-trigger the `push: tags`
+# event below, so the chain has to be explicit. The tag trigger still works standalone
+# as a manual escape hatch: git tag v0.2.0 && git push origin v0.2.0.
+#
+# No approval gate on purpose: the version-bump PR merge (see CLAUDE.md → "Cutting a
+# release") is already the one conscious human checkpoint — release-visual-check runs
+# BEFORE that merge, so a second click here would just be a redundant pause, not an
+# extra check.
 name: Release
 
 on:
   push:
     tags: ['v*']
+  workflow_call:
+    inputs:
+      tag:
+        description: The v* tag to release (defaults to the triggering ref's tag name)
+        required: false
+        type: string
 
 permissions:
   contents: write # create the GitHub Release
@@ -19,11 +35,15 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RELEASE_TAG }} # explicit: workflow_call's default ref is the CALLER's (main), not this tag
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run check # strict typecheck + tests gate the release
@@ -41,10 +61,24 @@ jobs:
             hi-chu-*.zip
             dist/content.js
 
-      - name: Publish the release
+      - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$GITHUB_REF_NAME" hi-chu-*.zip SHA256SUMS \
-            --title "$GITHUB_REF_NAME" \
+          gh release create "$RELEASE_TAG" hi-chu-*.zip SHA256SUMS \
+            --title "$RELEASE_TAG" \
             --notes "Signed build provenance is attached. Verify the download with \`gh attestation verify hi-chu-*.zip --repo $GITHUB_REPOSITORY\`, then see the README's \"Verifying a release\" section for the full check."
+
+      # Uploads + publishes the same zip live on the store. Needs CHROME_CLIENT_ID /
+      # CHROME_CLIENT_SECRET / CHROME_REFRESH_TOKEN / CHROME_PUBLISHER_ID as repo
+      # secrets (see CLAUDE.md → "Cutting a release" for the one-time setup — the
+      # refresh token requires an interactive Google OAuth consent only the account
+      # owner can do). EXTENSION_ID is public (it's in the store URL), not a secret.
+      - name: Publish to the Chrome Web Store
+        env:
+          EXTENSION_ID: kjdnmonplcbfldefppjoohlleelfcmik
+          CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID }}
+        run: npx --yes chrome-webstore-upload-cli@4.0.1 --source hi-chu-*.zip

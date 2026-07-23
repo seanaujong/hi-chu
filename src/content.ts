@@ -95,8 +95,10 @@ function append(
     try {
       const extra = section(this, args);
       if (extra) return buf + extra;
-    } catch {
-      // Never let our augmentation break the native tooltip.
+    } catch (error) {
+      // Never let our augmentation break the native tooltip — but a real bug
+      // shouldn't vanish silently either, so at least surface it in DevTools.
+      console.error(`[hi-chu] ${method} augmentation failed:`, error);
     }
     return buf;
   };

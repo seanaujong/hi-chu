@@ -48,36 +48,67 @@ npm run drift-check   # LOCAL, needs Chrome: runs readState against a live repla
 ## Cutting a release
 CI's `check` job (typecheck + Vitest) gates every push, but it can't reach the client-shape
 drift and `myPokemon`-only invariants tagged 👁 below — those need a real browser and (for
-the private-team reads) two real accounts. Before tagging a release, run the fuller local gate:
-```sh
-npm run release-check   # build + check + drift-check + player-check, in order
-```
-`player-check` needs `PS_ACCOUNT1`/`PS_ACCOUNT2` env vars for two throwaway
-play.pokemonshowdown.com accounts (see the invariants section's `myPokemon` bullet). The same
-two live checks also run on demand via `.github/workflows/e2e.yml`
-(`gh workflow run e2e.yml`) — manual `workflow_dispatch` only, never on every push, since
-Showdown throttles logins per IP and a flaky live-account run shouldn't block unrelated work.
-Its credentials live in the `release-e2e` GitHub Environment (not a repo secret), so a run can
-require reviewer approval before it touches real accounts.
+the private-team reads) a real battle. That gap used to mean remembering to run a fuller
+local gate before tagging; it no longer does — see below, everything past the version bump
+is automatic. `npm run release-check` (build + check + drift-check + player-check, in order)
+still exists and is worth running locally while iterating, since it's much faster to debug a
+failure on your own machine than in a CI log; `player-check` battles against a throwaway,
+self-hosted Showdown server it starts itself (`scripts/lib/local-server.mjs` — cloned +
+`npm install`ed into the gitignored `.ps-server/` on first run, a one-time cost of about a
+minute), not real play.pokemonshowdown.com accounts — see the invariants section's
+`myPokemon` bullet. `.github/workflows/e2e.yml` still runs the same two live checks on
+demand (`gh workflow run e2e.yml`) for probing a specific format outside the release flow.
 
-Then run the **`release-visual-check`** skill for a human-eyes pass, through Claude-in-Chrome,
-over the surfaces neither script above reaches at all: Tera/Mega preview toggling, doubles,
-hazards on switch-in, Illusion, a foe's roster-icon hover. It drives the REAL loaded extension
-in an actual Chrome session rather than injecting the bundle (a live `https://` Showdown page
+Bump the version FIRST — `release.yml` releases whatever's already in the files, it doesn't
+write them. `npm version --no-git-tag-version X.Y.Z` updates `package.json`/`package-
+lock.json`; `public/manifest.json`'s `version` field needs the same bump by hand. That's a
+normal change to a protected file, so it goes through the same branch + PR + merge as
+anything else (see Contributing, below) — but **before merging that PR**, run the
+**`release-visual-check`** skill for a human-eyes pass, through Claude-in-Chrome, over the
+surfaces nothing scripted reaches at all: Tera/Mega preview toggling, doubles, hazards on
+switch-in, Illusion, a foe's roster-icon hover. It drives the REAL loaded extension in an
+actual Chrome session rather than injecting the bundle (a live `https://` Showdown page
 mixed-content-blocks a locally-served script, and inlining the ~500KB bundle into a tool call
 is impractical) — so it needs one manual step first: `npm run build`, then Load Unpacked (or
-hit reload) on `dist/` at `chrome://extensions`.
+hit reload) on `dist/` at `chrome://extensions`. This is the one gate that stays manual on
+principle: it needs an agent or a human actually judging what's on screen, which nothing
+below can assert.
 
-Once tagging is safe, bump the version FIRST — `release.yml` tags whatever's already in the
-files, it doesn't write them. `npm version --no-git-tag-version X.Y.Z` updates
-`package.json`/`package-lock.json`; `public/manifest.json`'s `version` field needs the same
-bump by hand. That's a normal change to a protected file, so it goes through the same
-branch + PR + merge as anything else (see Contributing, below) — only once it's merged does
-`git tag vX.Y.Z <merged-sha> && git push origin vX.Y.Z` trigger `release.yml` (build +
-provenance attestation — see README's "Verifying a release"). Afterward, `gh release edit
-vX.Y.Z --notes '...'` to prepend a human-readable summary of what's new before the
-provenance-verification boilerplate `release.yml` already writes — see any past release for
-the shape.
+Everything else is automatic and runs on `main` once that PR merges — no pause anywhere in
+it, on purpose: that merge is already the one conscious human checkpoint (it's what
+`release-visual-check` gates), so nothing downstream stops to ask again. Chained through two
+workflows so a release can never again depend on a human's local git or memory matching what
+actually happened on GitHub:
+1. **`.github/workflows/auto-tag.yml`** runs on every push to `main`, but is a no-op unless
+   `package.json`'s version has no matching tag yet — i.e. unless this push WAS the
+   version-bump merge. When it is: `verify` runs the exact `npm run release-check` a human
+   used to run by hand, gating everything after it — nothing gets tagged, let alone
+   released, unless build + typecheck/tests + drift-check + player-check are all green
+   (drift-check hits the *live* replay site, so a flaky run here is retried by re-running
+   the job, not by bumping the version again, since no tag was ever created). Only then does
+   `tag` create+push `vX.Y.Z` at that exact merged commit — never a stale local `main` — and
+   `release` hand off to `release.yml` (`workflow_call`, since a tag pushed by the default
+   `GITHUB_TOKEN` doesn't cascade-trigger `release.yml`'s own `push: tags` event, so the
+   chain has to be explicit). It also guards that `package.json` and `public/manifest.json`
+   report the same version, failing loudly if the by-hand manifest bump was forgotten.
+2. **`release.yml`** builds the zip, hashes it, attests build provenance (see README's
+   "Verifying a release"), publishes the GitHub release, then pushes the SAME zip live to
+   the **Chrome Web Store** via `chrome-webstore-upload-cli` — the one piece that used to
+   stay manual (a dashboard upload at chrome.google.com/webstore/devconsole) no matter how
+   automated the GitHub side got. Needs four repo secrets — `CHROME_CLIENT_ID`,
+   `CHROME_CLIENT_SECRET`, `CHROME_REFRESH_TOKEN`, `CHROME_PUBLISHER_ID` — from a one-time
+   Google OAuth setup only the store account owner can do interactively; follow
+   [chrome-webstore-upload-keys](https://github.com/fregante/chrome-webstore-upload-keys)
+   (its `npx chrome-webstore-upload-keys` generates the refresh token) rather than
+   duplicating the click-by-click steps here, since Google's own console UI drifts. The
+   extension id (`kjdnmonplcbfldefppjoohlleelfcmik`) is public — it's in the store URL — so
+   it's a plain env var in the workflow, not a secret.
+
+A manual escape hatch still works if the automation is ever down: `git tag vX.Y.Z
+<merged-sha> && git push origin vX.Y.Z` triggers `release.yml` the same way, standalone.
+Afterward, `gh release edit vX.Y.Z --notes '...'` to prepend a human-readable summary of
+what's new before the provenance-verification boilerplate `release.yml` already writes —
+see any past release for the shape.
 
 ## Contributing — every change goes through a branch + PR
 `main` is protected, locally and on GitHub. `npm install`'s `prepare` script points git at
@@ -149,7 +180,10 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
   - `types.ts` — shared vocabulary (`LiveFacts`, `RandbatsEntry`, `ResolvedMon`,
     `SetVariant`, `SetKnowledge`, `FieldFacts`).
 - `src/battle/readState.ts` — Showdown's untyped client objects → typed `LiveFacts`/`FieldFacts`.
-- `src/data/randbats.ts` — fetch + cache the set feed.
+- `src/data/randbats.ts` — fetch + cache the set feed; the only file that touches the network.
+- `src/data/lookup.ts` — pure reads over an already-fetched feed (`pickEntry`, the Mega
+  lookups, the Champions stat-point conversion) — split out of `randbats.ts` so `section.ts`
+  can depend on the lookups without also depending on a file that calls `fetch`.
 - `src/section.ts` — pure shell orchestration, one builder per tooltip surface:
   `buildMoveSection(battle, pokemon, moveName, data)` for move-button hovers and
   `buildPokemonSection(battle, pokemon, data)` for Pokémon hovers (foe → possible sets
@@ -765,18 +799,40 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
 - ✅ **The fetch/reason/render split is a checked import graph, not just a description.**
   `dependency-boundaries.test.ts` turns three prose claims into predicates that fail the
   build: (1) the only runtime dependency, `@smogon/calc`, is imported by exactly
-  `core/damage.ts` and `core/speed.ts` — every other core module's own header comment
-  ("Pure: no DOM, no network, no @smogon/calc") was only ever a convention until now; (2)
-  nothing under `src/core/` imports from `battle/`, `data/`, `content.ts`, or `section.ts` —
-  the "dependencies only point downward" rule this file and the README both assert in
-  prose; (3) `render.ts`'s only imports from sibling core modules are `import type` — it
-  knows the SHAPE reasoning produced (`DamageBucket`, `SpeedOutcome`, …) and never calls a
-  reasoning function, which is what makes "render" its own step rather than a label on
-  code that's still entangled with "reason". Widening any of these allowlists is a
+  `core/damage.ts`, `core/speed.ts`, and `core/hazards.ts` — every other core module's own
+  header comment ("Pure: no DOM, no network, no @smogon/calc") was only ever a convention
+  until now; (2) nothing under `src/core/` imports from `battle/`, `data/`, `content.ts`, or
+  `section.ts` — the "dependencies only point downward" rule this file and the README both
+  assert in prose; (3) `render.ts`'s only imports from sibling core modules are `import
+  type` — it knows the SHAPE reasoning produced (`DamageBucket`, `SpeedOutcome`, …) and
+  never calls a reasoning function, which is what makes "render" its own step rather than a
+  label on code that's still entangled with "reason". Widening any of these allowlists is a
   deliberate edit to the test itself, not a silent import creeping in elsewhere. Checked by
   `dependency-boundaries.test.ts` (all three guards watched failing: a stray `@smogon/calc`
-  import outside the two files, a `core/facts.ts` import of `battle/readState.ts`, and a
+  import outside the three files, a `core/facts.ts` import of `battle/readState.ts`, and a
   value import of `resolve.ts` added to `render.ts`).
+- ✅ **"No DOM, no network" is typechecked everywhere except the two files whose job it is,
+  not just proven by import direction.** The dependency-graph test above shows core never
+  *imports* the DOM/network modules — but nothing stopped a file from reaching for the raw
+  globals (`document`, `window`, `fetch`) directly, without importing anything.
+  `src/tsconfig.pure.json` closes that gap: it drops the `DOM` lib and sets `types: []`
+  (`@types/node`'s `web-globals/fetch.d.ts` otherwise declares a global `fetch` even with
+  `DOM` absent, since it's referenced unconditionally from `@types/node`'s own `index.d.ts`),
+  so any file it covers that touches `document`, `window`, or `fetch` fails `tsc --noEmit -p
+  src/tsconfig.pure.json` with "cannot find name" — a real compile error, not a review-only
+  convention. It covers `core/**`, `battle/readState.ts`, and `section.ts` — everything
+  except `content.ts` (the one file allowed to touch the DOM) and `data/randbats.ts` (the one
+  file allowed to touch the network). `section.ts` and `data/lookup.ts` (its own pure reads
+  over an already-fetched feed) join it too: `section.ts` used to import straight from
+  `data/randbats.ts` for `pickEntry`/`megaEntryForItem`/`megaEntriesFor`, and since one `tsc`
+  program shares its compiler options across every file it transitively pulls in, including
+  `section.ts` here would have dragged `randbats.ts`'s own legitimate `fetch`/`localStorage`
+  calls under the same DOM-free lib and failed to compile — the split (see `src/data/
+  lookup.ts` above) exists *because of* this check, not incidentally alongside it. Wired into
+  `npm run typecheck` (and so `npm run check`/CI) as a second `tsc` invocation alongside the
+  root project's. Checked by running it against a probe `document.title`/`fetch(...)`
+  reference dropped into `core/facts.ts` and separately into `section.ts`, watching each
+  fail, then reverting.
 - 👁 **Where we correct @smogon/calc** (things it should arguably handle but doesn't, that we
   own): `multihit.ts` (the multi-hit model above) and the **item id→name quirk** — the calc
   silently *ignores* an item passed in id form (`heavydutyboots`), applying nothing. Fixed at
@@ -821,7 +877,8 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   invents Megas (Chandelure-Mega) and stones (Chandelurite) that never existed in a mainline
   game: the species crashes `new Pokemon` (no base stats to read) and the stone crashes gen-9
   Knock Off mechanics (`item.megaEvolves` read off a missing record) — so every hover facing
-  one silently lost its section (`content.ts` swallows the throw). Two fallbacks in `damage.ts`:
+  one lost its section with no visible sign why (`content.ts` catches the throw — see the
+  console.error bullet below for what changed there). Two fallbacks in `damage.ts`:
   `unknownSpeciesOverrides` feeds the calc the CLIENT dex's base data — `readState.readSpeciesData`
   reads `battle.dex.species.get(...)`, the same read the client's own tooltip does, into
   `LiveFacts.speciesData`, validated whole-or-nothing ("never lie") — used ONLY when
@@ -833,6 +890,25 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   `damage.test.ts` ("a species the calc dex does not know…"), `readState.test.ts`
   (`readSpeciesData`), and `resolve.test.ts` (pass-through). `battle.dex` is a new client
   read → probed by `npm run drift-check` (verified against the live client).
+- ✅ **A bug that reaches either of the two catch-alls is logged, never fully silent —
+  but still never breaks anything the user is looking at.** `content.ts`'s `append()`
+  (guarding both tooltip hooks) and `randbats.ts`'s feed fetch (a genuine network/parse
+  failure, distinct from the already-handled "unsupported format" `!res.ok` branch) both
+  `console.error` a `[hi-chu] …` line with the real error before falling back — the native
+  tooltip, or an info-less hover, looks identical either way, but DevTools now shows
+  something happened instead of nothing. There is no telemetry beyond that and none is
+  planned by default: `manifest.json`'s `host_permissions` grant only the randbats feed
+  host, so the extension is technically incapable of phoning an error anywhere off the
+  page even if it wanted to — this reads private battle data (`myPokemon`), so a real
+  phone-home decision needs its own deliberate call, not a default. The OTHER catches in
+  the codebase (`section.ts`'s two, `damage.ts`'s `safeDesc`, `randbats.ts`'s cache reads)
+  stay silent on purpose — each guards a genuinely EXPECTED branch (a move outside the
+  calc's dex, an immune matchup, a cold/corrupted cache) with its own inline rationale, not
+  a bug, so logging there would just be noise on ordinary battles. Checked by
+  `content.test.ts` ("logs to console.error when the augmentation throws…", forcing the
+  throw via a Proxy that throws on any property read — decoupled from section.ts's actual
+  internals) and `randbats.test.ts` ("logs to console.error when the fetch itself
+  fails…", distinguishing a rejected fetch from an unsupported-format response).
 - ✅ **Four revealed moves = the full moveset; stop speculating.** A Pokémon has four move
   slots, so once `revealedMoves.length >= 4`, `inferSets` drops the role's remaining pool from
   the display (every shown move is a confirmed ✓). Checked by `knowledge.test.ts` ("stops
@@ -898,18 +974,19 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   invisible to drift-check. Run it on BOTH sides of the format split — `npm run
   player-check` (randbats) and `node scripts/player-check.mjs gen9hackmonscup` (an OPEN
   format that still needs no teambuilder, so the assumed-spread path gets a real request
-  JSON; this is what caught the open-format switch menu). Player-check logs two throwaway
-  accounts into the real site
-  (`PS_ACCOUNT1="name:password" PS_ACCOUNT2=… npm run player-check`; credentials via env,
-  never committed), has them battle each other, and probes exactly those reads with the
-  shipped bundle, forfeiting when done. **Showdown throttles `act=login` per IP**, so a run
-  started soon after another routinely has its first attempt silently go nowhere — `login()`
-  retries with backoff and says so. A real refusal is told apart at the source (`action.php`
-  answers `{"actionerror":"Wrong password."}`; a throttle answers nothing) and fails fast,
-  so a bad password never hides behind the retry loop. Both are 👁 not ✅ because they need a browser + the
-  live site, so they can't run in `npm run check`/CI — run them by hand after a client
-  update. If either flags drift (or a calc looks wrong), re-derive from the PS source below
-  and update `readState.ts` and its tests in lockstep.
+  JSON; this is what caught the open-format switch menu). Player-check battles against a
+  throwaway server it self-hosts (`scripts/lib/local-server.mjs`, cloned from
+  `smogon/pokemon-showdown` and run with `noguestsecurity` — no password, no login server,
+  no per-IP throttle, no credentials to manage), joins two clients to it (renamed via a bare
+  `/trn NAME`), has them battle each other, and probes exactly those reads with the shipped
+  bundle, forfeiting when done. The CLIENT is still the real, production one throughout — a
+  self-hosted server's `http://localhost` redirects to the actual `play.pokemonshowdown.com`
+  bundle wired to our local server's websocket (`server/README.md`) — only the game SERVER
+  and its account handling are local. Both drift-check and player-check are 👁 not ✅ because
+  they need a real browser (drift-check also needs the live site, for the replay), so they
+  can't run in `npm run check`/CI — run them by hand after a client update. If either flags
+  drift (or a calc looks wrong), re-derive from the PS source below and update `readState.ts`
+  and its tests in lockstep.
 
 ## Pointers
 - `README.md` — full architecture, diagrams, install steps, known limitations.

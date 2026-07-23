@@ -10,9 +10,6 @@
 import type {LiveFacts, RandbatsEntry} from './types.js';
 import {toId} from './facts.js';
 
-/** The Illusion holders in randbats — the only species that can be wearing a disguise. */
-export const ILLUSION_SPECIES = ['Zoroark', 'Zoroark-Hisui'];
-
 /** Every move an entry can run, across roles (gen9) or the flat pool (older gens). */
 function movePool(entry: RandbatsEntry): Set<string> {
   const roleMoves = entry.roles ? Object.values(entry.roles).flatMap((r) => r.moves) : [];
@@ -26,11 +23,12 @@ export interface IllusionSuspect {
 }
 
 /**
- * Which `impostors` (Zoroark species) could the hovered mon secretly be? One qualifies
- * when a revealed move is absent from the SHOWN species' pool but present in the
- * impostor's — the classic Illusion tell. Silent otherwise: a Zoroark mimicking only
- * moves its disguise also has is genuinely undetectable, so we don't guess. Returns [] if
- * the shown species isn't in the feed (nothing to compare against) or is itself the impostor.
+ * Which `impostors` — the format's Illusion holders, discovered from the feed rather than
+ * named here — could the hovered mon secretly be? One qualifies when a revealed move is
+ * absent from the SHOWN species' pool but present in the impostor's — the classic Illusion
+ * tell. Silent otherwise: a disguise mimicking only moves its cover also has is genuinely
+ * undetectable, so we don't guess. Returns [] if the shown species isn't in the feed
+ * (nothing to compare against) or is itself the impostor.
  */
 export function illusionSuspects(
   facts: LiveFacts,

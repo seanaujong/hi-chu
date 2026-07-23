@@ -1,0 +1,95 @@
+# Tags and releases automatically once a version bump lands on main, so cutting a
+# release never depends on a human's local git matching what actually merged (the
+# risk: tagging a stale local main misses commits that merged after your last pull) —
+# AND never depends on remembering to run the heavier pre-release checks by hand.
+# Fires on every push to main, but everything past `detect` is a no-op unless
+# package.json's version has no matching tag yet — i.e. unless this push WAS a
+# version-bump merge.
+#
+# `verify` runs the exact `npm run release-check` a human used to run by hand (build +
+# typecheck/tests + drift-check + player-check — see CLAUDE.md's "Cutting a release")
+# and gates the tag on it: nothing is tagged, let alone released, unless it's green.
+# drift-check hits the LIVE replay.pokemonshowdown.com to pick a recent replay, which
+# is real flakiness this repo has always accepted for this check (see e2e.yml) — a bad
+# run here is retried by re-running THIS job, not by bumping the version again, since
+# no tag was ever created.
+#
+# release-visual-check is still not something this workflow can run at all — it needs
+# an agent visually judging a live loaded-extension Chrome session, not an assertion.
+# It stays a manual step BEFORE the version-bump PR is merged (CLAUDE.md); that merge
+# is the one conscious human checkpoint in the whole pipeline, so nothing past it —
+# including release.yml's GitHub AND Chrome Web Store publish — pauses again.
+name: Auto-tag release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write # create the tag and the GitHub Release
+  id-token: write # OIDC token so Sigstore can sign the attestation (release.yml)
+  attestations: write # record the provenance attestation (release.yml)
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Read the version and check whether it's already released
+        id: check
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          MANIFEST_VERSION=$(node -p "require('./public/manifest.json').version")
+          if [ "$PKG_VERSION" != "$MANIFEST_VERSION" ]; then
+            echo "::error::package.json version ($PKG_VERSION) and public/manifest.json version ($MANIFEST_VERSION) disagree — bump both by hand before merging." >&2
+            exit 1
+          fi
+
+          TAG="v$PKG_VERSION"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  verify:
+    needs: detect
+    if: needs.detect.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run release-check # build + check + drift-check + player-check, gen9randombattle by default
+
+  tag:
+    needs: [detect, verify]
+    if: needs.detect.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Tag this commit
+        run: |
+          git tag "${{ needs.detect.outputs.tag }}"
+          git push origin "${{ needs.detect.outputs.tag }}"
+
+  release:
+    needs: [detect, tag]
+    if: needs.detect.outputs.should_release == 'true'
+    uses: ./.github/workflows/release.yml
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    secrets: inherit # a workflow_call gets NO secrets by default — the Chrome Web
+    # Store step needs the CHROME_* repo secrets, which release.yml can't see otherwise
+    with:
+      tag: ${{ needs.detect.outputs.tag }}

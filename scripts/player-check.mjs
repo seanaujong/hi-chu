@@ -2,8 +2,9 @@
 // battle. A spectator replay has no `battle.myPokemon` and no move controls, so the
 // private-team fields (readOwnItem / readOwnTeraType / readOwnMoves /
 // serverPokemonFacts) and the Terastallize checkbox are 👁 review-only there. This
-// script closes that gap: it logs two throwaway accounts into play.pokemonshowdown.com,
-// has one privately challenge the other, and — as an actual player — verifies:
+// script closes that gap: it starts a throwaway, self-hosted Showdown server (see
+// `lib/local-server.mjs`), joins two clients to it, has one privately challenge the
+// other, and — as an actual player — verifies:
 //
 //   1. every myPokemon entry carries ident / details / condition / item / teraType /
 //      moves (id form) / maxhp / stats — the ServerPokemon contract serverPokemonFacts
@@ -12,11 +13,14 @@
 //      block through the shipped bundle (dist/content.js — build first);
 //   3. the move panel's Terastallize checkbox still matches TERA_TOGGLE_SELECTOR.
 //
-// It forfeits and closes both browsers when done. LOCAL/manual, like drift-check —
-// run it after a client update. Needs two registered throwaway accounts:
+// It forfeits and closes both browsers when done. LOCAL/manual, like drift-check — run
+// it after a client update:
 //
-//   PS_ACCOUNT1="name:password" PS_ACCOUNT2="name:password" npm run player-check
+//   npm run player-check
 //   (CHROME_PATH=/path/to/chrome to override the installed-Chrome default)
+//
+// The first run clones and `npm install`s the local server into `.ps-server/` (gitignored)
+// — a one-time cost of a minute or so; later runs reuse it.
 //
 // A format id may follow, and it's worth running BOTH sides of the format split —
 // `gen9randombattle` (the feed path) and `gen9hackmonscup` (an OPEN format that still

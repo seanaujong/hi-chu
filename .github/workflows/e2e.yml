@@ -1,0 +1,43 @@
+# Live e2e checks: the ones CI's `check` job can't run, because they need a real browser
+# hitting the live Showdown site (client-shape drift) and two real logged-in accounts
+# (the myPokemon-only reads — switch menu, own-hover matchup, ⚡ verdict, Tera checkbox).
+# See CLAUDE.md → "Client field names are reverse-engineered" for why these exist at all.
+#
+# Manual trigger only (workflow_dispatch), not on every push/PR: Showdown throttles
+# act=login per IP, and a flaky live-account run shouldn't block unrelated work. Run this
+# by hand before tagging a release — `gh workflow run e2e.yml`.
+#
+# PS_ACCOUNT1/PS_ACCOUNT2 live in the `release-e2e` GitHub Environment, not repo secrets,
+# so a run against real (throwaway) credentials can require reviewer approval. Set them
+# up once via the GitHub UI (Settings → Environments → release-e2e) or:
+#   gh secret set PS_ACCOUNT1 --env release-e2e
+#   gh secret set PS_ACCOUNT2 --env release-e2e
+# (enter "name:password" for two throwaway play.pokemonshowdown.com accounts — never
+# real ones).
+name: E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      format:
+        description: 'Format id to probe (drift-check + player-check)'
+        required: false
+        default: 'gen9randombattle'
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    environment: release-e2e
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: node scripts/drift-check.mjs "${{ inputs.format }}"
+      - run: node scripts/player-check.mjs "${{ inputs.format }}"
+        env:
+          PS_ACCOUNT1: ${{ secrets.PS_ACCOUNT1 }}
+          PS_ACCOUNT2: ${{ secrets.PS_ACCOUNT2 }}

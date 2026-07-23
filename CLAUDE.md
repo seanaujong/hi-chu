@@ -45,6 +45,31 @@ Pokémon. (The logic is covered end-to-end by tests; only this hover needs a hum
 npm run drift-check   # LOCAL, needs Chrome: runs readState against a live replay (see below)
 ```
 
+## Cutting a release
+CI's `check` job (typecheck + Vitest) gates every push, but it can't reach the client-shape
+drift and `myPokemon`-only invariants tagged 👁 below — those need a real browser and (for
+the private-team reads) two real accounts. Before tagging a release, run the fuller local gate:
+```sh
+npm run release-check   # build + check + drift-check + player-check, in order
+```
+`player-check` needs `PS_ACCOUNT1`/`PS_ACCOUNT2` env vars for two throwaway
+play.pokemonshowdown.com accounts (see the invariants section's `myPokemon` bullet). The same
+two live checks also run on demand via `.github/workflows/e2e.yml`
+(`gh workflow run e2e.yml`) — manual `workflow_dispatch` only, never on every push, since
+Showdown throttles logins per IP and a flaky live-account run shouldn't block unrelated work.
+Its credentials live in the `release-e2e` GitHub Environment (not a repo secret), so a run can
+require reviewer approval before it touches real accounts.
+
+Then run the **`release-visual-check`** skill for a human-eyes pass, through Claude-in-Chrome,
+over the surfaces neither script above reaches at all: Tera/Mega preview toggling, doubles,
+hazards on switch-in, Illusion, a foe's roster-icon hover. It drives the REAL loaded extension
+in an actual Chrome session rather than injecting the bundle (a live `https://` Showdown page
+mixed-content-blocks a locally-served script, and inlining the ~500KB bundle into a tool call
+is impractical) — so it needs one manual step first: `npm run build`, then Load Unpacked (or
+hit reload) on `dist/` at `chrome://extensions`. Once tagging is safe: `git tag vX.Y.Z && git
+push origin vX.Y.Z` triggers `release.yml` (build + provenance attestation — see README's
+"Verifying a release").
+
 ## Contributing — every change goes through a branch + PR
 `main` is protected, locally and on GitHub. `npm install`'s `prepare` script points git at
 `.githooks/` (`pre-commit` refuses a commit while on `main`; `pre-push` refuses a push to

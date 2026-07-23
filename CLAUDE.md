@@ -68,16 +68,26 @@ mixed-content-blocks a locally-served script, and inlining the ~500KB bundle int
 is impractical) — so it needs one manual step first: `npm run build`, then Load Unpacked (or
 hit reload) on `dist/` at `chrome://extensions`.
 
-Once tagging is safe, bump the version FIRST — `release.yml` tags whatever's already in the
-files, it doesn't write them. `npm version --no-git-tag-version X.Y.Z` updates
+Once tagging is safe, bump the version FIRST — `release.yml` releases whatever's already
+in the files, it doesn't write them. `npm version --no-git-tag-version X.Y.Z` updates
 `package.json`/`package-lock.json`; `public/manifest.json`'s `version` field needs the same
 bump by hand. That's a normal change to a protected file, so it goes through the same
-branch + PR + merge as anything else (see Contributing, below) — only once it's merged does
-`git tag vX.Y.Z <merged-sha> && git push origin vX.Y.Z` trigger `release.yml` (build +
-provenance attestation — see README's "Verifying a release"). Afterward, `gh release edit
-vX.Y.Z --notes '...'` to prepend a human-readable summary of what's new before the
-provenance-verification boilerplate `release.yml` already writes — see any past release for
-the shape.
+branch + PR + merge as anything else (see Contributing, below).
+
+Tagging itself is automatic, not a manual step — `.github/workflows/auto-tag.yml` runs on
+every push to `main` and is a no-op unless `package.json`'s version has no matching tag yet.
+The moment the version-bump PR above merges, it tags that exact merged commit as
+`vX.Y.Z` and calls `release.yml` directly (`workflow_call`, since a tag pushed by the
+default `GITHUB_TOKEN` doesn't cascade-trigger `release.yml`'s own `push: tags` event) to
+build + attest provenance (see README's "Verifying a release"). This exists specifically so
+a release can never be cut from a stale local `main` — the tag always lands on the commit
+GitHub itself just merged, not on whatever your last `git pull` happened to catch. It also
+guards that `package.json` and `public/manifest.json` report the same version, failing loudly
+if the by-hand manifest bump was forgotten. A manual escape hatch still works if you ever need
+it: `git tag vX.Y.Z <merged-sha> && git push origin vX.Y.Z` triggers `release.yml` the same way.
+Afterward, `gh release edit vX.Y.Z --notes '...'` to prepend a human-readable summary of
+what's new before the provenance-verification boilerplate `release.yml` already writes —
+see any past release for the shape.
 
 ## Contributing — every change goes through a branch + PR
 `main` is protected, locally and on GitHub. `npm install`'s `prepare` script points git at

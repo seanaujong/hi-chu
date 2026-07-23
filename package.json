@@ -19,9 +19,10 @@
     "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
-    "@smogon/calc": "^0.10.0"
+    "@smogon/calc": "^0.11.0"
   },
   "devDependencies": {
+    "@types/node": "^26.1.1",
     "esbuild": "^0.28.1",
     "puppeteer-core": "^25.3.0",
     "typescript": "^7.0.2",

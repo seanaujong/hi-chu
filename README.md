@@ -85,34 +85,75 @@ Pokémon / Showdown? See the [Glossary](#glossary) at the bottom.
 
 ## How it's built
 
-The design is a small pure core with a thin browser shell. Each step is an ordinary
-testable function; the content script only folds them together. Modules split into two
-layers, and dependencies only ever point downward (the shell uses the core, never the
-reverse):
+The design is a small pure core behind a thin shell, and the shell itself splits in two:
+`content.ts` is the only *impure* piece — it monkey-patches Showdown's tooltip and touches
+the DOM/network directly — but it hands the actual work to `section.ts`, which is pure
+(no DOM, no cache, no network of its own) and does the real folding. Below that, three
+steps stay strictly separate — **fetch** (the live page, the network), **reason** (the
+domain logic), **render** (model → HTML) — so a step never reaches into the DOM or the
+network unless that IS its job. Dependencies only ever point downward:
 
 ```
-──────────────────── shell — side effects (DOM, network), thin ─────────────────────
-┌────────────────────────┐   ┌────────────────────────┐   ┌────────────────────────┐
-│ content.ts             │   │ battle/readState.ts    │   │ data/randbats.ts       │
-│ hook PS tooltip,       │   │ PS client objects      │   │ fetch + cache          │
-│ fold core → HTML       │   │ → typed LiveFacts      │   │ the sets feed          │
-└────────────────────────┘   └────────────────────────┘   └────────────────────────┘
-─────────────────── pure core — no DOM, no network, unit-tested ────────────────────
-┌────────────────────────┐   ┌────────────────────────┐   ┌────────────────────────┐
-│ core/resolve.ts        │   │ core/damage.ts         │   │ core/render.ts         │
-│ live facts over set    │   │ wrap @smogon/calc      │   │ model →                │
-│ → one ResolvedMon      │   │ → DamageReport         │   │ tooltip HTML           │
-└────────────────────────┘   └────────────────────────┘   └────────────────────────┘
-┌────────────────────────┐   ┌────────────────────────┐   ┌────────────────────────┐
-│ core/assume.ts         │   │ core/variants.ts       │   │ core/speed.ts          │
-│ no feed: bracket the   │   │ collapse + label the   │   │ effective Speed →      │
-│ foe's spread           │   │ distinct outcomes      │   │ who moves first        │
-└────────────────────────┘   └────────────────────────┘   └────────────────────────┘
-┌────────────────────────┐   ┌────────────────────────┐   ┌────────────────────────┐
-│ core/multihit.ts       │   │ core/moves.ts          │   │ core/types.ts          │
-│ PMF convolution,       │   │ multi-hit table        │   │ shared vocabulary:     │
-│ KO% & E[damage]        │   │ (from PS data)         │   │ Live/Randbats/Resolved │
-└────────────────────────┘   └────────────────────────┘   └────────────────────────┘
+┌───────────────────────────────────────────────────┐
+│ content.ts                      the shell (impure)│
+│ monkey-patches Showdown's tooltip,                │
+│ triggers the fetch, hands the hover to section.ts │
+└───────────────────────────────────────────────────┘
+                          │ hover event
+                          ▼
+┌───────────────────────────────────────────────────┐
+│ section.ts                       pure orchestrator│
+│ given the battle, the hover,                      │
+│ and the data → folds FETCH → REASON               │
+│ → RENDER into one HTML string                     │
+└───────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌───────────────────────────────────────────────────┐
+│ FETCH                 reads the page + the network│
+│ ┌──────────────────────┐  ┌──────────────────────┐│
+│ │ battle/readState.ts  │  │ data/randbats.ts     ││
+│ │ PS client objects    │  │ fetch + cache        ││
+│ │ → typed LiveFacts    │  │ the sets feed        ││
+│ └──────────────────────┘  └──────────────────────┘│
+└───────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌───────────────────────────────────────────────────┐
+│ REASON                     pure: given x, return y│
+│ ┌──────────────────────┐  ┌──────────────────────┐│
+│ │ resolve.ts           │  │ damage.ts            ││
+│ │ given LiveFacts + a  │  │ given 2 ResolvedMon  ││
+│ │ set → one ResolvedMon│  │ + move → DamageReport││
+│ └──────────────────────┘  └──────────────────────┘│
+│ ┌──────────────────────┐  ┌──────────────────────┐│
+│ │ assume.ts            │  │ variants.ts          ││
+│ │ given LiveFacts, no  │  │ given scored variants││
+│ │ feed → 2 bracket sets│  │ → distinct buckets   ││
+│ └──────────────────────┘  └──────────────────────┘│
+│ ┌──────────────────────┐  ┌──────────────────────┐│
+│ │ speed.ts             │  │ multihit.ts          ││
+│ │ given a ResolvedMon  │  │ given per-hit + hit- ││
+│ │ → effective Speed    │  │ count PMF → total PMF││
+│ └──────────────────────┘  └──────────────────────┘│
+│ ┌──────────────────────┐  ┌──────────────────────┐│
+│ │ moves.ts             │  │ types.ts             ││
+│ │ data: multi-hit table│  │ types: shared vocab  ││
+│ │ (from PS data)       │  │ used by every stage  ││
+│ └──────────────────────┘  └──────────────────────┘│
+└───────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌───────────────────────────────────────────────────┐
+│ RENDER                     pure: given x, return y│
+│ ┌──────────────────────┐                          │
+│ │ render.ts            │                          │
+│ │ given a render model │                          │
+│ │ → tooltip HTML string│                          │
+│ └──────────────────────┘                          │
+└───────────────────────────────────────────────────┘
+                          │ tooltip HTML
+                          ▼
 ```
 
 At runtime those modules fold together top to bottom. The only thing the format changes
@@ -216,7 +257,15 @@ is *where the foe's possibilities come from* — everything below that seam is s
   `world: "MAIN"` runs it in the page's own JS context (Chrome Manifest V3, "MV3") so it
   can reach Showdown's objects. It *monkey-patches* (wraps at runtime)
   `BattleTooltips.prototype.showPokemonTooltip` and appends our section. Everything is
-  wrapped so our code can never break Showdown's own tooltip.
+  wrapped so our code can never break Showdown's own tooltip. It stays trivial on purpose —
+  it triggers the feed fetch, reads the Tera/Mega toggles, and hands everything else to
+  `section.ts`.
+- **`src/section.ts`** — the actual orchestration, and the reason `content.ts` can stay
+  trivial: given the live battle, the hovered thing, and the feed data, it folds
+  fetch → reason → render into the tooltip's HTML string. It's pure itself (no DOM, no
+  cache, no network — `content.ts` owns that plumbing and hands the cached data in), which
+  is what lets `section.test.ts` drive the exact code path a live hover runs, against a
+  real captured battle, without a browser.
 
 ### The multi-hit fix (the value-add)
 
@@ -258,7 +307,7 @@ module — the tests are the worked examples (and pin the numbers against Showdo
 
 ```sh
 npm install
-npm test          # the math, the merge, the render, field effects, and an end-to-end run on real data
+npm test          # the math, the merge, the render, field effects, the dependency boundary, and an end-to-end run on real data
 npm run typecheck
 npm run build     # bundles to dist/ (content.js + manifest.json)
 npm run watch     # rebuild on save

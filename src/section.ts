@@ -41,6 +41,7 @@ import type {
   TransformCopy,
 } from './core/types.js';
 import {transformCopy} from './core/transform.js';
+import {applySwitchInHazards} from './core/hazards.js';
 import {pickEntry, megaEntryForItem, megaEntriesFor} from './data/randbats.js';
 import {
   toLiveFacts,
@@ -52,6 +53,7 @@ import {
   readOwnServerPokemon,
   readOwnStats,
   readOwnTeraType,
+  readOwnHazards,
   readMegaForme,
   readSpeciesData,
   serverPokemonFacts,
@@ -543,6 +545,11 @@ function ownMovesSection(
   // (gen 6 moved at the base Speed the turn it evolved). Defaults to the damage attacker.
   speedAttacker: ResolvedMon = attacker,
   incomingMovesFor?: IncomingMovesFor,
+  // True when hazards on switch-in would faint `attacker` before it can even take the
+  // foe's hit — the caller already dropped `incomingMovesFor` in that case (there is
+  // nothing left to survive), so this is what tells the render layer to say so instead
+  // of silently showing no Incoming group at all. See `core/hazards.ts`.
+  hazardFaints = false,
 ): string {
   const sections = activesOpposing(battle, ourSide).map((foe) => {
     const defenderFacts = readFacts(foe);
@@ -567,12 +574,15 @@ function ownMovesSection(
         buckets: incomingDamageBuckets(attacker, variants, move, format.gen, incomingField, format.doubles),
       }))
       .filter((row) => row.buckets.length > 0);
+    const incoming = incomingRows.length > 0
+      ? {attackerHpPercent: attacker.hpPercent, moves: incomingRows}
+      : hazardFaints ? {attackerHpPercent: attacker.hpPercent, moves: [], hazardFaints: true} : undefined;
     return {
       foeName: defenderFacts.speciesForme,
       defenderHpPercent: defenderFacts.hpPercent,
       moves: rows,
       ...(speed ? {speed} : {}),
-      ...(incomingRows.length > 0 ? {incoming: {attackerHpPercent: attacker.hpPercent, moves: incomingRows}} : {}),
+      ...(incoming ? {incoming} : {}),
     };
   });
   return renderOwnMovesSection(sections);
@@ -626,11 +636,17 @@ function ownHoverMatchup(
   // truth, and showing US our own speed as uncertain would be absurd.
   const speedFor = (foeFacts: LiveFacts): readonly SetVariant[] => randbatsFoeVariants(data, foeFacts);
   // The mon actually on the field gets its Incoming numbers from hovering the FOE
-  // instead (see the doc comment above) — only a switch-decision candidate keeps them.
-  const incomingMovesFor = isActiveMon(pokemon) ? undefined : randbatsIncomingMovesFor(data);
+  // instead (see the doc comment above) — only a switch-decision candidate keeps them,
+  // and only a switch-decision candidate can still be hit by hazards on the way in (an
+  // active mon's HP already reflects anything that already happened to it).
+  const isSwitchCandidate = !isActiveMon(pokemon);
+  const incomingMovesFor = isSwitchCandidate ? randbatsIncomingMovesFor(data) : undefined;
+  const ownHazards = isSwitchCandidate ? readOwnHazards(pokemon.side) : {stealthRock: false, spikesLayers: 0};
+  const switchInAttacker = isSwitchCandidate ? applySwitchInHazards(attacker, ownHazards, format.gen) : attacker;
+  const hazardFaints = isSwitchCandidate && switchInAttacker.hpPercent <= 0;
   return ownMovesSection(
-    battle, pokemon.side, attacker, moves, format, readFacts, randbatsVariantsFor(data), speedFor, speedAttacker,
-    incomingMovesFor,
+    battle, pokemon.side, switchInAttacker, moves, format, readFacts, randbatsVariantsFor(data), speedFor,
+    speedAttacker, hazardFaints ? undefined : incomingMovesFor, hazardFaints,
   );
 }
 
@@ -670,9 +686,14 @@ export function buildSwitchSection(battle: ClientBattle, server: ClientServerPok
       // team (an id-form Choice Scarf; the damage layer resolves ids through the dex),
       // and it carries no boosts, because it enters with none.
       const speedFor = (foeFacts: LiveFacts): readonly SetVariant[] => randbatsFoeVariants(data, foeFacts);
+      // Every switch-menu candidate is, by construction, not yet on the field — so
+      // unlike ownHoverMatchup there's no active-mon branch to skip here.
+      const ownHazards = readOwnHazards(ourSide);
+      const switchInAttacker = applySwitchInHazards(attacker, ownHazards, format.gen);
+      const hazardFaints = switchInAttacker.hpPercent <= 0;
       return ownMovesSection(
-        battle, ourSide, attacker, moves, format, readFacts, randbatsVariantsFor(data), speedFor, attacker,
-        randbatsIncomingMovesFor(data),
+        battle, ourSide, switchInAttacker, moves, format, readFacts, randbatsVariantsFor(data), speedFor,
+        switchInAttacker, hazardFaints ? undefined : randbatsIncomingMovesFor(data), hazardFaints,
       );
     }
     case 'open': {

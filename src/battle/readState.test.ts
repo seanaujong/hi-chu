@@ -23,6 +23,7 @@ import {
   detectFormat,
   findOpposingActive,
   readFieldFacts,
+  readOwnHazards,
   type ClientPokemon,
   type ClientBattle,
   type ClientSide,
@@ -255,6 +256,37 @@ describe('readFieldFacts', () => {
     expect(readFieldFacts(b, windy).attackerTailwind).toBeUndefined();
     expect(readFieldFacts(b, calm).attackerTailwind).toBe(true);
     expect(readFieldFacts(b, calm).defenderTailwind).toBeUndefined();
+  });
+});
+
+describe('readOwnHazards', () => {
+  it('defaults to no hazards when the side has none', () => {
+    expect(readOwnHazards({active: []})).toEqual({stealthRock: false, spikesLayers: 0});
+    expect(readOwnHazards(undefined)).toEqual({stealthRock: false, spikesLayers: 0});
+  });
+
+  it('reads Stealth Rock as present/absent', () => {
+    const side: ClientSide = {active: [], sideConditions: {stealthrock: ['Stealth Rock', 1]}};
+    expect(readOwnHazards(side).stealthRock).toBe(true);
+  });
+
+  it("reads Spikes' layer count from the side condition's level", () => {
+    for (const layers of [1, 2, 3]) {
+      const side: ClientSide = {active: [], sideConditions: {spikes: ['Spikes', layers, 0]}};
+      expect(readOwnHazards(side).spikesLayers).toBe(layers);
+    }
+  });
+
+  it('never trusts malformed Spikes data into a false layer count', () => {
+    const bogus: ClientSide = {active: [], sideConditions: {spikes: ['Spikes', 'not-a-number']}};
+    expect(readOwnHazards(bogus).spikesLayers).toBe(0);
+    const notArray: ClientSide = {active: [], sideConditions: {spikes: 2}};
+    expect(readOwnHazards(notArray).spikesLayers).toBe(0);
+  });
+
+  it('clamps an out-of-range layer count to 0-3', () => {
+    const side: ClientSide = {active: [], sideConditions: {spikes: ['Spikes', 7]}};
+    expect(readOwnHazards(side).spikesLayers).toBe(3);
   });
 });
 

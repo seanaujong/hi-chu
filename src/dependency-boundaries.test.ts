@@ -3,13 +3,16 @@ import {readdirSync, readFileSync} from 'node:fs';
 import {join} from 'node:path';
 
 /**
- * The only runtime dependency, `@smogon/calc`, is confined to the two modules that
+ * The only runtime dependency, `@smogon/calc`, is confined to the modules that
  * actually need its formulas — every other pure-core module says so in its own header
  * comment ("Pure: no DOM, no network, no @smogon/calc"), but that was only ever a
  * convention until this test. Widening this list is a deliberate, reviewed edit here,
- * not a silent import creeping in somewhere else.
+ * not a silent import creeping in somewhere else. `hazards.ts` earned its place the same
+ * way `speed.ts` did: a law that needs the calc's own type chart and grounding check
+ * (`isGrounded`, deep-imported from calc internals exactly like `speed.ts`'s
+ * `getFinalSpeed`), not something `damage.ts`'s existing exports cover.
  */
-const ALLOWED_IMPORTERS = ['src/core/damage.ts', 'src/core/speed.ts'];
+const ALLOWED_IMPORTERS = ['src/core/damage.ts', 'src/core/speed.ts', 'src/core/hazards.ts'];
 
 function allSourceFiles(dir: string): string[] {
   return readdirSync(dir, {withFileTypes: true}).flatMap((entry) => {

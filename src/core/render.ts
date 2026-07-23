@@ -315,6 +315,11 @@ export interface OwnMovesModel {
   readonly incoming?: {
     readonly attackerHpPercent: number;
     readonly moves: readonly OwnMoveLineModel[];
+    /** True when entry hazards on switch-in (Stealth Rock/Spikes) would faint this mon
+     *  before it can even face the foe's hit — `moves` is empty in that case, and this
+     *  says why, rather than silently showing no Incoming group at all. See
+     *  `core/hazards.ts`. */
+    readonly hazardFaints?: boolean;
   };
 }
 
@@ -355,19 +360,21 @@ function ownMoveLine(row: OwnMoveLineModel, hpPercent: number): string {
  */
 export function renderOwnMovesSection(sections: readonly OwnMovesModel[]): string {
   return sections
-    .filter((s) => s.moves.length > 0 || (s.incoming?.moves.length ?? 0) > 0)
+    .filter((s) => s.moves.length > 0 || (s.incoming?.moves.length ?? 0) > 0 || s.incoming?.hazardFaints)
     .map((s) => {
       const outgoing = block([
         targetHeader(s.foeName),
         ...(s.speed ? [speedLine({order: s.speed})] : []),
         ...s.moves.map((row) => ownMoveLine(row, s.defenderHpPercent)),
       ]);
-      const incoming = s.incoming && s.incoming.moves.length > 0
-        ? block([
-            '<small>Incoming:</small>',
-            ...s.incoming.moves.map((row) => ownMoveLine(row, s.incoming!.attackerHpPercent)),
-          ])
-        : '';
+      const incoming = s.incoming?.hazardFaints
+        ? block(['<small>Incoming:</small> faints to Stealth Rock/Spikes before it can act'])
+        : s.incoming && s.incoming.moves.length > 0
+          ? block([
+              '<small>Incoming:</small>',
+              ...s.incoming.moves.map((row) => ownMoveLine(row, s.incoming!.attackerHpPercent)),
+            ])
+          : '';
       return outgoing + incoming;
     })
     .join('');

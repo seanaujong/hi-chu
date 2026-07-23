@@ -651,6 +651,64 @@ function ownHoverMatchup(
 }
 
 /**
+ * Hovering a FOE's roster icon adds the direction the sets view doesn't cover: OUR
+ * active's real moves' damage into THIS Pokémon, as though it were the one switched
+ * in. The sets view (rendered right after this by the caller) already answers the
+ * mirror question — their moves into us — for every foe hover, active or not; an
+ * ACTIVE foe additionally already has THIS number on the move tooltip, so this stays
+ * silent there rather than repeat it — the same reasoning `ownMovesSection` already
+ * applies to withhold its own Incoming group from a mon already on the field. A
+ * hovered foe with hazards up on ITS OWN side (Stealth Rock/Spikes we've set) previews
+ * the chip it would take switching in, exactly like `applySwitchInHazards` already
+ * does for our own switch candidates — hazards are public `sideConditions` on both
+ * sides, so unlike our real item/ability this carries no privacy boundary to respect.
+ */
+function foeSwitchInDamage(
+  battle: ClientBattle,
+  hoveredFoe: ClientPokemon,
+  foeFacts: LiveFacts,
+  data: RandbatsData,
+  format: {gen: number; doubles: boolean},
+  megaSelected: boolean,
+  readFacts: FactsReader,
+): string {
+  if (foeFacts.hpPercent <= 0) return ''; // fainted — can't switch in
+  // "Opposing", read from the hovered FOE's own side, is US — the same read
+  // `randbatsPokemonSection` already uses to find our defender for the sets view.
+  const ourActive = findOpposingActive(battle, hoveredFoe);
+  if (!ourActive) return '';
+  const moves = readOwnMoves(battle, ourActive);
+  if (!moves) return ''; // spectating — no private moveset to read
+  const ourFacts = ownTruth(battle, ourActive, readFacts(ourActive));
+  const ourEntry = entryFor(data, ourFacts);
+  if (!ourEntry) return '';
+  const realItem = ownItemName(battle, ourActive, ourEntry);
+  const realAbility = ownAbilityName(battle, ourActive, ourEntry);
+  const attackerFacts = {...ourFacts, ...(realItem ? {item: realItem} : {}), ...(realAbility ? {ability: realAbility} : {})};
+  const base = resolveMon(attackerFacts, ourEntry);
+  const applyMega = megaPreviewFor(battle, ourActive, megaSelected);
+  const attacker = applyMega ? applyMega(base) : base;
+
+  const foeVariants = randbatsFoeVariants(data, foeFacts);
+  if (foeVariants.length === 0) return '';
+  const hazards = readOwnHazards(hoveredFoe.side); // THEIR side's hazards chip THEM on the way in
+  const switchedIn = foeVariants.map((v) => ({...v, mon: applySwitchInHazards(v.mon, hazards, format.gen)}));
+
+  const field = readFieldFacts(battle, hoveredFoe.side); // the hovered foe is the defender here
+  const rows = moves
+    .map((move) => moveDamageBuckets(attacker, switchedIn, move, format.gen, field, format.doubles))
+    .filter((buckets) => buckets.length > 0)
+    .map((buckets) => ({name: buckets[0]!.report.move, buckets}));
+  if (rows.length === 0) return '';
+
+  return renderOwnMovesSection([{
+    foeName: foeFacts.speciesForme,
+    defenderHpPercent: switchedIn[0]!.mon.hpPercent,
+    moves: rows,
+  }]);
+}
+
+/**
  * The switch-menu tooltip section: the matchup block built straight from the private
  * `ServerPokemon`. This surface is why the block can't ride on `buildPokemonSection`:
  * the client passes NO battle-view Pokémon here (its side lookup is commented out —
@@ -1167,6 +1225,13 @@ function randbatsPokemonSection(
   // moveset — an our-view surface). Leads the tooltip like ⚡ does on a foe hover;
   // the mirror blocks below remain strictly public.
   const ownMovesHtml = foe ? '' : ownHoverMatchup(battle, pokemon, facts, data, format, megaSelected, readFacts);
+  // Foe view's own at-a-glance answer, but only for a switch-decision candidate (not
+  // yet active): OUR active's damage into THIS Pokémon if it switched in. An active
+  // foe already carries this number on the move tooltip, so it's withheld there —
+  // see foeSwitchInDamage's own doc comment for why.
+  const foeMovesHtml = foe && !isActiveMon(pokemon)
+    ? foeSwitchInDamage(battle, pokemon, facts, data, format, megaSelected, readFacts)
+    : '';
 
-  return speedHtml + ownMovesHtml + renderSetsSection({candidates: blocks, extraNotes: notes});
+  return speedHtml + foeMovesHtml + ownMovesHtml + renderSetsSection({candidates: blocks, extraNotes: notes});
 }

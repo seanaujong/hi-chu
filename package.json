@@ -17,6 +17,7 @@
     "check": "npm run typecheck && npm run test",
     "drift-check": "node scripts/drift-check.mjs",
     "player-check": "node scripts/player-check.mjs",
+    "safari-check": "node scripts/safari-check.mjs",
     "release-check": "npm run build && npm run check && npm run drift-check && npm run player-check",
     "screenshots": "node scripts/screenshots.mjs"
   },
@@ -27,6 +28,7 @@
     "@types/node": "^26.1.1",
     "esbuild": "^0.28.1",
     "puppeteer-core": "^25.3.0",
+    "selenium-webdriver": "^4.46.0",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"
   }

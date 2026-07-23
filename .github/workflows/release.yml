@@ -1,7 +1,9 @@
 # Publishes a verifiable release when a v* tag is pushed. Each release carries a
 # signed SLSA build-provenance attestation and a SHA256SUMS file, so anyone can prove
 # the published artifact was built by THIS workflow from THIS commit — turning "trust
-# me, it's safe" into a check. See README → "Verifying a release".
+# me, it's safe" into a check. See README → "Verifying a release". Also pushes the
+# same build live to the Chrome Web Store, so a tagged release is the only manual
+# step left — everything downstream of it, GitHub AND the store, is automatic.
 #
 # Normally reached via auto-tag.yml, which creates and pushes the v* tag itself once
 # a version bump lands on main, then calls this workflow directly (workflow_call) —
@@ -9,14 +11,10 @@
 # event below, so the chain has to be explicit. The tag trigger still works standalone
 # as a manual escape hatch: git tag v0.2.0 && git push origin v0.2.0.
 #
-# Split into two jobs so the slow part (build + typecheck/tests + attest) runs and
-# reports immediately, and only the actual `publish` waits: it targets the `release`
-# environment, which requires one manual approval in the Actions UI — see the release
-# environment's protection rule. That pause exists because the release-visual-check
-# skill (Tera/Mega preview, doubles, hazards, Illusion — see CLAUDE.md) needs a human/
-# agent visually judging a live loaded-extension Chrome session, which nothing in this
-# pipeline can assert; the approval click is a structural reminder that it ran, not a
-# replacement for it. It still belongs BEFORE the version-bump PR merges, same as ever.
+# No approval gate on purpose: the version-bump PR merge (see CLAUDE.md → "Cutting a
+# release") is already the one conscious human checkpoint — release-visual-check runs
+# BEFORE that merge, so a second click here would just be a redundant pause, not an
+# extra check.
 name: Release
 
 on:
@@ -35,7 +33,7 @@ permissions:
   attestations: write # record the provenance attestation against the repo
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
     env:
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
@@ -63,32 +61,24 @@ jobs:
             hi-chu-*.zip
             dist/content.js
 
-      - name: Upload the release artifacts for the publish job
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: release-artifacts
-          path: |
-            hi-chu-*.zip
-            SHA256SUMS
-          if-no-files-found: error
-
-  publish:
-    needs: build
-    runs-on: ubuntu-latest
-    environment: release # pauses here for one manual approval — see the header comment
-    env:
-      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
-    steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: release-artifacts
-
-      - name: Publish the release
+      - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           gh release create "$RELEASE_TAG" hi-chu-*.zip SHA256SUMS \
-            --repo "$GITHUB_REPOSITORY" \
             --title "$RELEASE_TAG" \
             --notes "Signed build provenance is attached. Verify the download with \`gh attestation verify hi-chu-*.zip --repo $GITHUB_REPOSITORY\`, then see the README's \"Verifying a release\" section for the full check."
+
+      # Uploads + publishes the same zip live on the store. Needs CHROME_CLIENT_ID /
+      # CHROME_CLIENT_SECRET / CHROME_REFRESH_TOKEN / CHROME_PUBLISHER_ID as repo
+      # secrets (see CLAUDE.md → "Cutting a release" for the one-time setup — the
+      # refresh token requires an interactive Google OAuth consent only the account
+      # owner can do). EXTENSION_ID is public (it's in the store URL), not a secret.
+      - name: Publish to the Chrome Web Store
+        env:
+          EXTENSION_ID: kjdnmonplcbfldefppjoohlleelfcmik
+          CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID }}
+        run: npx --yes chrome-webstore-upload-cli@4.0.1 --source hi-chu-*.zip

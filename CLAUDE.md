@@ -74,7 +74,9 @@ hit reload) on `dist/` at `chrome://extensions`. This is the one gate that stays
 principle: it needs an agent or a human actually judging what's on screen, which nothing
 below can assert.
 
-Everything else is automatic and runs on `main` once that PR merges, chained through two
+Everything else is automatic and runs on `main` once that PR merges — no pause anywhere in
+it, on purpose: that merge is already the one conscious human checkpoint (it's what
+`release-visual-check` gates), so nothing downstream stops to ask again. Chained through two
 workflows so a release can never again depend on a human's local git or memory matching what
 actually happened on GitHub:
 1. **`.github/workflows/auto-tag.yml`** runs on every push to `main`, but is a no-op unless
@@ -89,12 +91,18 @@ actually happened on GitHub:
    `GITHUB_TOKEN` doesn't cascade-trigger `release.yml`'s own `push: tags` event, so the
    chain has to be explicit). It also guards that `package.json` and `public/manifest.json`
    report the same version, failing loudly if the by-hand manifest bump was forgotten.
-2. **`release.yml`** builds the zip, hashes it, and attests build provenance (see README's
-   "Verifying a release") in a `build` job that runs immediately — then a `publish` job
-   targets the `release` GitHub Environment, which requires one manual approval (configured
-   via the repo's Environments settings) before `gh release create` actually runs. That
-   pause is a structural reminder that `release-visual-check` happened, not a replacement for
-   it — approving doesn't re-run anything, it just says "yes, I did the human pass."
+2. **`release.yml`** builds the zip, hashes it, attests build provenance (see README's
+   "Verifying a release"), publishes the GitHub release, then pushes the SAME zip live to
+   the **Chrome Web Store** via `chrome-webstore-upload-cli` — the one piece that used to
+   stay manual (a dashboard upload at chrome.google.com/webstore/devconsole) no matter how
+   automated the GitHub side got. Needs four repo secrets — `CHROME_CLIENT_ID`,
+   `CHROME_CLIENT_SECRET`, `CHROME_REFRESH_TOKEN`, `CHROME_PUBLISHER_ID` — from a one-time
+   Google OAuth setup only the store account owner can do interactively; follow
+   [chrome-webstore-upload-keys](https://github.com/fregante/chrome-webstore-upload-keys)
+   (its `npx chrome-webstore-upload-keys` generates the refresh token) rather than
+   duplicating the click-by-click steps here, since Google's own console UI drifts. The
+   extension id (`kjdnmonplcbfldefppjoohlleelfcmik`) is public — it's in the store URL — so
+   it's a plain env var in the workflow, not a secret.
 
 A manual escape hatch still works if the automation is ever down: `git tag vX.Y.Z
 <merged-sha> && git push origin vX.Y.Z` triggers `release.yml` the same way, standalone.

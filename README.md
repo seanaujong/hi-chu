@@ -85,34 +85,65 @@ Pokémon / Showdown? See the [Glossary](#glossary) at the bottom.
 
 ## How it's built
 
-The design is a small pure core with a thin browser shell. Each step is an ordinary
-testable function; the content script only folds them together. Modules split into two
-layers, and dependencies only ever point downward (the shell uses the core, never the
-reverse):
+The design is a small pure core behind a thin shell. Three steps stay strictly separate —
+**fetch** (the live page, the network), **reason** (the domain logic), **render** (model →
+HTML) — so a step never reaches into the DOM or the network unless that IS its job. The
+shell (`content.ts`) is the only thing that folds them together; everything below it is an
+ordinary, testable function, and dependencies only ever point downward:
 
 ```
-──────────────────── shell — side effects (DOM, network), thin ─────────────────────
-┌────────────────────────┐   ┌────────────────────────┐   ┌────────────────────────┐
-│ content.ts             │   │ battle/readState.ts    │   │ data/randbats.ts       │
-│ hook PS tooltip,       │   │ PS client objects      │   │ fetch + cache          │
-│ fold core → HTML       │   │ → typed LiveFacts      │   │ the sets feed          │
-└────────────────────────┘   └────────────────────────┘   └────────────────────────┘
-─────────────────── pure core — no DOM, no network, unit-tested ────────────────────
-┌────────────────────────┐   ┌────────────────────────┐   ┌────────────────────────┐
-│ core/resolve.ts        │   │ core/damage.ts         │   │ core/render.ts         │
-│ live facts over set    │   │ wrap @smogon/calc      │   │ model →                │
-│ → one ResolvedMon      │   │ → DamageReport         │   │ tooltip HTML           │
-└────────────────────────┘   └────────────────────────┘   └────────────────────────┘
-┌────────────────────────┐   ┌────────────────────────┐   ┌────────────────────────┐
-│ core/assume.ts         │   │ core/variants.ts       │   │ core/speed.ts          │
-│ no feed: bracket the   │   │ collapse + label the   │   │ effective Speed →      │
-│ foe's spread           │   │ distinct outcomes      │   │ who moves first        │
-└────────────────────────┘   └────────────────────────┘   └────────────────────────┘
-┌────────────────────────┐   ┌────────────────────────┐   ┌────────────────────────┐
-│ core/multihit.ts       │   │ core/moves.ts          │   │ core/types.ts          │
-│ PMF convolution,       │   │ multi-hit table        │   │ shared vocabulary:     │
-│ KO% & E[damage]        │   │ (from PS data)         │   │ Live/Randbats/Resolved │
-└────────────────────────┘   └────────────────────────┘   └────────────────────────┘
+┌───────────────────────────────────────────────────┐
+│ content.ts                               the shell│
+│ hooks PS tooltip,                                 │
+│ folds FETCH → REASON → RENDER into one HTML string│
+└───────────────────────────────────────────────────┘
+                          │ for each hover
+                          ▼
+┌───────────────────────────────────────────────────┐
+│ FETCH                 reads the page + the network│
+│ ┌──────────────────────┐  ┌──────────────────────┐│
+│ │ battle/readState.ts  │  │ data/randbats.ts     ││
+│ │ PS client objects    │  │ fetch + cache        ││
+│ │ → typed LiveFacts    │  │ the sets feed        ││
+│ └──────────────────────┘  └──────────────────────┘│
+└───────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌───────────────────────────────────────────────────┐
+│ REASON                     pure: given x, return y│
+│ ┌──────────────────────┐  ┌──────────────────────┐│
+│ │ resolve.ts           │  │ damage.ts            ││
+│ │ given LiveFacts + a  │  │ given 2 ResolvedMon  ││
+│ │ set → one ResolvedMon│  │ + move → DamageReport││
+│ └──────────────────────┘  └──────────────────────┘│
+│ ┌──────────────────────┐  ┌──────────────────────┐│
+│ │ assume.ts            │  │ variants.ts          ││
+│ │ given LiveFacts, no  │  │ given scored variants││
+│ │ feed → 2 bracket sets│  │ → distinct buckets   ││
+│ └──────────────────────┘  └──────────────────────┘│
+│ ┌──────────────────────┐  ┌──────────────────────┐│
+│ │ speed.ts             │  │ multihit.ts          ││
+│ │ given a ResolvedMon  │  │ given per-hit + hit- ││
+│ │ → effective Speed    │  │ count PMF → total PMF││
+│ └──────────────────────┘  └──────────────────────┘│
+│ ┌──────────────────────┐  ┌──────────────────────┐│
+│ │ moves.ts             │  │ types.ts             ││
+│ │ data: multi-hit table│  │ types: shared vocab  ││
+│ │ (from PS data)       │  │ used by every stage  ││
+│ └──────────────────────┘  └──────────────────────┘│
+└───────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌───────────────────────────────────────────────────┐
+│ RENDER                     pure: given x, return y│
+│ ┌──────────────────────┐                          │
+│ │ render.ts            │                          │
+│ │ given a render model │                          │
+│ │ → tooltip HTML string│                          │
+│ └──────────────────────┘                          │
+└───────────────────────────────────────────────────┘
+                          │ tooltip HTML
+                          ▼
 ```
 
 At runtime those modules fold together top to bottom. The only thing the format changes

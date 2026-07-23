@@ -16,3 +16,7 @@ store-screenshots/
 # `npm run screenshots` output — candidate shots from a throwaway battle; the keepers
 # get copied into demo/ and store-screenshots/ by hand.
 screenshots/
+
+# Xcode's own build cache for the Safari port (safari/hi-chu/) — regenerable, huge,
+# machine-specific; the Xcode project source itself is tracked.
+safari/build/

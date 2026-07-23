@@ -73,7 +73,11 @@ export async function fetchRandbats(formatId: string): Promise<RandbatsData | nu
       memory.set(formatId, data);
       writeStorage(formatId, data);
       return data;
-    } catch {
+    } catch (error) {
+      // Unlike the !res.ok branch above (an expected "no feed for this format"), a
+      // thrown error here is genuinely unexpected — a network failure or a response
+      // that isn't valid JSON — so it's worth surfacing, not just silently going info-less.
+      console.error(`[hi-chu] failed to fetch randbats data for ${formatId}:`, error);
       return null;
     } finally {
       inFlight.delete(formatId);

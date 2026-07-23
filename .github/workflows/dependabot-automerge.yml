@@ -1,0 +1,38 @@
+# Auto-merges only the LOW-RISK slice of Dependabot PRs: tooling that can't change what
+# hi-chu computes. `dependabot.yml`'s own npm split exists for this — the `development`
+# group can't touch damage math, so it's safe to wave through once CI is green; the
+# `production` group (@smogon/calc — the calc IS the damage math) stays manual-review
+# always, no matter how small the version bump looks. github-actions bumps (SHA-pinned,
+# so a moved tag can't swap in new code) are the other safe slice.
+#
+# This does NOT bypass CI: `gh pr merge --auto` enables GitHub's native auto-merge, which
+# waits for the branch-protection-required `check` status (see main's branch protection)
+# to pass before actually merging. If `check` fails, the PR just sits there unmerged.
+name: Dependabot auto-merge
+
+on: pull_request_target
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3
+        with:
+          github-token: '${{ secrets.GITHUB_TOKEN }}'
+
+      - name: Auto-merge github-actions and npm dev-group bumps
+        if: |
+          steps.metadata.outputs.package-ecosystem == 'github_actions' ||
+          (steps.metadata.outputs.package-ecosystem == 'npm_and_yarn' &&
+           steps.metadata.outputs.dependency-group == 'development')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash "$PR_URL"

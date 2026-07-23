@@ -465,6 +465,27 @@ export function readOwnItem(battle: ClientBattle, mon: ClientPokemon): string | 
 }
 
 /**
+ * The viewer's OWN CURRENT ability for `mon`, read from the private `battle.myPokemon`
+ * (absent when spectating, or in gen ≤6 where the request never carries one). Returned in
+ * the client's id form ("hugepower"); the caller maps it to a set's display name, same as
+ * `readOwnItem`.
+ *
+ * The public battle-view Pokémon only learns an ability once something reveals it in the
+ * log — even for our own active — so a SILENT ability (Huge Power, Levitate, Serene Grace,
+ * Regenerator, …) is invisible to a damage calc that reads only the public field, until
+ * something else happens to reveal it mid-battle. Same principle as `readOwnItem`: a
+ * private fact, feeding only OUR-view surfaces, never the opponent's-knowledge views.
+ *
+ * This is the CURRENT effective ability (Trace/Mummy/Skill Swap included), matching what
+ * the public `ability` field represents — not the innate one narrowing keys on. The
+ * request reports it fresh each turn (`this.ability`, gen 7+), so it tracks a live
+ * infection/suppression exactly as the public field eventually would, just earlier.
+ */
+export function readOwnAbility(battle: ClientBattle, mon: ClientPokemon): string | undefined {
+  return readOwnServerPokemon(battle, mon)?.ability || undefined;
+}
+
+/**
  * `mon`'s entry in the viewer's private team view (absent when spectating, or when `mon`
  * isn't ours).
  *

@@ -46,6 +46,7 @@ import {
   toLiveFacts,
   readBehaviors,
   readTransformTarget,
+  readOwnAbility,
   readOwnItem,
   readOwnMoves,
   readOwnServerPokemon,
@@ -301,6 +302,23 @@ function ownItemName(battle: ClientBattle, pokemon: ClientPokemon, entry: Randba
 }
 
 /**
+ * The viewer's OWN CURRENT ability for their active, as a display name the calc honours —
+ * same reasoning and shape as `ownItemName`. The public battle-view Pokémon only learns an
+ * ability once something reveals it in the log, even for our own mon, so a SILENT ability
+ * (Huge Power, Levitate, Serene Grace, …) would otherwise be invisible to our own damage
+ * calc until something else happens to reveal it. `undefined` when spectating, gen ≤6 (the
+ * request carries no live ability there), or when nothing in the pool matches — in which
+ * case the caller keeps the public-info behaviour.
+ */
+function ownAbilityName(battle: ClientBattle, pokemon: ClientPokemon, entry: RandbatsEntry): string | undefined {
+  const raw = readOwnAbility(battle, pokemon);
+  if (!raw) return undefined;
+  const roleAbilities = entry.roles ? Object.values(entry.roles).flatMap((r) => r.abilities) : [];
+  const pool = [...roleAbilities, ...(entry.abilities ?? [])];
+  return pool.find((a) => toId(a) === toId(raw));
+}
+
+/**
  * Our own Pokémon as WE know it: its public battle state (HP, status, boosts, the live
  * ability a Trace may have changed, an active Tera) with the private team's IDENTITY
  * laid over it.
@@ -339,6 +357,14 @@ function baseSpecies(speciesForme: string): string {
   return toId(speciesForme.split('-')[0] ?? speciesForme);
 }
 
+/** True when `mon` occupies one of its side's active slots right now — false for a
+ *  revealed-but-benched sidebar icon and for a switch-menu candidate (which has no
+ *  `.side` at all). Shared by every our-view surface that behaves differently for the
+ *  mon actually on the field versus a switch-decision candidate. */
+function isActiveMon(mon: ClientPokemon): boolean {
+  return mon.side?.active.includes(mon) ?? false;
+}
+
 /**
  * Overlay the pending Mega forme onto OUR resolved attacker: the mon the move panel's
  * Mega Evolution box is ticked for evolves this turn, so a calc where WE are the subject
@@ -365,7 +391,7 @@ function megaPreviewFor(
 ): ((attacker: ResolvedMon) => ResolvedMon) | undefined {
   // The Mega box belongs to the mon whose move panel is open — our ACTIVE mon. A benched
   // or revealed-but-inactive mon we're hovering can't Mega this turn even holding a stone.
-  if (!megaSelected || !(mon.side?.active.includes(mon) ?? false)) return undefined;
+  if (!megaSelected || !isActiveMon(mon)) return undefined;
   const mega = readMegaForme(battle, mon);
   if (!mega) return undefined;
   return (attacker) => {
@@ -495,7 +521,13 @@ function speedSection(
  * from the outgoing lines' `field`: those read the foe as defender, this reads
  * `ourSide` as defender, so a screen or Tailwind on OUR side applies here and not
  * there (the same orientation trap `speedSection` vs this function's outgoing half
- * already has to get right). Absent in open formats, same reason as the ⚡ verdict.
+ * already has to get right). Absent in open formats, same reason as the ⚡ verdict —
+ * and `ownHoverMatchup` withholds it again for the mon actually ACTIVE on the field,
+ * regardless of format: hovering the FOE already shows their damage into our active
+ * (the sets view's per-candidate move damage targets exactly that mon), so repeating
+ * it here would be the same numbers twice. A switch-decision candidate — a revealed
+ * bench mon's sidebar icon, or the switch menu — has no such other source, so it keeps
+ * the group; that's the one case this half exists for at all.
  */
 function ownMovesSection(
   battle: ClientBattle,
@@ -579,10 +611,12 @@ function ownHoverMatchup(
   const facts = ownTruth(battle, pokemon, publicFacts);
   const entry = entryFor(data, facts);
   if (!moves || !entry || facts.hpPercent <= 0) return '';
-  // Your Pokémon, your damage: your real item beats the set's assumed one (same
-  // principle as buildMoveSection's attacker).
+  // Your Pokémon, your damage: your real item and ability beat the set's assumed ones
+  // (same principle as buildMoveSection's attacker).
   const realItem = ownItemName(battle, pokemon, entry);
-  const base = resolveMon(realItem ? {...facts, item: realItem} : facts, entry);
+  const realAbility = ownAbilityName(battle, pokemon, entry);
+  const ownFacts = {...facts, ...(realItem ? {item: realItem} : {}), ...(realAbility ? {ability: realAbility} : {})};
+  const base = resolveMon(ownFacts, entry);
   // A ticked Mega previews the Mega forme here just as on the move tooltip: its stats hit
   // the damage every gen, its Speed hits the ⚡ line from gen 7 (megaSpeedApplies).
   const applyMega = megaPreviewFor(battle, pokemon, megaSelected);
@@ -591,9 +625,12 @@ function ownHoverMatchup(
   // Our real item feeds the ⚡ line too: a Scarf we are holding is our own private
   // truth, and showing US our own speed as uncertain would be absurd.
   const speedFor = (foeFacts: LiveFacts): readonly SetVariant[] => randbatsFoeVariants(data, foeFacts);
+  // The mon actually on the field gets its Incoming numbers from hovering the FOE
+  // instead (see the doc comment above) — only a switch-decision candidate keeps them.
+  const incomingMovesFor = isActiveMon(pokemon) ? undefined : randbatsIncomingMovesFor(data);
   return ownMovesSection(
     battle, pokemon.side, attacker, moves, format, readFacts, randbatsVariantsFor(data), speedFor, speedAttacker,
-    randbatsIncomingMovesFor(data),
+    incomingMovesFor,
   );
 }
 
@@ -802,23 +839,35 @@ export function buildMoveSection(
       if (!data) return ''; // the feed is still warming — same silence as before it loads
       const attackerEntry = entryFor(data, publicFacts);
       if (!attackerEntry) return '';
-      // Your move, your damage: prefer your REAL item over the set's assumed first item, so a
-      // Heavy-Duty Boots Iron Bundle isn't calculated as Choice Specs. Treated like a revealed
-      // fact for resolution — but only here, never in the opponent's-knowledge views.
+      // Your move, your damage: prefer your REAL item and ability over the set's assumed
+      // first pick, so a Heavy-Duty Boots Iron Bundle isn't calculated as Choice Specs, and
+      // a not-yet-revealed Huge Power Azumarill isn't calculated as ability-less. Treated
+      // like a revealed fact for resolution — but only here, never in the opponent's-
+      // knowledge views.
       const realItem = ownItemName(battle, pokemon, attackerEntry);
-      const attacker = asMega(resolveMon({...publicFacts, ...(realItem ? {item: realItem} : {}), ...teraFacts}, attackerEntry));
+      const realAbility = ownAbilityName(battle, pokemon, attackerEntry);
+      const attackerFacts = {
+        ...publicFacts,
+        ...(realItem ? {item: realItem} : {}),
+        ...(realAbility ? {ability: realAbility} : {}),
+        ...teraFacts,
+      };
+      const attacker = asMega(resolveMon(attackerFacts, attackerEntry));
       // Name each target only when there's more than one (doubles) — singles keeps native parity.
       return foes.map((foe) => moveVsFoe(attacker, foe, moveName, format, data, battle, readFacts, foes.length > 1)).join('');
     }
     case 'open': {
-      // No pool to match the item against: the raw id form goes straight in — the damage
-      // layer resolves ids through the calc's dex (`knownItem`). Our exact finals come
-      // from the private team's stats table; the rest of the facts are the public reads.
+      // No pool to match the item/ability against: the raw id form goes straight in — the
+      // damage layer resolves ids through the calc's dex (`knownItem`/`knownAbility`). Our
+      // exact finals come from the private team's stats table; the rest of the facts are
+      // the public reads.
       const realItem = readOwnItem(battle, pokemon);
+      const realAbility = readOwnAbility(battle, pokemon);
       const knownStats = readOwnStats(battle, pokemon);
       const attackerFacts = {
         ...publicFacts,
         ...(realItem ? {item: realItem} : {}),
+        ...(realAbility ? {ability: realAbility} : {}),
         ...(knownStats ? {knownStats} : {}),
         ...teraFacts,
       };
@@ -994,9 +1043,15 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
       const moves = readOwnMoves(battle, pokemon);
       if (!moves || facts.hpPercent <= 0) return '';
       const realItem = readOwnItem(battle, pokemon);
+      const realAbility = readOwnAbility(battle, pokemon);
       const knownStats = readOwnStats(battle, pokemon);
       const ourFacts = ownTruth(battle, pokemon, facts);
-      const attackerFacts = {...ourFacts, ...(realItem ? {item: realItem} : {}), ...(knownStats ? {knownStats} : {})};
+      const attackerFacts = {
+        ...ourFacts,
+        ...(realItem ? {item: realItem} : {}),
+        ...(realAbility ? {ability: realAbility} : {}),
+        ...(knownStats ? {knownStats} : {}),
+      };
       const base = resolveMon(attackerFacts, entryOrMinimal(undefined, attackerFacts));
       // A ticked Mega previews the forme's damage in every gen; there's no ⚡ line in an
       // open format (no feed to read a foe Speed from), so the gen-6 Speed split is moot.

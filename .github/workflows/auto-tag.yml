@@ -1,13 +1,24 @@
 # Tags and releases automatically once a version bump lands on main, so cutting a
 # release never depends on a human's local git matching what actually merged (the
-# risk: tagging a stale local main misses commits that merged after your last pull).
-# Fires on every push to main, but is a no-op unless package.json's version has no
-# matching tag yet — i.e. unless this push WAS a version-bump merge.
+# risk: tagging a stale local main misses commits that merged after your last pull) —
+# AND never depends on remembering to run the heavier pre-release checks by hand.
+# Fires on every push to main, but everything past `detect` is a no-op unless
+# package.json's version has no matching tag yet — i.e. unless this push WAS a
+# version-bump merge.
 #
-# What this does NOT change: npm run release-check and the release-visual-check skill
-# still need a real browser/human eyes, so they stay manual gates run BEFORE the
-# version-bump PR is merged (see CLAUDE.md → "Cutting a release"). This workflow only
-# takes over the mechanical step after that: tag the merged commit, then build+publish.
+# `verify` runs the exact `npm run release-check` a human used to run by hand (build +
+# typecheck/tests + drift-check + player-check — see CLAUDE.md's "Cutting a release")
+# and gates the tag on it: nothing is tagged, let alone released, unless it's green.
+# drift-check hits the LIVE replay.pokemonshowdown.com to pick a recent replay, which
+# is real flakiness this repo has always accepted for this check (see e2e.yml) — a bad
+# run here is retried by re-running THIS job, not by bumping the version again, since
+# no tag was ever created.
+#
+# release-visual-check is still not something this workflow can run at all — it needs
+# an agent visually judging a live loaded-extension Chrome session, not an assertion.
+# It still belongs BEFORE the version-bump PR is merged (CLAUDE.md), and release.yml's
+# own `publish` job additionally pauses on a required manual approval (the `release`
+# environment) as a structural reminder that it happened, not a substitute for it.
 name: Auto-tag release
 
 on:
@@ -20,7 +31,7 @@ permissions:
   attestations: write # record the provenance attestation (release.yml)
 
 jobs:
-  tag:
+  detect:
     runs-on: ubuntu-latest
     outputs:
       should_release: ${{ steps.check.outputs.should_release }}
@@ -46,19 +57,37 @@ jobs:
             echo "should_release=true" >> "$GITHUB_OUTPUT"
           fi
 
+  verify:
+    needs: detect
+    if: needs.detect.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run release-check # build + check + drift-check + player-check, gen9randombattle by default
+
+  tag:
+    needs: [detect, verify]
+    if: needs.detect.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Tag this commit
-        if: steps.check.outputs.should_release == 'true'
         run: |
-          git tag "${{ steps.check.outputs.tag }}"
-          git push origin "${{ steps.check.outputs.tag }}"
+          git tag "${{ needs.detect.outputs.tag }}"
+          git push origin "${{ needs.detect.outputs.tag }}"
 
   release:
-    needs: tag
-    if: needs.tag.outputs.should_release == 'true'
+    needs: [detect, tag]
+    if: needs.detect.outputs.should_release == 'true'
     uses: ./.github/workflows/release.yml
     permissions:
       contents: write
       id-token: write
       attestations: write
     with:
-      tag: ${{ needs.tag.outputs.tag }}
+      tag: ${{ needs.detect.outputs.tag }}

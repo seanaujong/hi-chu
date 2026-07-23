@@ -35,6 +35,8 @@
 		C3719C272FFFE6E200F4AD5A /* icons in Resources */ = {isa = PBXBuildFile; fileRef = C3719C212FFFE6E200F4AD5A /* icons */; };
 		C3719C282FFFE6E200F4AD5A /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = C3719C222FFFE6E200F4AD5A /* manifest.json */; };
 		C3719C292FFFE6E200F4AD5A /* content.js in Resources */ = {isa = PBXBuildFile; fileRef = C3719C232FFFE6E200F4AD5A /* content.js */; };
+		C3719C2B2FFFE6E200F4AD5A /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = C3719C2A2FFFE6E200F4AD5A /* background.js */; };
+		C3719C2C2FFFE6E200F4AD5A /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = C3719C2A2FFFE6E200F4AD5A /* background.js */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -101,9 +103,10 @@
 		C3719BF72FFFE6E100F4AD5A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		C3719BFC2FFFE6E200F4AD5A /* hi-chu Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "hi-chu Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 		C3719C012FFFE6E200F4AD5A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		C3719C212FFFE6E200F4AD5A /* icons */ = {isa = PBXFileReference; lastKnownFileType = folder; name = icons; path = ../../../dist/icons; sourceTree = "<group>"; };
-		C3719C222FFFE6E200F4AD5A /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = manifest.json; path = ../../../dist/manifest.json; sourceTree = "<group>"; };
-		C3719C232FFFE6E200F4AD5A /* content.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = content.js; path = ../../../dist/content.js; sourceTree = "<group>"; };
+		C3719C212FFFE6E200F4AD5A /* icons */ = {isa = PBXFileReference; lastKnownFileType = folder; name = icons; path = "../../../dist-safari/icons"; sourceTree = "<group>"; };
+		C3719C222FFFE6E200F4AD5A /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = manifest.json; path = "../../../dist-safari/manifest.json"; sourceTree = "<group>"; };
+		C3719C232FFFE6E200F4AD5A /* content.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = content.js; path = "../../../dist-safari/content.js"; sourceTree = "<group>"; };
+		C3719C2A2FFFE6E200F4AD5A /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = background.js; path = "../../../dist-safari/background.js"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -236,6 +239,7 @@
 				C3719C212FFFE6E200F4AD5A /* icons */,
 				C3719C222FFFE6E200F4AD5A /* manifest.json */,
 				C3719C232FFFE6E200F4AD5A /* content.js */,
+				C3719C2A2FFFE6E200F4AD5A /* background.js */,
 			);
 			name = Resources;
 			path = "Shared (Extension)";
@@ -405,6 +409,7 @@
 				C3719C292FFFE6E200F4AD5A /* content.js in Resources */,
 				C3719C282FFFE6E200F4AD5A /* manifest.json in Resources */,
 				C3719C272FFFE6E200F4AD5A /* icons in Resources */,
+				C3719C2B2FFFE6E200F4AD5A /* background.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -415,6 +420,7 @@
 				C3719C262FFFE6E200F4AD5A /* content.js in Resources */,
 				C3719C252FFFE6E200F4AD5A /* manifest.json in Resources */,
 				C3719C242FFFE6E200F4AD5A /* icons in Resources */,
+				C3719C2C2FFFE6E200F4AD5A /* background.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

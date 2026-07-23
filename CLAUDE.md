@@ -180,21 +180,34 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
 - ✅ **`teraType` is set only when the Tera is ACTIVE for that calc** — actually terastallized
   (setting it activates Tera in the calc; never speculate a Tera type; checked by
   `resolve.test.ts` "only applies a Tera type when the Pokémon has actually terastallized"),
-  with ONE sanctioned preview: OUR OWN attacker on the move tooltip when the move panel's
-  Terastallize checkbox is ticked. That isn't speculation — the type is our own private truth
-  (`readOwnTeraType` via `battle.myPokemon`; the client keeps `teraType` set whether or not the
-  Tera has been used) and activating it is the user's declared intent for the pending move. The
-  toggle lives ONLY in the DOM in both clients (`input[name=terastallize]` production,
-  `input[name=tera]` preact), so `readTeraToggled` reads the checkbox, scoped to this battle's
-  `#room-<roomid>` element so a second battle's box can't leak in; `content.ts` passes the flag
-  and `buildMoveSection` applies it — it never touches the foe's variants, the sets/mirror
-  views, or the ⚡ line, and is moot once actually terastallized. Checked by `section.test.ts`
-  ("Terastallize ticked": STAB applies and the line says Tera; no private type or already
-  Tera'd → byte-identical output) and `readState.test.ts` (`readOwnTeraType`, `readTeraToggled`
-  incl. the no-cross-room-leak case). 👁 for drift: the checkbox selector can't be probed by
-  `drift-check` (a spectator replay has no move controls) — `npm run player-check` (a real
-  two-account battle) probes it after a client update. The sets view may LIST possible Tera
-  types, but they are display-only `SetKnowledge` — they never reach the calc.
+  with ONE sanctioned preview: OUR OWN attacker on the move tooltip AND the own-hover matchup
+  view, when the move panel's Terastallize checkbox is ticked — same footing as the Mega
+  preview below, and sharing its overlay shape (`teraPreviewFor`/`applyPreviews` in
+  `section.ts`) rather than forking the "which Tera type, if any" law across the two surfaces.
+  That isn't speculation — the type is our own private truth (`readOwnTeraType` via
+  `battle.myPokemon`; the client keeps `teraType` set whether or not the Tera has been used)
+  and activating it is the user's declared intent for the pending move. The toggle lives ONLY
+  in the DOM in both clients (`input[name=terastallize]` production, `input[name=tera]`
+  preact), so `readTeraToggled` reads the checkbox, scoped to this battle's `#room-<roomid>`
+  element so a second battle's box can't leak in; `content.ts` passes the flag to both
+  `buildMoveSection` and `buildPokemonSection` — it never touches the foe's variants, the
+  sets/mirror views, or the ⚡ line (Tera never changes Speed), and is moot once actually
+  terastallized. **The two surfaces diverging here is a real, user-visible bug we hit once**:
+  before `teraPreviewFor` existed, only the move tooltip applied the preview, so a Protean/
+  Libero attacker's STAB (`@smogon/calc`'s `getStabMod` grants it only while `!pokemon.teraType`
+  — Tera, once set, overrides Protean's retype for STAB purposes even when the previewed type
+  doesn't match the move) would silently vanish on the move tooltip the instant Tera was
+  ticked with a non-matching type, while the matchup view kept crediting the full Protean
+  STAB — the same move reading two very different numbers depending on which thing you
+  hovered. Checked by `section.test.ts` ("Terastallize ticked": STAB applies and the line says
+  Tera; no private type or already Tera'd → byte-identical output; "carries the same
+  Terastallize preview as the move tooltip — the two surfaces must not diverge", watched
+  failing before `teraPreviewFor` reached `ownHoverMatchup`) and `readState.test.ts`
+  (`readOwnTeraType`, `readTeraToggled` incl. the no-cross-room-leak case). 👁 for drift: the
+  checkbox selector can't be probed by `drift-check` (a spectator replay has no move controls)
+  — `npm run player-check` (a real two-account battle) probes it after a client update. The
+  sets view may LIST possible Tera types, but they are display-only `SetKnowledge` — they
+  never reach the calc.
 - ✅ **A ticked Mega Evolution box previews OUR active mon's Mega forme — same footing as the
   Tera preview, wider reach because Mega swaps the whole forme.** The move-panel Mega box is the
   user's declared intent, and the stone in hand is our private truth, so it's not speculation.

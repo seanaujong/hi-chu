@@ -448,6 +448,22 @@ describe('buildPokemonSection hovering OUR Noivern as the player (the matchup vi
     expect(button).toContain(`<small>Damage:</small> ${line[1]}% - ${line[2]}%`);
   });
 
+  it('carries the same Terastallize preview as the move tooltip — the two surfaces must not diverge', () => {
+    const teraMine = {...mine, noivernTerastallized: '', myNoivernTera: 'Fire'};
+    const plain = loadBattle(teraMine);
+    const tera = loadBattle(teraMine);
+    const plainHtml = buildPokemonSection(plain.battle, plain.active('Noivern'), data);
+    const teraHtml = buildPokemonSection(tera.battle, tera.active('Noivern'), data, false, true);
+    const plainLine = /Flamethrower: ([\d.]+)% - ([\d.]+)%/.exec(plainHtml)!;
+    const teraLine = /Flamethrower: ([\d.]+)% - ([\d.]+)%/.exec(teraHtml)!;
+    // Flamethrower is non-STAB on Flying/Dragon Noivern; Tera Fire makes it STAB (×1.5) —
+    // the same swing `buildMoveSection`'s own Tera-preview test pins.
+    expect(Number(teraLine[2])).toBeGreaterThan(Number(plainLine[2]) * 1.4);
+    // And it must be the EXACT number the move tooltip previews — one truth, two surfaces.
+    const button = buildMoveSection(tera.battle, tera.active('Noivern'), 'Flamethrower', data, true);
+    expect(button).toContain(`<small>Damage:</small> ${teraLine[1]}% - ${teraLine[2]}%`);
+  });
+
   it("splits a move into labelled outcomes when the foe's item is still unknown", () => {
     // Tentacruel's Bulky Support can hold Assault Vest or Leftovers; Draco Meteor is
     // special, so the hidden Vest changes the number — never one confidently-wrong line.

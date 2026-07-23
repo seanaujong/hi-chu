@@ -420,6 +420,40 @@ function megaSpeedApplies(gen: number): boolean {
 }
 
 /**
+ * If Terastallize is ticked for our ACTIVE mon's pending move, overlay the preview Tera
+ * type onto the resolved attacker — the same footing as the Mega preview (our own private
+ * truth plus the user's declared intent, not speculation; see `megaPreviewFor`). A pure
+ * overlay rather than a facts merge before resolution, so every our-view surface that can
+ * carry a pending Tera — the move tooltip AND the own-hover matchup view — shares one
+ * implementation instead of two copies of the "which Tera type, if any" law.
+ *
+ * Undefined when there's nothing to preview (box unticked, no private Tera type to show,
+ * already terastallized, or not our active mon this turn — Tera, like Mega, only takes
+ * effect on the turn the move is actually used, so a benched/switch-candidate mon never
+ * gets it).
+ */
+function teraPreviewFor(
+  battle: ClientBattle,
+  pokemon: ClientPokemon,
+  teraSelected: boolean,
+  publicFacts: LiveFacts,
+): ((attacker: ResolvedMon) => ResolvedMon) | undefined {
+  if (!teraSelected || publicFacts.terastallized || !isActiveMon(pokemon)) return undefined;
+  const teraType = readOwnTeraType(battle, pokemon);
+  if (!teraType) return undefined;
+  return (attacker) => ({...attacker, terastallized: true, teraType});
+}
+
+/** Applies each preview overlay in turn (Mega, then a pending Tera), skipping any that
+ *  don't apply — shared by every our-view surface that can carry both previews at once. */
+function applyPreviews(
+  base: ResolvedMon,
+  previews: readonly (((attacker: ResolvedMon) => ResolvedMon) | undefined)[],
+): ResolvedMon {
+  return previews.reduce((mon, apply) => (apply ? apply(mon) : mon), base);
+}
+
+/**
  * If a revealed move betrays that the defender might be a disguised Zoroark (see
  * illusion.ts), a resolution of that Zoroark as an extra defender — so the move tooltip
  * shows a second "vs Zoroark-Hisui" damage line rather than one confidently-wrong number.
@@ -615,6 +649,7 @@ function ownHoverMatchup(
   data: RandbatsData,
   format: {gen: number; doubles: boolean},
   megaSelected: boolean,
+  teraSelected: boolean,
   readFacts: FactsReader,
 ): string {
   const moves = readOwnMoves(battle, pokemon);
@@ -627,11 +662,15 @@ function ownHoverMatchup(
   const realAbility = ownAbilityName(battle, pokemon, entry);
   const ownFacts = {...facts, ...(realItem ? {item: realItem} : {}), ...(realAbility ? {ability: realAbility} : {})};
   const base = resolveMon(ownFacts, entry);
-  // A ticked Mega previews the Mega forme here just as on the move tooltip: its stats hit
-  // the damage every gen, its Speed hits the ⚡ line from gen 7 (megaSpeedApplies).
+  // A ticked Mega or a ticked Terastallize previews the same way as the move tooltip: their
+  // offensive stats/STAB hit this view's damage exactly like they hit the tooltip's — one
+  // preview law, two surfaces (see `teraPreviewFor`/`megaPreviewFor`). Speed stays Mega-only
+  // (its Speed hits the ⚡ line from gen 7, `megaSpeedApplies`) — Tera never changes stats,
+  // so it has nothing to add there.
   const applyMega = megaPreviewFor(battle, pokemon, megaSelected);
-  const attacker = applyMega ? applyMega(base) : base;
-  const speedAttacker = applyMega && megaSpeedApplies(format.gen) ? attacker : base;
+  const applyTera = teraPreviewFor(battle, pokemon, teraSelected, facts);
+  const attacker = applyPreviews(base, [applyMega, applyTera]);
+  const speedAttacker = applyMega && megaSpeedApplies(format.gen) ? applyMega(base) : base;
   // Our real item feeds the ⚡ line too: a Scarf we are holding is our own private
   // truth, and showing US our own speed as uncertain would be absurd.
   const speedFor = (foeFacts: LiveFacts): readonly SetVariant[] => randbatsFoeVariants(data, foeFacts);
@@ -843,17 +882,14 @@ export function buildMoveSection(
   const readFacts = factsReader(battle, format.gen, data);
   // Our attacker: public battle state, private identity (Illusion disguises us to us too).
   const publicFacts = ownTruth(battle, pokemon, readFacts(pokemon));
-  // Terastallize is ticked for this turn: preview the damage with the Tera active, using
-  // OUR private Tera type (an our-view surface, like the real-item read). Not speculation —
-  // the type is our own truth and activating it is the user's declared intent. Moot once
-  // actually terastallized (the public facts already carry it); absent when spectating.
-  const pendingTera = teraSelected && !publicFacts.terastallized ? readOwnTeraType(battle, pokemon) : undefined;
-  const teraFacts = pendingTera ? {terastallized: true, teraType: pendingTera} : {};
-  // Mega Evolution is ticked: preview our attacker as the Mega forme. The Mega's Attack
-  // (and typing/ability) apply the moment it evolves, on the same turn, in every gen —
-  // so this rides on the damage regardless of generation (unlike the ⚡ Speed, gen 7+).
+  // Terastallize ticked: preview OUR private Tera type. Mega Evolution ticked: preview the
+  // Mega forme's stats/ability/type. Both are the user's declared intent over our own private
+  // truth, not speculation — see `teraPreviewFor`/`megaPreviewFor`. Both apply regardless of
+  // generation (unlike the ⚡ Speed's Mega split, gen 7+) since offensive stats and STAB take
+  // effect the same turn the gimmick is used.
   const applyMega = megaPreviewFor(battle, pokemon, megaSelected);
-  const asMega = (attacker: ResolvedMon): ResolvedMon => (applyMega ? applyMega(attacker) : attacker);
+  const applyTera = teraPreviewFor(battle, pokemon, teraSelected, publicFacts);
+  const withPreviews = (attacker: ResolvedMon): ResolvedMon => applyPreviews(attacker, [applyMega, applyTera]);
 
   switch (format.kind) {
     case 'randbats': {
@@ -871,9 +907,8 @@ export function buildMoveSection(
         ...publicFacts,
         ...(realItem ? {item: realItem} : {}),
         ...(realAbility ? {ability: realAbility} : {}),
-        ...teraFacts,
       };
-      const attacker = asMega(resolveMon(attackerFacts, attackerEntry));
+      const attacker = withPreviews(resolveMon(attackerFacts, attackerEntry));
       // Name each target only when there's more than one (doubles) — singles keeps native parity.
       return foes.map((foe) => moveVsFoe(attacker, foe, moveName, format, data, battle, readFacts, foes.length > 1)).join('');
     }
@@ -890,9 +925,8 @@ export function buildMoveSection(
         ...(realItem ? {item: realItem} : {}),
         ...(realAbility ? {ability: realAbility} : {}),
         ...(knownStats ? {knownStats} : {}),
-        ...teraFacts,
       };
-      const attacker = asMega(resolveMon(attackerFacts, entryOrMinimal(undefined, attackerFacts)));
+      const attacker = withPreviews(resolveMon(attackerFacts, entryOrMinimal(undefined, attackerFacts)));
       const variantsFor = openVariantsFor(format.gen);
       const sections = foes
         .map((foe) => openMoveVsFoe(attacker, foe, moveName, format, battle, readFacts, variantsFor, foes.length > 1))
@@ -1043,10 +1077,16 @@ function withCopiedMoves(c: CandidateSet, facts: LiveFacts): CandidateSet {
  * sets by every public reveal and attaches each move's damage vs our active;
  * hovering our own Pokémon shows the mirror — what the opponent can deduce from
  * what we've made public. Returns '' when the format or species isn't covered.
- * `megaSelected` is the move panel's Mega Evolution box (content.ts reads the DOM):
- * when ticked, our-view surfaces preview our active mon's Mega forme.
+ * `megaSelected`/`teraSelected` are the move panel's gimmick checkboxes (content.ts reads
+ * the DOM): when ticked, our-view surfaces preview our active mon's Mega forme or Tera type.
  */
-export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon, data: RandbatsData | null, megaSelected = false): string {
+export function buildPokemonSection(
+  battle: ClientBattle,
+  pokemon: ClientPokemon,
+  data: RandbatsData | null,
+  megaSelected = false,
+  teraSelected = false,
+): string {
   const format = detectFormat(battle);
   if (!format) return '';
 
@@ -1055,7 +1095,7 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
 
   switch (format.kind) {
     case 'randbats':
-      return data ? randbatsPokemonSection(battle, pokemon, facts, data, format, megaSelected, readFacts) : '';
+      return data ? randbatsPokemonSection(battle, pokemon, facts, data, format, megaSelected, teraSelected, readFacts) : '';
     case 'open': {
       // No sets/mirror view (nothing to infer without a pool) and nothing on a FOE
       // hover in v1; our own mon gets the matchup view — the switch-decision answer —
@@ -1074,10 +1114,12 @@ export function buildPokemonSection(battle: ClientBattle, pokemon: ClientPokemon
         ...(knownStats ? {knownStats} : {}),
       };
       const base = resolveMon(attackerFacts, entryOrMinimal(undefined, attackerFacts));
-      // A ticked Mega previews the forme's damage in every gen; there's no ⚡ line in an
-      // open format (no feed to read a foe Speed from), so the gen-6 Speed split is moot.
+      // A ticked Mega or Tera previews the same way as the move tooltip's open-format
+      // arm (`teraPreviewFor`/`megaPreviewFor`); there's no ⚡ line in an open format (no
+      // feed to read a foe Speed from), so Mega's gen-6 Speed split is moot either way.
       const applyMega = megaPreviewFor(battle, pokemon, megaSelected);
-      const attacker = applyMega ? applyMega(base) : base;
+      const applyTera = teraPreviewFor(battle, pokemon, teraSelected, ourFacts);
+      const attacker = applyPreviews(base, [applyMega, applyTera]);
       const html = ownMovesSection(battle, pokemon.side, attacker, moves, format, readFacts, openVariantsFor(format.gen));
       return html ? html + renderNotes([OPEN_FORMAT_NOTE]) : '';
     }
@@ -1095,6 +1137,7 @@ function randbatsPokemonSection(
   data: RandbatsData,
   format: {gen: number; doubles: boolean},
   megaSelected: boolean,
+  teraSelected: boolean,
   readFacts: FactsReader,
 ): string {
   const entry = entryFor(data, facts);
@@ -1166,7 +1209,7 @@ function randbatsPokemonSection(
   // Own view's at-a-glance answer: OUR moves' damage into the current foe (private
   // moveset — an our-view surface). Leads the tooltip like ⚡ does on a foe hover;
   // the mirror blocks below remain strictly public.
-  const ownMovesHtml = foe ? '' : ownHoverMatchup(battle, pokemon, facts, data, format, megaSelected, readFacts);
+  const ownMovesHtml = foe ? '' : ownHoverMatchup(battle, pokemon, facts, data, format, megaSelected, teraSelected, readFacts);
 
   return speedHtml + ownMovesHtml + renderSetsSection({candidates: blocks, extraNotes: notes});
 }

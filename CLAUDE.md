@@ -281,14 +281,13 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   element so a second battle's box can't leak in; `content.ts` passes the flag to both
   `buildMoveSection` and `buildPokemonSection` — it never touches the foe's variants, the
   sets/mirror views, or the ⚡ line (Tera never changes Speed), and is moot once actually
-  terastallized. **The two surfaces diverging here is a real, user-visible bug we hit once**:
-  before `teraPreviewFor` existed, only the move tooltip applied the preview, so a Protean/
-  Libero attacker's STAB (`@smogon/calc`'s `getStabMod` grants it only while `!pokemon.teraType`
-  — Tera, once set, overrides Protean's retype for STAB purposes even when the previewed type
-  doesn't match the move) would silently vanish on the move tooltip the instant Tera was
-  ticked with a non-matching type, while the matchup view kept crediting the full Protean
-  STAB — the same move reading two very different numbers depending on which thing you
-  hovered. Checked by `section.test.ts` ("Terastallize ticked": STAB applies and the line says
+  terastallized. **Both surfaces must share one implementation, not fork it** — Protean/
+  Libero's STAB (`@smogon/calc`'s `getStabMod` grants it only while `!pokemon.teraType`;
+  Tera, once set, overrides Protean's retype for STAB purposes even when the previewed type
+  doesn't match the move) depends on exactly this value, so any divergence between the move
+  tooltip's and the matchup view's preview logic would make the SAME move report two
+  different numbers depending on which one you hovered. Checked by `section.test.ts`
+  ("Terastallize ticked": STAB applies and the line says
   Tera; no private type or already Tera'd → byte-identical output; "carries the same
   Terastallize preview as the move tooltip — the two surfaces must not diverge", watched
   failing before `teraPreviewFor` reached `ownHoverMatchup`) and `readState.test.ts`
@@ -323,9 +322,8 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   each guard watched failing) and `readState.test.ts` (`readMegaToggled`, `readMegaForme` incl. the
   already-Mega and no-stone guards). 👁 for drift like Tera, on a mega-capable format — gen 9
   randbats has no Megas, so use `node scripts/player-check.mjs gen9championsrandombattle`. It
-  probes `readMegaForme`'s live source (the stone→forme dex map, plus any stone-holder in the
-  private team — verified live: Gengar/Gengarite → Gengar-Mega, Dragonite/Dragoninite →
-  Dragonite-Mega); `battle.dex.items` is also readable in a spectator replay, so `drift-check`
+  probes `readMegaForme`'s live source: the stone→forme dex map, against real stone-holders in
+  the private team. `battle.dex.items` is also readable in a spectator replay, so `drift-check`
   guards the map shape too. The checkbox SELECTOR still needs the Mega mon ACTIVE with the move
   menu open (a random battle rarely obliges) — a team format that forces a Mega lead is the
   reliable way to exercise it end to end.
@@ -532,9 +530,8 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   randbats target resolves exactly from the feed, and an open format's foe is bracketed
   rather than guessed, so it yields body-only (right species, right types, its own HP, the
   format's assumed spread). Two reveals follow the identity/live split: a starred `moveTrack`
-  entry (`*Outrage`) is the COPIED Pokémon's move and must never narrow the copier's set (it
-  used to, so a transformed Ditto "revealed" the moveset it was imitating and matched no
-  Ditto role); and the sets view goes on naming the Ditto set — its Choice Scarf and Imposter
+  entry (`*Outrage`) is the COPIED Pokémon's move, so it must never narrow the copier's own
+  set; and the sets view goes on naming the Ditto set — its Choice Scarf and Imposter
   are its own — while listing the copied moves under it, each with its damage, since its own
   lone move is spent. Checked by `transform.test.ts` (the law), `readState.test.ts`
   (`readTransformTarget`, the star filter) and `section.test.ts` (the real fixture, a Scarf
@@ -550,10 +547,9 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   so every Terapagos hover read "⚠ matched no known set" from the turn it landed; likewise a
   Mega, where the client says "Mega Sol" and the feed says "Leaf Guard"); UMBRELLA
   (Calyrex-Shadow's `As One (Spectrier)` announced as plain `As One`); and BORROWED (a Skill
-  Swap before the innate ability was ever revealed). This SUBSUMES the old `isMegaForme` skip
-  — a Mega's ability is just another name no set was built with — so `roleMatches` no longer
-  asks whether it is looking at a Mega, and the Mega test now fails when THIS law is reverted,
-  which is the proof it carries it. Note the Terapagos case is exactly what the dex check
+  Swap before the innate ability was ever revealed). A Mega's forme-locked ability is covered
+  by this same general law too — it's just another name no set was built with, not a special
+  Mega case — which the Mega test enforces directly. Note the Terapagos case is exactly what the dex check
   below cannot catch: Tera Shell is a real ability *of the species it now is*. Checked by
   `resolve.test.ts` (the forme-locked, umbrella and borrowed cases, plus a positive control
   that a real pool ability still narrows as hard as ever — all watched failing).
@@ -606,20 +602,19 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   can likewise land on a *borrowed* ability (a Skill Swap before the innate one was ever
   revealed). A feed role only ever lists a species' REAL abilities, so such a name can only
   ever REJECT every role, never select one — every Calyrex-Shadow hover read "⚠ matched no
-  known set" from the moment it switched in (replay gen9randombattle-2648347259, reproduced
-  live). So `innateAbility` verifies the reported name against the species' own dex ability
-  slots (`speciesData.abilities`, the tolerant client-dex read `assume.ts` already relies on)
-  and returns undefined when it isn't one of them: it tells us nothing, so it narrows nothing.
-  Absent dex slots (older client, a fixture with no `battle.dex`) the name is taken as given,
-  exactly as before — a pure false-rejection filter that can't cost real narrowing power.
+  known set" from the moment it switched in. So `innateAbility` verifies the reported name
+  against the species' own dex ability slots (`speciesData.abilities`, the tolerant
+  client-dex read `assume.ts` already relies on) and returns undefined when it isn't one of
+  them: it tells us nothing, so it narrows nothing. Absent dex slots (older client, a
+  fixture with no `battle.dex`) the name is taken as given — a pure false-rejection filter
+  that can't cost real narrowing power.
   `deductions.ts` reads the same `innateAbility` (its inline copy was the second home for the
   law) — **and that is now what this check is FOR**: role narrowing is governed by the
   stronger pool law above (a name no set was built with narrows nothing), but `deductions.ts`
   has no pool to test against and must not trust a bogus name either, or a borrowed ability
   would let it conclude "not Sheer Force" and rule out a Life Orb the mon may really hold.
   Checked by `resolve.test.ts` ("an ability the species cannot have narrows nothing" —
-  the umbrella and borrowed cases, both watched failing with the check reverted, and both
-  reproduced/cured against the live replay with the shipped bundle).
+  the umbrella and borrowed cases, both watched failing with the check reverted).
 - ✅ **Damage under a hidden item/ability is split by DISTINCT outcome, not by set.**
   When the target's item is unknown, `resolveVariants` enumerates every still-possible
   set and the move tooltip shows one labelled line per *distinct* damage result — but
@@ -630,16 +625,15 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   and the AV split) and `section.test.ts` (the real fixture: special move splits AV vs
   Leftovers, physical move stays one line). A revealed item is just the one-set case.
 - ✅ **The sets view's per-candidate damage never guesses a single representative
-  attacker either — same law, the other direction.** `resolveByRole` used to pick one
-  item/ability per role for the whole block's numbers; `section.groupByRole` +
-  `candidateDamageByMove` now feed each role's own `resolveVariants` fan-out through
+  attacker either — same law, the other direction.** `section.groupByRole` +
+  `candidateDamageByMove` feed each role's own `resolveVariants` fan-out through
   `incomingDamageBuckets` (the same machinery the Incoming section's attacker side
-  already used), so a role whose item/ability is genuinely unknown gets one labelled
+  already uses), so a role whose item/ability is genuinely unknown gets one labelled
   outcome per still-possible value instead of one confidently-wrong number. A move with
-  a single certain outcome stays inline in the `Moves:` line exactly as before
-  (`render.moveText`); a REAL split breaks that move out into its own labelled lines
-  below the list (`render.moveBreakout`) rather than cramming multiple numbers into the
-  original tool's one-line-per-set layout. Each outcome is also colored by a coarse KO
+  a single certain outcome stays inline in the `Moves:` line (`render.moveText`); a REAL
+  split breaks that move out into its own labelled lines below the list
+  (`render.moveBreakout`) rather than cramming multiple numbers into the original tool's
+  one-line-per-set layout. Each outcome is also colored by a coarse KO
   tier for a fast scan down the block — red+bold (reusing `.hichu-ko`) for any real
   single-hit KO chance, amber (reusing `.hichu-note`) for a realistic 2HKO with no OHKO
   chance, plain for 3HKO+ (`render.koTier`/`tierWrap` — no new CSS, both colors already
@@ -664,9 +658,8 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   native `.tooltip-section` divider `border-top:1px solid #888; padding:2px 4px` plus a
   slight grey panel `rgba(0,0,0,.045)`), and the two colour value-adds the original lacks
   (red KO, orange caveat). Each candidate set is one `.hichu-block`; the move tooltip is
-  one. Don't reintroduce custom `font-size`/`opacity`/colour on the shell — that's exactly
-  what read as muddy. (Verified live against the real old extension and under Showdown's
-  own stylesheet via `room.tooltips.showPokemonTooltip`.)
+  one. Custom `font-size`/`opacity`/colour on the shell clashes with the native chrome
+  around it — don't reintroduce it.
 - 👁 **No summary header on the sets view.** The per-set blocks speak for themselves;
   there is no "Possible sets (N of M) · dmg vs …" line (removed by request). Checked by
   `render.test.ts` ("omits the summary header entirely").
@@ -701,9 +694,8 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   above — hit 1 is always conditioned on landing): the boost stages apply as two SEPARATE,
   un-truncated float multiplies (not hit 1's combined, integer-truncated stage), and an
   item/ability modifier only lands when that boost-adjusted value is still a whole number —
-  PS's own event system silently drops an accumulated `chainModify` otherwise (e.g. a lone
-  -1 accuracy stage on a 90-accuracy move: 90/(4/3) = 67.5, so Compound Eyes' bonus never
-  applies that hit; `perHitChance` reproduces this exactly, not an approximation of it). No
+  PS's own event system silently drops an accumulated `chainModify` otherwise, a quirk
+  `perHitChance` reproduces exactly rather than approximates. No
   randbats set pairs one of these with a multiaccuracy move, so this only ever fires in a
   Custom Game/Free-For-All battle. Verified by driving the real `pokemon-showdown` simulator
   package directly (forcing every per-hit check to log its incoming accuracy value), not
@@ -776,10 +768,10 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   out of scope: speed order, not turn order. New client reads (`tailwind` in
   `sideConditions`, `trickroom` in `pseudoWeather`) → probed by `npm run drift-check`. The
   BENCH ⚡ needs a private team, so a spectator replay can't reach it: `npm run player-check`
-  probes it on both sides of the format split (randbats must render one per bench block, an
-  open format none), verified live — five bench mons, each its own speed vs the foe active.
-  Checked by `speed.test.ts`, `render.test.ts` (verdict/aside/Trick Room/tie lines; the ⚡
-  between header and move lines), and `section.test.ts` (real fixture: "⚡ you move first —
+  probes it on both sides of the format split, confirming randbats renders one ⚡ line per
+  bench block and an open format renders none. Checked by `speed.test.ts`, `render.test.ts`
+  (verdict/aside/Trick Room/tie lines; the ⚡ between header and move lines), and
+  `section.test.ts` (real fixture: "⚡ you move first —
   249 vs 216" leads the foe tooltip AND the matchup block, byte-identical; the switch menu's
   Scarf/paralysis/no-boosts reads; the mirror and the open format have no ⚡).
 - ✅ **Unburden's ×2 Speed is armed via an explicit `abilityOn` flag, not inferred from
@@ -865,9 +857,8 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   `set.evs` as per-stat points and puts `max(2·points − 1, 0)` where mainline puts
   `IV + ⌊EV/4⌋` (IVs hardcoded 31). Fed literally to `@smogon/calc`, the feed-wide `11`
   deflates every stat on BOTH mons — raw damage roughly cancels, but the shown PERCENT
-  inflates because the defender's max HP is the denominator (replay
-  gen9championsrandombattle-2646312545: Poltergeist into Arbok read "min 47%" for a true
-  42.9%). `randbats.championsStatPointsToEvs` converts with `EV = 8·points − 4` (exact:
+  inflates because the defender's max HP is the denominator.
+  `randbats.championsStatPointsToEvs` converts with `EV = 8·points − 4` (exact:
   `⌊(8p−4)/4⌋ = 2p−1`), keyed on the format id inside `fetchRandbats` — mainline feeds' `evs`
   ARE EVs and pass through untouched — and the localStorage cache is versioned
   (`STORAGE_VERSION`) so a stale unconverted copy can't outlive an update. Checked by

@@ -3,8 +3,10 @@
 *(hi-chew × pikachu)*
 
 <p align="center">
-  <img src="demo/hichu-enemy-hover.png" width="380"
-       alt="Hovering an opponent in a Showdown Random Battle reveals its still-possible sets and each move's damage into the active Pokémon">
+  <img src="demo/03-own-hover.png" width="300"
+       alt="Hovering your own Pokémon leads with its damage into the opposing active, a speed verdict, and the set the opponent could still deduce about it">
+  <img src="demo/10-move-earthquake.png" width="300"
+       alt="Hovering a move button shows its damage and KO turns into the current target, right beside the native tooltip">
 </p>
 
 Battle helpers, one hover away. hi-chu is a small browser extension that enriches

@@ -49,43 +49,52 @@ network unless that IS its job. Dependencies only ever point downward:
 │ FETCH                            reads the page + the network│
 │ ┌───────────────────────────┐   ┌───────────────────────────┐│
 │ │ battle/readState.ts       │   │ data/randbats.ts          ││
-│ │ PS client objects         │   │ fetch + cache             ││
-│ │ → typed LiveFacts         │   │ the sets feed             ││
+│ │ client Pokemon objects    │   │ fetch + cache             ││
+│ │ → LiveFacts: only what    │   │ the sets feed             ││
+│ │ the battle has made public│   │                           ││
 │ └───────────────────────────┘   └───────────────────────────┘│
 └──────────────────────────────────────────────────────────────┘
-                                │
+                                │ what we KNOW
                                 ▼
 ┌──────────────────────────────────────────────────────────────┐
 │ REASON                                pure: given x, return y│
+│ ──────── what the foe COULD be — exactly one source ─────────│
 │ ┌───────────────────────────┐   ┌───────────────────────────┐│
-│ │ resolve.ts                │   │ damage.ts           (calc)││
-│ │ LiveFacts + a set         │   │ 2 ResolvedMon + move      ││
-│ │ → one ResolvedMon         │   │ → DamageReport            ││
+│ │ resolve.ts            feed│   │ assume.ts          no feed││
+│ │ every set the species     │   │ the two spreads that      ││
+│ │ can run, narrowed by      │   │ BRACKET it: uninvested /  ││
+│ │ public reveals            │   │ max HP+Def                ││
 │ └───────────────────────────┘   └───────────────────────────┘│
-│ ┌───────────────────────────┐   ┌───────────────────────────┐│
-│ │ assume.ts                 │   │ variants.ts               ││
-│ │ LiveFacts, no feed        │   │ scored variants           ││
-│ │ → 2 bracket sets          │   │ → distinct buckets        ││
-│ └───────────────────────────┘   └───────────────────────────┘│
-│ ┌───────────────────────────┐   ┌───────────────────────────┐│
-│ │ speed.ts            (calc)│   │ multihit.ts               ││
-│ │ a ResolvedMon             │   │ per-hit + hit-count       ││
-│ │ → effective Speed         │   │ PMF → total PMF           ││
-│ └───────────────────────────┘   └───────────────────────────┘│
-│ ┌───────────────────────────┐   ┌───────────────────────────┐│
-│ │ moves.ts                  │   │ types.ts                  ││
-│ │ data: multi-hit table     │   │ shared vocab              ││
-│ │ (from PS data)            │   │ used by every stage       ││
-│ └───────────────────────────┘   └───────────────────────────┘│
+│               └───────────────┬───────────────┘              │
+│                               │ what we ASSUME               │
+│                               ▼                              │
+│ ┌───────────────────────────────────────────────────────────┐│
+│ │ buildResolved                                  ResolvedMon││
+│ │ known facts win; the source fills the gaps                ││
+│ │ → the concrete set(s) we calculate with                   ││
+│ └───────────────────────────────────────────────────────────┘│
+│                               │                              │
+│                               ▼                              │
+│ ┌───────────────────────────────────────────────────────────┐│
+│ │ damage.ts (calc)                              DamageReport││
+│ │ wrap @smogon/calc; own the multi-hit law                  ││
+│ │ → one DamageReport per possible set                       ││
+│ └───────────────────────────────────────────────────────────┘│
+│                               │                              │
+│                               ▼                              │
+│ ┌───────────────────────────────────────────────────────────┐│
+│ │ variants.ts                                   DamageBucket││
+│ │ collapse identical numbers, name what differs             ││
+│ │ → one line per DISTINCT outcome                           ││
+│ └───────────────────────────────────────────────────────────┘│
 └──────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
 ┌──────────────────────────────────────────────────────────────┐
 │ RENDER                                pure: given x, return y│
 │ ┌───────────────────────────────────────────────────────────┐│
-│ │ render.ts                                                 ││
-│ │ given a render model                                      ││
-│ │ → tooltip HTML string                                     ││
+│ │ render.ts                                             HTML││
+│ │ model → tooltip HTML string                               ││
 │ └───────────────────────────────────────────────────────────┘│
 └──────────────────────────────────────────────────────────────┘
                                 │ tooltip HTML
@@ -98,54 +107,9 @@ network unless that IS its job. Dependencies only ever point downward:
 └──────────────────────────────────────────────────────────────┘
 ```
 
-At runtime those modules fold together top to bottom. The only thing the format changes
-is *where the foe's possibilities come from* — everything below that seam is shared:
-
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│ battle/readState.ts                                                      │
-│ client Pokemon objects → LiveFacts:                                      │
-│ only what the battle has made public                                     │
-└──────────────────────────────────────────────────────────────────────────┘
-                                      │ what we KNOW
-                                      ▼
-──────────────── what the foe COULD be — exactly one source ────────────────
-┌──────────────────────────────────┐    ┌──────────────────────────────────┐
-│ core/resolve.ts             feed │    │ core/assume.ts           no feed │
-│ every set the species can run,   │    │ the two spreads that BRACKET it: │
-│ narrowed by public reveals       │    │ uninvested / max HP+Def          │
-└──────────────────────────────────┘    └──────────────────────────────────┘
-                  └───────────────────┬───────────────────┘
-                                      │ what we ASSUME
-                                      ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│ buildResolved                                                ResolvedMon │
-│ known facts win; the source fills the gaps                               │
-│ → the concrete set(s) we calculate with                                  │
-└──────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│ core/damage.ts                                              DamageReport │
-│ wrap @smogon/calc; own the multi-hit law                                 │
-│ → one DamageReport per possible set                                      │
-└──────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│ core/variants.ts                                            DamageBucket │
-│ collapse identical numbers, name what differs                            │
-│ → one line per DISTINCT outcome                                          │
-└──────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│ core/render.ts                                                      HTML │
-│ model → tooltip HTML string                                              │
-└──────────────────────────────────────────────────────────────────────────┘
-                                      │ tooltip
-                                      ▼
-```
+The only thing a battle's format changes is *where the foe's possibilities come
+from* — a real set feed (`resolve.ts`) vs. two bracketing assumptions with none
+(`assume.ts`) — everything below that fork in REASON is shared.
 
 ### The pure core (`src/core`)
 

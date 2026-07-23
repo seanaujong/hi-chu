@@ -26,7 +26,7 @@ const data = fixture.randbats as unknown as RandbatsData;
  * The client's classes are untyped and cyclic, so the reconstruction casts through
  * `unknown` — the shapes match readState's structural interfaces.
  */
-function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; foeDitto?: 'transformed' | 'plain'} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
+function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; farStealthRock?: boolean; farSpikes?: number; tentacruelHpPercent?: number; foeDitto?: 'transformed' | 'plain'} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
   const sides: ClientSide[] = fixture.battle.sides.map((s, i) => {
     // Tailwind blows on OUR side (index 0) only — the asymmetry is the point: it must
     // double our speed and leave the foe's alone, whichever side a caller orients on.
@@ -35,6 +35,8 @@ function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: strin
       ...(i === 0 && over.nearTailwind ? {tailwind: ['tailwind', 1]} : {}),
       ...(i === 0 && over.nearStealthRock ? {stealthrock: ['Stealth Rock', 1]} : {}),
       ...(i === 0 && over.nearSpikes !== undefined ? {spikes: ['Spikes', over.nearSpikes]} : {}),
+      ...(i === 1 && over.farStealthRock ? {stealthrock: ['Stealth Rock', 1]} : {}),
+      ...(i === 1 && over.farSpikes !== undefined ? {spikes: ['Spikes', over.farSpikes]} : {}),
     };
     const side = {isFar: i === 1, sideConditions, active: [] as (ClientPokemon | null)[]};
     side.active = s.active.map((p) => {
@@ -61,6 +63,9 @@ function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: strin
         ...(over.fullHp ? {hp: p.maxhp} : {}),
         ...(p.speciesForme === 'Noivern' && over.myNoivernHpPercent !== undefined
           ? {hp: Math.round(p.maxhp * over.myNoivernHpPercent)}
+          : {}),
+        ...(p.speciesForme === 'Tentacruel' && over.tentacruelHpPercent !== undefined
+          ? {hp: Math.round(p.maxhp * over.tentacruelHpPercent)}
           : {}),
       } as unknown as ClientPokemon;
     });
@@ -552,6 +557,65 @@ describe('the matchup view’s defensive half — what the foe’s moves would d
     const withHtml = buildPokemonSection(withHazards.battle, withHazards.active('Noivern'), data);
     const withoutHtml = buildPokemonSection(without.battle, without.active('Noivern'), data);
     expect(withHtml).toEqual(withoutHtml);
+  });
+});
+
+describe('hovering a FOE’s roster icon: OUR damage into them if they switch in', () => {
+  const moves = ['dracometeor', 'flamethrower', 'hurricane', 'roost'];
+  const mine = {myNoivernItem: 'heavydutyboots', myNoivernMoves: moves};
+
+  it('omits the block for the foe actually ACTIVE on the field — the move tooltip already has this number', () => {
+    const {battle, active} = loadBattle(mine);
+    const html = buildPokemonSection(battle, active('Tentacruel'), data);
+    expect(html).not.toContain('<small>vs</small> <b>Tentacruel</b>');
+  });
+
+  it('adds our moves’ damage into a revealed-but-benched foe icon, before the sets view', () => {
+    const {battle, active} = loadBattle(mine);
+    const html = buildPokemonSection(battle, benched(active('Tentacruel')), data);
+    expect(html).toContain('<small>vs</small> <b>Tentacruel</b>');
+    expect(html).toMatch(/Draco Meteor: [\d.]+% - [\d.]+%/);
+    expect(html.indexOf('<small>vs</small> <b>Tentacruel</b>'))
+      .toBeLessThan(html.indexOf('<span style="text-decoration: underline;">Bulky Support</span>'));
+  });
+
+  it('gives status moves no line — damage is the question here', () => {
+    const {battle, active} = loadBattle(mine);
+    const html = buildPokemonSection(battle, benched(active('Tentacruel')), data);
+    const ourBlock = html.slice(0, html.indexOf('<span style="text-decoration: underline;">'));
+    expect(ourBlock).not.toContain('Roost:');
+  });
+
+  it('shows the same numbers the move tooltip would — one truth per move', () => {
+    const {battle, active} = loadBattle(mine);
+    const hover = buildPokemonSection(battle, benched(active('Tentacruel')), data);
+    const line = /Draco Meteor: ([\d.]+)% - ([\d.]+)%/.exec(hover)!;
+    const button = buildMoveSection(battle, active('Noivern'), 'Draco Meteor', data);
+    expect(button).toContain(`<small>Damage:</small> ${line[1]}% - ${line[2]}%`);
+  });
+
+  it('factors in switch-in hazard damage on THEIR side: at 45% HP neither move has a KO chance — Stealth Rock chips Tentacruel, tipping Draco Meteor into a guaranteed KO', () => {
+    const without = loadBattle({...mine, tentacruelHpPercent: 0.45});
+    const withHazard = loadBattle({...mine, tentacruelHpPercent: 0.45, farStealthRock: true});
+    const baseline = buildPokemonSection(without.battle, benched(without.active('Tentacruel')), data);
+    const html = buildPokemonSection(withHazard.battle, benched(withHazard.active('Tentacruel')), data);
+    expect(baseline).not.toContain('to KO');
+    expect(html).toContain('Draco Meteor: 34.2% - 40.8% · <span class="hichu-ko">guaranteed KO</span> at 32.4% HP');
+    expect(html).toContain('Hurricane: 29% - 34.6% · <span class="hichu-ko">44% to KO</span> at 32.4% HP');
+  });
+
+  it('is randbats-only — an open format has no move pool to enumerate, so it renders nothing', () => {
+    const {battle, active} = loadBattle(mine);
+    const openBattle = {...battle, tier: '[Gen 9] OU'} as ClientBattle;
+    const html = buildPokemonSection(openBattle, benched(active('Tentacruel')), null);
+    expect(html).toBe('');
+  });
+
+  it('omits the block for a fainted foe — it cannot switch in', () => {
+    const {battle, active} = loadBattle(mine);
+    const fainted = {...benched(active('Tentacruel')), hp: 0};
+    const html = buildPokemonSection(battle, fainted, data);
+    expect(html).not.toContain('<small>vs</small> <b>Tentacruel</b>');
   });
 });
 

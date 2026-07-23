@@ -18,7 +18,10 @@ the opponent's tooltip and the mirror ("their read on you") on our own; a **⚡ 
 verdict** (exact randbats speeds, a surviving Scarf set as an "if …" aside, Trick Room
 flipping the verdict) leads a foe hover and heads each "vs \<foe\>" block of the matchup
 view — including the **switch menu**, so a benched mon answers "do I outspeed if I send
-this in?" before you commit. In an **open format** (OU, VGC, Custom
+this in?" before you commit. Hovering one of the **foe's roster icons** answers the
+matchup view's mirror question for THEIR bench: our active's damage into that Pokémon as
+though it switched in (entry hazards on their side included), withheld once it's actually
+active, since the move tooltip already carries that number. In an **open format** (OU, VGC, Custom
 Game) there is no feed to enumerate, so the foe's spread is **bracketed, not guessed**
 (`core/assume.ts`): two labelled damage lines, `uninvested` and `max HP/Def` (mirrored to
 SpD for a special move), one ⚠ note naming the assumption — while OUR side stays exact,
@@ -323,6 +326,37 @@ machine checks at once with `npm run check` (typecheck + tests); CI runs it on p
   watched failing with the feature reverted) and `render.test.ts`
   (`renderOwnMovesSection`: the Incoming label, its own hp context, ✓, item split, and that a
   foe block with only incoming content still renders).
+- ✅ **Hovering a FOE's roster icon adds the direction the sets view doesn't cover: OUR
+  active's real moves' damage into THIS Pokémon, as though it were the one switched in —
+  the mirror image of the matchup view's outgoing half, but on the foe's side of the
+  field.** The sets view already answers the opposite question (their moves into us) for
+  every foe hover, active or benched alike; what was missing was "how hard do WE hit
+  them if they come in." `section.foeSwitchInDamage` resolves OUR active exactly like
+  `ownHoverMatchup` does (real item/ability, pending Mega), then runs its moves against
+  the hovered mon's full `randbatsFoeVariants` pool (illusion suspects included, the same
+  pool the ⚡ verdict and sets-view threat calc already read) — never the sets view's
+  narrowed candidates, since a hidden item still splits the outcome. **Withheld for the
+  mon actually ACTIVE on the field**: the move tooltip already carries this exact number,
+  so repeating it here would be the redundant twin of why `ownMovesSection`'s Incoming
+  group is withheld from an active mon. **Hazards on the FOE's OWN side chip it before our
+  hit lands**, applied via the same `applySwitchInHazards` our own switch candidates
+  already use — `readOwnHazards` just reads whichever side it's given, and hazard
+  `sideConditions` are public on both sides, so unlike our real item/ability this crosses
+  no privacy boundary. **Field orientation is the hovered foe's own side** (it's the
+  defender here), the opposite of the sets view's `field` a few lines up in the same
+  function — the same orientation trap the Incoming bullet above already has to get
+  right. **Randbats-only**, same reason as the ⚡ verdict and Incoming group: an open
+  format's bracketed spread has no per-mon pool to run our moves against. Confirmed live
+  against `github.com/smogon/pokemon-showdown-client`: the sidebar icon strip (both
+  sides) dispatches `showPokemonTooltip(side.pokemon[i])` — the SAME method
+  `content.ts` already patches for the active-mon and switch-menu hovers — with a real
+  `Pokemon` object even for a Pokémon team preview has revealed but that has never been
+  sent out (`side.pokemon` is populated from the `|poke|` lines before any `|switch|`);
+  no new patch point was needed. Checked by `section.test.ts` ("hovering a FOE's roster
+  icon…": withheld on the active mon, present on a benched one via the same `benched()`
+  double used for our own side, one truth vs the move tooltip, status moves get no line,
+  the hazard chip tipping a no-KO line into a guaranteed KO, randbats-only, withheld for
+  a fainted foe — guards watched failing with the feature reverted).
 - ✅ **A LANDED damaging hit with no item revealed rules Life Orb out.** Life Orb takes 1/10
   recoil when a damaging move connects and REVEALS itself doing so — so if a mon has landed a
   hit and no item has surfaced, it isn't holding one. It must be a *landed* hit, not merely a

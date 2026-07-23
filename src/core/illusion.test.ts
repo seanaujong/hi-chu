@@ -1,5 +1,5 @@
 import {describe, it, expect} from 'vitest';
-import {illusionSuspects, ILLUSION_SPECIES, type IllusionSuspect} from './illusion.js';
+import {illusionSuspects, type IllusionSuspect} from './illusion.js';
 import {liveFacts} from './sets.testfixtures.js';
 import type {RandbatsEntry} from './types.js';
 
@@ -40,9 +40,5 @@ describe('illusionSuspects', () => {
 
   it('is silent when the shown species is not in the feed (nothing to compare)', () => {
     expect(illusionSuspects(shownAs('Missingno', ['Bitter Malice']), undefined, impostors)).toEqual([]);
-  });
-
-  it('lists both Zoroark forms as possible Illusion holders', () => {
-    expect(ILLUSION_SPECIES).toEqual(['Zoroark', 'Zoroark-Hisui']);
   });
 });

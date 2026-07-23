@@ -17,7 +17,8 @@ import {assumeDefenderVariants, type MoveSlant} from './core/assume.js';
 import {inferSets} from './core/knowledge.js';
 import {bucketByDamage, type DamageBucket} from './core/variants.js';
 import {compareSpeed, finalSpeed, speedBuckets, type SpeedOrder} from './core/speed.js';
-import {illusionSuspects, ILLUSION_SPECIES, type IllusionSuspect} from './core/illusion.js';
+import {illusionSuspects, type IllusionSuspect} from './core/illusion.js';
+import {buildableAbilities} from './core/narrow.js';
 import {
   renderMoveSection,
   renderNotes,
@@ -470,15 +471,24 @@ function illusionVariants(defenderFacts: LiveFacts, defenderEntry: RandbatsEntry
   }));
 }
 
-/** The Zoroark species the hovered mon might secretly be, given the feed's entries. */
-function suspectsFor(facts: LiveFacts, entry: RandbatsEntry | undefined, data: RandbatsData): IllusionSuspect[] {
-  const impostors = ILLUSION_SPECIES
+/**
+ * Every species THIS format's feed could build with Illusion — the only ones able to wear
+ * a disguise. Derived from the feed itself (`buildableAbilities`, the same pool law role
+ * narrowing already uses) rather than a hardcoded species list, so a mod with a different —
+ * or no — Illusion holder needs no code change here.
+ */
+function illusionHolders(data: RandbatsData): IllusionSuspect[] {
+  return Object.keys(data)
     .map((species): IllusionSuspect | null => {
-      const e = pickEntry(data, species);
-      return e ? {species, entry: e} : null;
+      const entry = pickEntry(data, species);
+      return entry && buildableAbilities(entry).has('illusion') ? {species, entry} : null;
     })
     .filter((x): x is IllusionSuspect => x !== null);
-  return illusionSuspects(facts, entry, impostors);
+}
+
+/** The species the hovered mon might secretly be, given the feed's Illusion holders. */
+function suspectsFor(facts: LiveFacts, entry: RandbatsEntry | undefined, data: RandbatsData): IllusionSuspect[] {
+  return illusionSuspects(facts, entry, illusionHolders(data));
 }
 
 /**

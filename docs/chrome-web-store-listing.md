@@ -14,7 +14,7 @@ hi-chu — Showdown Randbats helper
 **Summary** (≤ 132 chars)
 
 ```
-Random Battle helpers on hover for Pokémon Showdown: possible sets, live-aware damage, and true multi-hit KO%.
+Battle helpers on hover for Pokémon Showdown: move damage, opponent's possible sets, and who's faster.
 ```
 
 **Category:** `Tools`
@@ -23,28 +23,18 @@ Random Battle helpers on hover for Pokémon Showdown: possible sets, live-aware 
 **Description**
 
 ```
-hi-chu adds Random Battle helpers to Pokémon Showdown, one hover away. Hover a
-Pokémon or one of your move buttons and it fills in what you'd otherwise tab out
-to a calculator or a set dump for:
+hi-chu adds battle helpers to Pokémon Showdown's tooltips, one hover away:
 
-• Which sets are still possible. Hovering a Pokémon narrows the Random Battle
-  sets it could still be running, using only what the battle has made public —
-  moves used, revealed item (held, consumed, or knocked off), ability, and any
-  active Terastallization. On the opponent it answers "what could they still
-  have?"; on your own it mirrors "what have they figured out about me?".
+• How much damage will each move do?
+• What Random Battle set is the opponent Pokémon running?
+• Who's faster?
 
-• Live-aware damage. It reads the live battle, so active Terastallization, status,
-  stat boosts, revealed ability/item, current HP, weather, terrain, and the
-  defender's screens all feed the calc. The math is delegated to @smogon/calc, so
-  interactions resolve correctly (for example, Guts ignoring a burn's damage cut).
+Hover a Pokémon or one of your move buttons and it fills in the answer, reading
+the live battle — active Terastallization, status, boosts, weather, and more —
+so the math, delegated to @smogon/calc, resolves correctly. Set inference uses
+only what's public: moves used, revealed item, ability, and Tera.
 
-• True multi-hit KO%. For moves that hit a random 2–5 times, each rolling its own
-  damage, it shows the per-hit range, the expected hit count, and a real KO chance
-  that integrates over both the rolls and the random hit count — not "k × one roll".
-
-It works across most Random Battle formats — standard Gen 9, older gens, and
-variants like [Gen 9] Champions (with Mega / Z-Move sets surfaced where a format
-has them) — and it's built to keep growing to cover more.
+Damage works in every format; set inference is Random Battle only.
 
 hi-chu is free and open source (MIT). It collects no data. It was inspired by the
 closed-source "Randbats Tooltip" — a fresh, open, maintained take on the same

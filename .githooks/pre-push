@@ -1,0 +1,11 @@
+#!/bin/sh
+# Refuse a direct push to main on any remote — mirrors main's GitHub branch protection
+# (PR required to merge) but fails locally, before the network round-trip. Wired in via
+# core.hooksPath (see package.json's "prepare" script).
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    echo "✗ refusing to push directly to main — open a PR instead." >&2
+    echo "  Genuine exception: git push --no-verify" >&2
+    exit 1
+  fi
+done

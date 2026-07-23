@@ -264,6 +264,10 @@ npm run build     # bundles to dist/ (content.js + manifest.json)
 npm run watch     # rebuild on save
 ```
 
+`npm install` also points git at `.githooks/` (the `prepare` script), which refuses a commit
+or push made directly against `main` — every change goes through a branch + PR instead,
+matching `main`'s GitHub branch protection.
+
 ## Install
 
 **From a release (no build needed):**

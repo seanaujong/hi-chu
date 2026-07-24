@@ -8,13 +8,13 @@ Everything the CWS Developer Dashboard asks for, ready to paste. Upload
 **Product name**
 
 ```
-hi-chu — Showdown Randbats helper
+hi-chu — Showdown Randbats hints
 ```
 
 **Summary** (≤ 132 chars)
 
 ```
-Battle helpers on hover for Pokémon Showdown: move damage, opponent's possible sets, and who's faster.
+Battle hints on hover for Pokémon Showdown: move damage, opponent's possible sets, and who's faster.
 ```
 
 **Category:** `Tools`
@@ -23,7 +23,7 @@ Battle helpers on hover for Pokémon Showdown: move damage, opponent's possible 
 **Description**
 
 ```
-hi-chu adds battle helpers to Pokémon Showdown's tooltips, one hover away:
+hi-chu adds battle hints to Pokémon Showdown's tooltips, one hover away:
 
 • How much damage will each move do?
 • What Random Battle set is the opponent Pokémon running?

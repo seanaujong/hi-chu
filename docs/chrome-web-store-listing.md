@@ -116,6 +116,16 @@ JSON, which is not user data. Then check all three certifications:
 https://github.com/seanaujong/hi-chu/blob/main/PRIVACY.md
 ```
 
+## Support contact
+
+Set at the account level in the Developer Dashboard (**Account**, not the per-item
+listing editor) — Google surfaces it publicly on the item's own store page as the
+support contact. Currently `hi.chu.extension@gmail.com`, a dedicated address kept
+separate from the maintainer's personal email for the same reason CLAUDE.md's
+"Agentic access to the `hi-chu` GCP project" section gives for the service account: a
+scoped identity that's easy to reason about and revoke, rather than exposing a personal
+account on the public listing.
+
 ## Instructions for reviewers (test instructions)
 
 hi-chu only shows anything once you are **inside a Random Battle and hovering** —

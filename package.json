@@ -8,6 +8,7 @@
     "prepare": "git config core.hooksPath .githooks",
     "build": "node build.mjs",
     "watch": "node build.mjs --watch",
+    "build:safari": "node scripts/build-safari.mjs",
     "package": "node scripts/package.mjs",
     "icons": "node scripts/make-icons.mjs",
     "test": "vitest run",

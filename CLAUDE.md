@@ -236,6 +236,33 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
   for a randbats format — an open one never fetches), hands off to `section.ts`, and
   monkey-patches BOTH tooltip renderers, `showPokemonTooltip` and `showMoveTooltip` (runs
   in MAIN world).
+- **Safari port** — a second, separate delivery mechanism for the SAME `content.ts`, not a
+  fork of it (zero Chrome-specific API calls anywhere in `src/`, which is what makes this
+  tractable). Safari doesn't support `"world": "MAIN"` declared statically in
+  `manifest.json`'s `content_scripts` (confirmed directly from `xcrun
+  safari-web-extension-converter`'s own build warning), so `content.ts` needs a different
+  way to reach the page's own JS realm and patch its real `window.BattleTooltips`.
+  - `src/background.ts` — a background service worker that dynamically registers
+    `content.js` for the MAIN world via `scripting.registerContentScripts` (Safari 16.4+
+    supports this API even though it doesn't support the static declaration), guarded
+    against re-registering across MV3 service-worker restarts. Chrome doesn't need this —
+    its static declarative entry already works — so this file is Safari-only.
+  - `scripts/build-safari.mjs` (`npm run build:safari`) — builds `dist-safari/`, fully
+    separate from `npm run build`'s `dist/` so nothing here can regress the shipped Chrome
+    extension. Derives the Safari manifest from `public/manifest.json` (drops
+    `content_scripts`, adds the `scripting` permission and the `background` key) rather
+    than hand-duplicating it, so name/version/description/icons can never drift from the
+    Chrome one.
+  - `safari/hi-chu/` — the Xcode project: a thin native shell (`Shared (App)/
+    ViewController.swift`) with no real logic, `Shared (Extension)/
+    SafariWebExtensionHandler.swift` for native-message plumbing, and `dist-safari/`'s
+    bundled output wired in as the extension's background service worker + content script.
+    `DEVELOPMENT_TEAM` in `project.pbxproj` is deliberately left uncommitted — every
+    contributor sets their own free Personal Team via Xcode's Signing & Capabilities tab.
+  - Verification is manual only, on principle: Safari only registers a signed, launched
+    extension, and WebDriver-based automation (`safaridriver`, and Apple's own Safari MCP
+    server) is structurally blind to Safari extensions by design — confirmed directly, not
+    assumed. See `README.md`'s Install section for the hover-and-look steps.
 
 Tests come in two flavours: colocated `*.test.ts` with hand-built stubs, plus two driven by **real
 captured data** — `integration.test.ts` (real feed, synthetic mons) and `section.test.ts` (a real

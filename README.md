@@ -121,10 +121,11 @@ numbers.
 
 ```sh
 npm install
-npm test          # the math, the merge, the render, field effects, the dependency boundary, and an end-to-end run on real data
+npm test              # the math, the merge, the render, field effects, the dependency boundary, and an end-to-end run on real data
 npm run typecheck
-npm run build     # bundles to dist/ (content.js + manifest.json)
-npm run watch     # rebuild on save
+npm run build         # bundles to dist/ (content.js + manifest.json) — Chrome
+npm run build:safari  # bundles to dist-safari/ — Safari (see Install below)
+npm run watch         # rebuild on save
 ```
 
 `npm install` also points git at `.githooks/` (the `prepare` script), which refuses a commit
@@ -147,6 +148,21 @@ matching `main`'s GitHub branch protection.
 
 **From source:** `npm install && npm run build`, then Load unpacked → `dist/`. Run
 `npm run package` to produce the release zip yourself.
+
+**Safari (macOS):** no packaged release yet — build from source. `npm install && npm run
+build:safari`, then open `safari/hi-chu/hi-chu.xcodeproj` in Xcode:
+
+1. Signing & Capabilities tab (both the App and Extension targets): enable automatic
+   signing and pick a team — any free Apple ID **Personal Team** works, added via Xcode
+   → Settings → Accounts.
+2. Scheme selector: **hi-chu (macOS)** + **My Mac**, then press Run (▶) — the app must
+   actually launch at least once; Safari won't list an extension that's only been built.
+3. Safari → Settings → Extensions: enable **hi-chu**.
+4. Open a battle on `play.pokemonshowdown.com` and hover a Pokémon.
+
+Safari can't run the same static `content_scripts` declaration Chrome does (see
+`CLAUDE.md`'s Architecture section for why), so `dist-safari/` is its own build with a
+background service worker filling the gap — `content.ts` itself is unchanged.
 
 ## Verifying a release
 

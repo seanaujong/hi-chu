@@ -8,6 +8,7 @@
 
 import type {FieldFacts, FullStats, LiveFacts, SpeciesData, StatID, StatusName, TerrainName, WeatherName} from '../core/types.js';
 import {isMegaForme} from '../core/facts.js';
+import {multiHitProfile} from '../core/moves.js';
 import type {OwnSideHazards} from '../core/hazards.js';
 
 export interface ClientPokemon {
@@ -442,6 +443,104 @@ export function switchedIntoStealthRockUnharmed(battle: ClientBattle, mon: Clien
     }
   }
   return false;
+}
+
+// Anything in this set, seen AFTER an otherwise-clean hit, means CURRENT field/boost/
+// status/item/ability/forme facts no longer describe the state that hit happened under —
+// comparing against them would be guessing, not reading, so `mostRecentCleanHit` treats
+// the hit as stale rather than risk a false rule-out downstream (core/itemreveal.ts).
+const STATE_CHANGING_TAGS = new Set([
+  '-weather', '-fieldstart', '-fieldend',
+  '-boost', '-unboost', '-setboost', '-swapboost',
+  '-clearboost', '-clearallboost', '-clearpositiveboost', '-clearnegativeboost', '-invertboost',
+  '-sidestart', '-sideend',
+  '-status', '-curestatus', '-cureteam',
+  '-ability', '-endability',
+  '-terastallize', '-formechange', 'detailschange',
+  '-item', '-enditem',
+]);
+
+/** "245/312 par" / "48/100" / "0 fnt" → the HP fraction, or undefined if unparseable. */
+function hpToken(token: string | undefined): number | undefined {
+  const [hpPart] = (token ?? '').split(' ');
+  if (hpPart === '0') return 0;
+  const m = /^(\d+)\/(\d+)$/.exec(hpPart ?? '');
+  return m && Number(m[2]) > 0 ? Number(m[1]) / Number(m[2]) : undefined;
+}
+
+/**
+ * The most recent CLEAN single hit `attacker` has landed on `defender` — "clean" meaning
+ * its observed magnitude is safe to compare against a calculated damage range, the way
+ * `core/itemreveal.ts` (the only consumer) reveals an item from the NUMBER a hit dealt
+ * rather than from a side effect firing (compare `hasLandedDamagingHit`'s recoil check).
+ * Four things make a hit unsafe to read, so each disqualifies it outright rather than let
+ * a caller guess around it:
+ *   - a MULTI-HIT move (`multiHitProfile`) — the shown number is a SUM of several rolls,
+ *     not the one roll a range comparison needs;
+ *   - a CRITICAL hit — a flat ×1.5 that has nothing to do with a held item;
+ *   - a hit that KOed the target — the display clips at 0, so the true damage is only a
+ *     LOWER bound, not the exact figure a range check needs;
+ *   - anything in `STATE_CHANGING_TAGS` occurring AFTER the hit, on EITHER side — past
+ *     that point, current field/boost/status/item/ability/forme facts no longer describe
+ *     the state the hit happened under.
+ * Returns undefined rather than a guess whenever nothing qualifies — we would rather miss
+ * a rule-out than manufacture a false one.
+ */
+export function mostRecentCleanHit(
+  battle: ClientBattle,
+  attacker: {readonly ident?: string},
+  defender: {readonly ident?: string},
+): {readonly move: string; readonly damageFraction: number} | undefined {
+  const atk = identKey(attacker.ident);
+  const def = identKey(defender.ident);
+  if (!atk || !def) return undefined;
+
+  const hp: Record<string, number> = {};
+  let mover: string | null = null;
+  let moveName: string | null = null;
+  let critTarget: string | null = null;
+  let found: {move: string; damageFraction: number} | undefined;
+  let stale = false;
+
+  for (const line of battle.stepQueue ?? []) {
+    const parts = line.split('|');
+    const tag = parts[1] ?? '';
+
+    if (tag === 'move') {
+      mover = identKey(parts[2]) ?? null;
+      moveName = parts[3] ?? null;
+    } else if (tag === 'switch' || tag === 'drag') {
+      mover = null;
+      moveName = null;
+      const who = identKey(parts[2]);
+      const frac = hpToken(parts[4]);
+      if (who && frac !== undefined) hp[who] = frac;
+    } else if (tag === 'turn') {
+      mover = null;
+      moveName = null;
+    } else if (tag === '-crit') {
+      critTarget = identKey(parts[2]) ?? null;
+    } else if (tag === '-damage' || tag === '-heal' || tag === '-sethp') {
+      const who = identKey(parts[2]);
+      const frac = hpToken(parts[3]);
+      const wasCrit = who !== null && who === critTarget;
+      if (wasCrit) critTarget = null;
+      if (tag === '-damage' && who === def && mover === atk && moveName && frac !== undefined) {
+        const indirect = parts.slice(4).some((p) => p.startsWith('[from]'));
+        const fainted = frac === 0;
+        const multiHit = multiHitProfile(moveName) !== undefined;
+        if (!indirect && !wasCrit && !fainted && !multiHit) {
+          const before = hp[who] ?? 1;
+          found = {move: moveName, damageFraction: Math.max(0, before - frac)};
+          stale = false;
+        }
+      }
+      if (who && frac !== undefined) hp[who] = frac;
+    } else if (STATE_CHANGING_TAGS.has(tag)) {
+      if (found) stale = true;
+    }
+  }
+  return stale ? undefined : found;
 }
 
 /** Bundle the log-derived behaviours for one Pokémon, ready to hand to `toLiveFacts`. */

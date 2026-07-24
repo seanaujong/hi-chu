@@ -121,6 +121,32 @@ Afterward, `gh release edit vX.Y.Z --notes '...'` to prepend a human-readable su
 what's new before the provenance-verification boilerplate `release.yml` already writes —
 see any past release for the shape.
 
+## Agentic access to the `hi-chu` GCP project
+The same `hi-chu` GCP project that holds the Chrome Web Store OAuth client above also
+has a scoped identity for an agent (e.g. a Claude Code session) to run `gcloud` through,
+instead of running as Sean's own Google account: the service account
+`hichu-agent@hi-chu.iam.gserviceaccount.com`, holding `roles/viewer` (read-only) at the
+project level. Widen its roles only when a concrete task needs more — start minimal, add
+narrowly, the same default-first instinct as everywhere else in this repo.
+
+Access is **impersonation, not a downloaded key**: `seanaujong@gmail.com` holds
+`roles/iam.serviceAccountTokenCreator` on the service account, and a dev shell's
+`gcloud config` sets `auth/impersonate_service_account` to `hichu-agent@...` as the
+default, so every `gcloud` call runs as the service account using the existing personal
+login session — no standing secret on disk to leak or rotate, and revoking access is
+just removing that one IAM binding. This only works interactively, since impersonation
+needs the underlying personal login already active — an unattended/CI use of this
+identity would need a different approach (e.g. workload identity federation), not
+covered here since nothing yet needs it. Every call the service account makes is
+attributed to it, not to Sean's personal account, in GCP's own Cloud Audit Logs — the
+audit trail is a built-in GCP feature, not anything hand-maintained in this repo.
+
+One-time project prerequisite a fresh GCP project doesn't have by default: the Cloud
+Resource Manager API. Even a read-only `gcloud projects describe` fails without it, and
+enabling it needs project-owner privileges the service account doesn't have — so that
+one step runs with `auth/impersonate_service_account` unset (as Sean's own account),
+then the impersonation default is restored.
+
 ## Contributing — every change goes through a branch + PR
 `main` is protected, locally and on GitHub. `npm install`'s `prepare` script points git at
 `.githooks/` (`pre-commit` refuses a commit while on `main`; `pre-push` refuses a push to

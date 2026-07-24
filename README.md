@@ -9,7 +9,7 @@
        alt="Hovering a move button shows its damage and KO turns into the current target, right beside the native tooltip">
 </p>
 
-Battle helpers, one hover away. hi-chu is a small browser extension that enriches
+Battle hints, one hover away. hi-chu is a small browser extension that enriches
 [Pokémon Showdown][showdown]'s in-battle tooltips:
 
 - How much damage will each move do?

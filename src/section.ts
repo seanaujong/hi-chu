@@ -43,6 +43,7 @@ import type {
 } from './core/types.js';
 import {transformCopy} from './core/transform.js';
 import {applySwitchInHazards} from './core/hazards.js';
+import {variantsConsistentWithDamage} from './core/itemreveal.js';
 import {pickEntry, megaEntryForItem, megaEntriesFor} from './data/lookup.js';
 import {
   toLiveFacts,
@@ -62,6 +63,7 @@ import {
   activesOpposing,
   findOpposingActive,
   findOpposingActives,
+  mostRecentCleanHit,
   nearSide,
   detectFormat,
   readFieldFacts,
@@ -1277,10 +1279,20 @@ function randbatsPokemonSection(
   const ourFacts = ourMon ? ownTruth(battle, ourMon, readFacts(ourMon)) : null;
   const defender = ourFacts ? resolveMon(ourFacts, entryOrMinimal(entryFor(data, ourFacts), ourFacts)) : null;
   const field = ourMon ? readFieldFacts(battle, ourMon.side) : undefined;
+  // Damage MAGNITUDE reveals an item too (core/itemreveal.ts) — the direction the reveal
+  // marks above don't cover: not a side effect firing, but the NUMBER a past hit dealt.
+  // `mostRecentCleanHit` hands back nothing unless it found one safe to compare (a single
+  // hit, no crit, no KO, nothing that would change the calc since), so this is a no-op on
+  // the common hover where no such hit exists.
+  const observedHit = ourMon ? mostRecentCleanHit(battle, pokemon, ourMon) : undefined;
 
   const blocks: CandidateBlock[] = [];
   for (const s of sources) {
-    const variantsByRole = defender ? groupByRole(resolveVariants(s.facts, s.entry)) : new Map<string, SetVariant[]>();
+    const variants = resolveVariants(s.facts, s.entry);
+    const narrowed = observedHit && defender && field
+      ? variantsConsistentWithDamage(variants, defender, {gen: format.gen, field, doubles: format.doubles}, observedHit)
+      : variants;
+    const variantsByRole = defender ? groupByRole(narrowed) : new Map<string, SetVariant[]>();
     s.knowledge.candidates.forEach((c) => {
       const shown = withCopiedMoves(c, s.facts);
       const roleVariants = variantsByRole.get(c.name) ?? [];

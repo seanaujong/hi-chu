@@ -219,6 +219,19 @@ switching branches in place — the main checkout's `dist/` build (loaded unpack
 for manual verification) and any other in-progress branch stay undisturbed while the change
 is in flight.
 
+**PRs are SQUASH-merged, so merged work is not an ancestor of `main`.** The squash creates a
+new commit with a new SHA, and the branch's original commits are never reachable from `main`
+— which means every ancestry-based read of "is this already in?" answers NO for work that is
+demonstrably in. `git log main..<branch>` still lists the whole branch, `git branch --merged`
+never names it, and a local `main` that simply hasn't been pulled looks identical to a branch
+with genuinely unmerged work. **Judge by CONTENT — are these added lines present in `main`? —
+or by the PR's own state (`gh pr view --json state`), never by ancestry.** Two real incidents
+came from trusting the ancestry read: a PR that had to be *closed* rather than merged, because
+merging it would have reverted newer work that a stale branch appeared to be missing; and a
+rebase that silently dropped two `package.json` script entries while CI stayed green, because
+the workflows invoked those script files by path rather than through `npm run`, so nothing
+exercised the entries that had gone.
+
 ## Surfaces — what appears where
 The product is six hover targets crossed with a handful of sections, and most "should X
 show Y?" questions — including most bug reports — are really about one cell of that grid.

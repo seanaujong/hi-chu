@@ -25,21 +25,55 @@ export const PALETTE = {
 
 const P = PALETTE;
 
-// Everything below is drawn in a 128x128 box.
+// Everything below is drawn in a 128x128 box, centred on (64, 64).
 const BOLT = 'M74 18 L38 70 H58 L52 110 L92 56 H70 Z';
 const boltAt = (cx, cy, scale) => `translate(${cx} ${cy}) scale(${scale}) translate(-65 -64)`;
 
+const BODY_W = 88;
+const BODY_H = 68;
+const ROT = -16; // enough tilt to read as an object, not so much that the readout slides off
+const END_INSET = 4; // the twist ends start just inside the body so they never show a seam
+const FAN = 1.18; // how far an end fans open, relative to how far it reaches out
+
 /** One pinched, fanned wrapper end, opening away from the body. */
-const twistEnd = (x, y, reach, fill) =>
-  `<path d="M${x} ${y} L${x + reach} ${y - 26} L${x + reach * 0.65} ${y} L${x + reach} ${y + 26} Z" fill="${fill}"/>`;
+const twistEnd = (x, y, reach, fill) => {
+  const s = Math.abs(reach) * FAN;
+  return `<path d="M${x} ${y} L${x + reach} ${y - s} L${x + reach * 0.65} ${y} L${x + reach} ${y + s} Z"
+                fill="${fill}"/>`;
+};
 
 /** The sweet, tilted off-axis so it reads as an object rather than a button. */
-const sweet = (contents) => `<g transform="rotate(-16 64 64)">
-    ${twistEnd(24, 64, -22, P.deepCheek)}
-    ${twistEnd(104, 64, 22, P.deepCheek)}
-    <rect x="20" y="30" width="88" height="68" rx="22" fill="${P.cheek}"/>
+const sweet = (contents, reach) => {
+  const x0 = 64 - BODY_W / 2;
+  return `<g transform="rotate(${ROT} 64 64)">
+    ${twistEnd(x0 + END_INSET, 64, -reach, P.deepCheek)}
+    ${twistEnd(x0 + BODY_W - END_INSET, 64, reach, P.deepCheek)}
+    <rect x="${x0}" y="${64 - BODY_H / 2}" width="${BODY_W}" height="${BODY_H}" rx="22" fill="${P.cheek}"/>
     ${contents}
   </g>`;
+};
+
+/**
+ * How far the drawing reaches from centre once tilted, measured from its own corner points
+ * rather than stored as a constant — so changing the geometry above cannot leave a stale
+ * scale behind, which is exactly how the ends came to overhang in the first place.
+ */
+const halfExtent = (reach) => {
+  const r = (ROT * Math.PI) / 180;
+  const [cos, sin] = [Math.cos(r), Math.sin(r)];
+  const corners = [
+    [BODY_W / 2, BODY_H / 2], // the body (its rounded corners sit inside this, so this is safe)
+    [BODY_W / 2 - END_INSET + reach, reach * FAN], // a twist tip
+  ];
+  return Math.max(
+    ...corners.flatMap(([x, y]) =>
+      [[x, y], [x, -y], [-x, y], [-x, -y]].flatMap(([dx, dy]) => [
+        Math.abs(dx * cos - dy * sin),
+        Math.abs(dx * sin + dy * cos),
+      ]),
+    ),
+  );
+};
 
 const window_ = (glyphs) => `<rect x="28" y="40" width="72" height="48" rx="14" fill="${P.ink}"/>${glyphs}`;
 
@@ -73,26 +107,50 @@ const question = (cx, cy, h, fill) => {
     <circle cx="${cx.toFixed(2)}" cy="${(cy + 0.42 * h).toFixed(2)}" r="${(0.085 * h).toFixed(2)}" fill="${fill}"/>`;
 };
 
-const tile = (bleed) =>
-  bleed
-    ? `<rect x="0" y="0" width="128" height="128" fill="${P.paper}"/>`
-    : `<rect x="2" y="2" width="124" height="124" rx="27" fill="${P.paper}"/>`;
+// The sweet is the whole icon — there is no rounded-square tile behind it. A frame would
+// have to be bigger than the widest thing in the drawing, and the twist ends are wider than
+// a 128 box once the sweet is tilted, so a tile could only ever crop them or shrink them.
+// Without one the silhouette itself is the mark, which is also the more distinctive answer:
+// every other extension icon is a rounded square with something inside it.
+//
+// How far from centre the mark is allowed to reach. A bare toolbar slot can take the full
+// box; a platform that applies its own mask needs room inside it.
+const REACH_FREE = 63;
+const REACH_MASKED = 52;
+
+const placed = (drawing, room) => {
+  const scale = (room / halfExtent(drawing.reach)).toFixed(3);
+  return `<g transform="translate(64 64) scale(${scale}) translate(-64 -64)">${drawing.svg}</g>`;
+};
 
 // Both glyphs share one cap height so they sit on a common baseline, sized so the pair
 // clears the window's 72x48 opening with a little air: at h=35 the "?" is ~20 wide and the
 // "%" ~35, which is 58 of the 62 usable width.
 const GLYPH_H = 35;
 
+// How far the twist ends reach. The small drawing pulls them in: with no tile behind it, a
+// stubbier sweet scales up bigger in the same slot, and at 16px a long thin end is a sliver
+// nobody can see anyway. The readout sizes keep the full, generous ends.
+const REACH_SMALL = 14;
+const REACH_FULL = 22;
+
 /** The three drawings, least to most detailed. */
 const DRAWINGS = {
   // Toolbar sizes: the silhouette and the bolt, nothing else. A window here is a smudge.
-  bolt: sweet(`<path d="${BOLT}" fill="${P.pika}" transform="${boltAt(66, 64, 0.62)}"/>`),
+  bolt: {
+    reach: REACH_SMALL,
+    svg: sweet(`<path d="${BOLT}" fill="${P.pika}" transform="${boltAt(64, 64, 0.62)}"/>`, REACH_SMALL),
+  },
   // Mid sizes: the readout appears, but one glyph only — two would not survive the shrink.
-  percent: sweet(window_(percent(64, 64, 42, P.pika))),
+  percent: {reach: REACH_FULL, svg: sweet(window_(percent(64, 64, 42, P.pika)), REACH_FULL)},
   // Large: the full readout — a damage percent that is not known yet.
-  unknown: sweet(
-    window_(`${question(43.5, 65, GLYPH_H, P.pika)}${percent(74.5, 64, GLYPH_H, P.pika)}`),
-  ),
+  unknown: {
+    reach: REACH_FULL,
+    svg: sweet(
+      window_(`${question(43.5, 65, GLYPH_H, P.pika)}${percent(74.5, 64, GLYPH_H, P.pika)}`),
+      REACH_FULL,
+    ),
+  },
 };
 
 /**
@@ -109,10 +167,15 @@ export const OPTICAL = (pt) => (pt < 40 ? 'bolt' : pt < 96 ? 'percent' : 'unknow
 /**
  * The mark as a standalone SVG document: `px` pixels across, carrying the detail that `pt`
  * points can actually deliver. They differ only for retina assets, so `pt` defaults to `px`.
+ *
+ * `opaque` lays the wrapper paper down as a full-bleed ground and insets the sweet. It is
+ * for iOS alone, which forbids an alpha channel in an app icon (transparency is composited
+ * onto black) and applies its own corner mask. Everywhere else the icon is transparent.
  */
-export const markSvg = (px, {pt = px, bleed = false} = {}) =>
+export const markSvg = (px, {pt = px, opaque = false} = {}) =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="${px}" height="${px}">` +
-  `${tile(bleed)}${DRAWINGS[OPTICAL(pt)]}</svg>`;
+  (opaque ? `<rect x="0" y="0" width="128" height="128" fill="${P.paper}"/>` : '') +
+  `${placed(DRAWINGS[OPTICAL(pt)], opaque ? REACH_MASKED : REACH_FREE)}</svg>`;
 
 /** Every drawing, for the proof sheet. */
 export const ALL_DRAWINGS = DRAWINGS;
@@ -127,7 +190,7 @@ export const LOCKUP_FONT = 'Avenir Next, Helvetica Neue, sans-serif';
 
 export const wordmarkSvg = ({color = P.ink} = {}) =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 128" width="420" height="128">
-    <g transform="translate(4 12) scale(0.8)">${tile(false)}${DRAWINGS.unknown}</g>
-    <text x="130" y="88" font-family="${LOCKUP_FONT}" font-weight="800" font-size="76"
+    <g transform="translate(2 14) scale(0.78)">${placed(DRAWINGS.unknown, REACH_FREE)}</g>
+    <text x="118" y="88" font-family="${LOCKUP_FONT}" font-weight="800" font-size="76"
           letter-spacing="-2" fill="${color}">hi-chu</text>
   </svg>`;

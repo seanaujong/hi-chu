@@ -38,9 +38,9 @@ const ICONS = [
   mac(256, 2),
   mac(512, 1),
   mac(512, 2),
-  // iOS masks the icon to its own shape, so this one alone is drawn full-bleed — letting our
-  // own rounded tile through as well would round the corners twice.
-  [`${APPICON}/universal-icon-1024@1x.png`, 1024, 1024, {bleed: true}],
+  // iOS forbids an alpha channel in an app icon and masks the result to its own shape, so
+  // this one alone gets an opaque ground and sits inset. Every other icon is transparent.
+  [`${APPICON}/universal-icon-1024@1x.png`, 1024, 1024, {opaque: true}],
   [`${SAFARI_APP}/Resources/Icon.png`, 128, 128],
   [`${SAFARI_APP}/Assets.xcassets/LargeIcon.imageset/icon-128.png`, 128, 128],
 ];
@@ -105,18 +105,23 @@ async function proof() {
   const body = `<div style="font:13px/1.4 system-ui;background:#f0f0f2;padding:24px;
       display:flex;flex-direction:column;gap:20px;width:1000px">
     <b>Three drawings — bolt / percent / unknown</b>
-    ${swatch(
-      Object.values(ALL_DRAWINGS)
-        .map((d) => `<svg viewBox="0 0 128 128" width="110" height="110">
-            <rect x="2" y="2" width="124" height="124" rx="27" fill="${PALETTE.paper}"/>${d}</svg>`)
-        .join(''),
-      '#e8e8ec',
-    )}
+    ${['#e8e8ec', '#20232b']
+      .map((bg) =>
+        swatch(
+          Object.values(ALL_DRAWINGS)
+            .map((d) => `<svg viewBox="0 0 128 128" width="110" height="110">${d.svg}</svg>`)
+            .join(''),
+          bg,
+        ),
+      )
+      .join('')}
+    <b>The one opaque case — iOS, which forbids alpha and masks the corners itself</b>
+    ${swatch(markSvg(128, {opaque: true}), '#e8e8ec')}
     <b>Glyphs up close — drawn as geometry, against the same thing set as text</b>
     <div style="display:flex;gap:14px">
-      ${box('drawn ?%', ALL_DRAWINGS.unknown)}
+      ${box('drawn ?%', ALL_DRAWINGS.unknown.svg)}
       ${box('text ?%', textGlyph('?%', 36, 77))}
-      ${box('drawn %', ALL_DRAWINGS.percent)}
+      ${box('drawn %', ALL_DRAWINGS.percent.svg)}
       ${box('text %', textGlyph('%', 46, 81))}
     </div>
     <b>Every shipped size, actual pixels</b>

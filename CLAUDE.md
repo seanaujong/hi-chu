@@ -146,6 +146,16 @@ patch/minor. `.github/workflows/release-drift.yml` runs it on every push to `mai
 summary and weekly with `--fail-after=14`, so ordinary between-release drift stays quiet and
 a genuinely forgotten release goes red. It creates no tags and publishes nothing.
 
+**A TAG IS NOT A SHIPMENT**, and that gap has bitten once: v0.20.1 tagged, published its
+GitHub Release, then failed the Chrome Web Store upload — Google refuses to publish while the
+previous version is still in review, and v0.20.0 had gone out 26 minutes earlier. Tags were
+all `release-status` read, so it reported `in-sync` while the store sat a version behind.
+**`--check-publish`** closes that: it matches the newest tag's commit to its `auto-tag.yml`
+run by SHA and fails if that run did not succeed. `release-drift.yml` passes it on every run.
+Note the recovery is NOT a re-run of `auto-tag.yml` — the tag exists by then, so `detect`
+no-ops and the whole thing goes green having published nothing. Re-run the failed `release`
+job, or upload the release's zip by hand once review clears.
+
 A manual escape hatch still works if the automation is ever down: `git tag vX.Y.Z
 <merged-sha> && git push origin vX.Y.Z` triggers `release.yml` the same way, standalone.
 Afterward, `gh release edit vX.Y.Z --notes '...'` to prepend a human-readable summary of

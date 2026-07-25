@@ -53,6 +53,22 @@ describe('toLiveFacts', () => {
     expect(f.teraType).toBeUndefined();
   });
 
+  it('survives a client Pokemon with NO boosts table at all', () => {
+    // Seen in CI's player-check: a real battle produced a Pokemon with no `boosts`, and
+    // `p.boosts['atk']` — the first read in BOOSTABLE order — threw straight into
+    // content.ts's catch-all, silently costing that hover its whole hi-chu section. The
+    // hover looked merely unhelpful, not broken, which is why it went unnoticed.
+    const {boosts: _none, ...noBoosts} = clientMon();
+    const f = toLiveFacts(noBoosts as ClientPokemon);
+    expect(f.boosts).toEqual({});
+    expect(f.accuracyBoost).toBeUndefined();
+    expect(f.evasionBoost).toBeUndefined();
+    // ...and a present table is still read, so the guard didn't just swallow everything.
+    const boosted = toLiveFacts(clientMon({boosts: {atk: 2, accuracy: -1}}));
+    expect(boosted.boosts.atk).toBe(2);
+    expect(boosted.accuracyBoost).toBe(-1);
+  });
+
   it('treats a non-empty terastallized field as the active Tera type', () => {
     const f = toLiveFacts(clientMon({terastallized: 'Flying'}));
     expect(f.terastallized).toBe(true);

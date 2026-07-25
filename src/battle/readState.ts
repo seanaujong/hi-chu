@@ -17,7 +17,16 @@ export interface ClientPokemon {
   readonly hp: number;
   readonly maxhp: number;
   readonly status: string; // '' | 'brn' | 'par' | 'psn' | 'tox' | 'slp' | 'frz' | '???'
-  readonly boosts: Readonly<Record<string, number>>;
+  /**
+   * OPTIONAL on purpose, though the live client usually sets it. These interfaces are
+   * reverse-engineered from an untyped client, and declaring this required made the
+   * compiler vouch for something we cannot promise: a real battle produced a `Pokemon`
+   * with no `boosts` at all, and `p.boosts['atk']` — the first read in `BOOSTABLE`
+   * order — threw `Cannot read properties of undefined (reading 'atk')` straight into
+   * `content.ts`'s catch-all, silently costing that hover its whole hi-chu section.
+   * Marking it optional is what makes the compiler demand the guard at every read.
+   */
+  readonly boosts?: Readonly<Record<string, number>>;
   readonly terastallized: string; // '' when not terastallized, else the Tera type
   readonly ability?: string;
   readonly baseAbility?: string;
@@ -233,9 +242,12 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, spe
     .filter((name) => name.length > 0);
   const liveForme = readLiveForme(p);
 
+  // `?? {}` because the client does not always have it — see the `boosts` field's own note.
+  // An absent boost table means "no boosts", which is the honest reading and the common case.
+  const live = p.boosts ?? {};
   const boosts: Partial<Record<StatID, number>> = {};
   for (const stat of BOOSTABLE) {
-    const v = p.boosts[stat];
+    const v = live[stat];
     if (v) boosts[stat] = v;
   }
 
@@ -268,8 +280,8 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, spe
     ...(p.prevItem ? {prevItem: p.prevItem} : {}),
     ...(gender ? {gender} : {}),
     ...(speciesData ? {speciesData} : {}),
-    ...(p.boosts['accuracy'] ? {accuracyBoost: p.boosts['accuracy']} : {}),
-    ...(p.boosts['evasion'] ? {evasionBoost: p.boosts['evasion']} : {}),
+    ...(live['accuracy'] ? {accuracyBoost: live['accuracy']} : {}),
+    ...(live['evasion'] ? {evasionBoost: live['evasion']} : {}),
   };
   return facts;
 }

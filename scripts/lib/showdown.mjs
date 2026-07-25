@@ -21,6 +21,7 @@
 import {readFileSync} from 'node:fs';
 import puppeteer from 'puppeteer-core';
 import {startLocalServer} from './local-server.mjs';
+import {extensionLaunchOpts} from './extension-chrome.mjs';
 
 export const launchOpts = process.env.CHROME_PATH
   ? {executablePath: process.env.CHROME_PATH}
@@ -67,15 +68,19 @@ async function rename(page, name) {
   console.log(`✓ joined as ${name}`);
 }
 
-export async function client(name, port, {viewport = {width: 1280, height: 900}} = {}) {
+export async function client(name, port, {viewport = {width: 1280, height: 900}, extensionDir} = {}) {
+  // The client is served from a real https://*.psim.us origin (see module header), and
+  // Chrome's Local Network Access check otherwise blocks a public page from opening a
+  // websocket back to our own ws://localhost — exactly the case it exists to stop, except
+  // here we control both ends on purpose.
+  const baseArgs = ['--disable-features=LocalNetworkAccessChecks'];
+  // With `extensionDir`, the REAL extension is installed in the browser rather than the
+  // bundle being injected into the page — the difference between testing what ships and
+  // testing a close approximation of it. It pins Chrome for Testing, because the branded
+  // build ignores --load-extension entirely (see lib/extension-chrome.mjs).
   const browser = await puppeteer.launch({
     headless: true,
-    ...launchOpts,
-    // The client is served from a real https://*.psim.us origin (see module header), and
-    // Chrome's Local Network Access check otherwise blocks a public page from opening a
-    // websocket back to our own ws://localhost — exactly the case it exists to stop, except
-    // here we control both ends on purpose.
-    args: ['--disable-features=LocalNetworkAccessChecks'],
+    ...(extensionDir ? await extensionLaunchOpts(extensionDir, {args: baseArgs}) : {...launchOpts, args: baseArgs}),
   });
   const page = await browser.newPage();
   await page.setViewport(viewport);
@@ -106,11 +111,12 @@ export const battleRoom = (page) =>
  * stops the local server; it is safe to call after a failure part-way through, and callers
  * should `finally` it.
  */
-export async function startBattle({format = 'gen9randombattle', viewport} = {}) {
+export async function startBattle({format = 'gen9randombattle', viewport, extensionDir} = {}) {
   const server = await startLocalServer();
   let p1, p2;
   try {
-    p1 = await client('hichuone', server.port, {viewport});
+    // Only p1 needs the extension — it is the side every surface is photographed from.
+    p1 = await client('hichuone', server.port, {viewport, ...(extensionDir ? {extensionDir} : {})});
     p2 = await client('hichutwo', server.port, {viewport});
     await p1.page.evaluate((who, fmt) => globalThis.app.send(`/challenge ${who}, ${fmt}`), 'hichutwo', format);
     await sleep(2000); // let the challenge land

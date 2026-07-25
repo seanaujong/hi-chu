@@ -75,15 +75,31 @@ write them. `npm version --no-git-tag-version X.Y.Z` updates `package.json`/`pac
 lock.json`; `public/manifest.json`'s `version` field needs the same bump by hand. That's a
 normal change to a protected file, so it goes through the same branch + PR + merge as
 anything else (see Contributing, below) — but **before merging that PR**, run the
-**`release-visual-check`** skill for a human-eyes pass, through Claude-in-Chrome, over the
-surfaces nothing scripted reaches at all: Tera/Mega preview toggling, doubles, hazards on
-switch-in, Illusion, a foe's roster-icon hover. It drives the REAL loaded extension in an
-actual Chrome session rather than injecting the bundle (a live `https://` Showdown page
-mixed-content-blocks a locally-served script, and inlining the ~500KB bundle into a tool call
-is impractical) — so it needs one manual step first: `npm run build`, then Load Unpacked (or
-hit reload) on `dist/` at `chrome://extensions`. This is the one gate that stays manual on
-principle: it needs an agent or a human actually judging what's on screen, which nothing
-below can assert.
+**`npm run visual-check`** for an eyes-on pass over the surfaces nothing else reaches: the
+move tooltip, the own-hover matchup view, the switch menu, and the Tera preview. It plays a
+real two-account battle on the self-hosted server and photographs every surface **through the
+REAL installed extension**, not an injected bundle — `screenshots/full/` framed to the battle
+and `screenshots/crop/` at 2×. Then read the crops and judge them.
+
+**Loading the real extension is no longer manual**, which reverses a long-standing assumption
+here. The old belief was that "Load unpacked" can't be automated because nothing can drive
+`chrome://extensions` plus the native file picker — but that was never the obstacle; you pass
+`--load-extension` at launch and never open that UI. The real obstacle is that Chrome removed
+that switch from the BRANDED build as an anti-malware measure and kept it in **Chrome for
+Testing** (measured: Chrome 150 ignores it entirely, Chrome for Testing 151 honours it in both
+headful and headless — see `scripts/lib/extension-chrome.mjs`, which also strips puppeteer's
+own `--disable-extensions` default, a second thing that silently beats `--load-extension`).
+`npm run build:visual-check` produces `dist-visual/`, identical to the shipped build except
+that `matches` also covers the harness's `*.psim.us` origin — the shipped manifest matches
+only `play.pokemonshowdown.com`, so a real extension would otherwise sit dormant there. The
+run asserts `#hichu-style` actually appeared before shooting, so a green run can never mean
+"photographed the native tooltip by mistake".
+
+**What stays human is the JUDGEMENT, not the setup.** No assertion can say whether a preview
+LOOKS right, so someone still has to read the crops — that is why this gate exists and why
+merging the release PR is the one conscious checkpoint. The `release-visual-check` skill (a
+Claude-in-Chrome pass over the user's own loaded extension) remains the fallback for anything
+the harness can't stage, such as a Mega-capable format or doubles.
 
 Everything else is automatic and runs on `main` once that PR merges — no pause anywhere in
 it, on purpose: that merge is already the one conscious human checkpoint (it's what

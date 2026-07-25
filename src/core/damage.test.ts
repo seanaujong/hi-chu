@@ -537,25 +537,22 @@ describe("the attacker's own HP swing (drain, recoil, Life Orb, Liquid Ooze)", (
     expect(find(rockHead, 'Recoil')).toBeUndefined();
   });
 
-  // The three corrections below are ours: @smogon/calc models none of them, verified by
-  // probing it directly. Each would otherwise report a confidently wrong number.
+  // The two corrections below are ours: @smogon/calc models neither, verified by probing it
+  // directly. Each would otherwise report a confidently wrong number.
   it('CORRECTION: Magic Guard cancels recoil, which the calc only ever checks Rock Head for', () => {
     const guarded = swing({speciesForme: 'Clefable', ability: 'Magic Guard'}, {speciesForme: 'Skarmory'}, 'Double-Edge');
     expect(find(guarded, 'Recoil')).toBeUndefined();
   });
 
-  it('CORRECTION: Life Orb s cut is reported, and Magic Guard / Sheer Force each cancel it', () => {
-    const orb = find(swing({speciesForme: 'Dragonite', item: 'Life Orb'}, {speciesForme: 'Skarmory'}, 'Outrage'), 'Life Orb');
-    expect(orb?.direction).toBe('loss');
-    expect(orb!.min).toBe(orb!.max); // a fixed cut, not a range
-    expect(orb!.max).toBeGreaterThan(9); // floor(maxHP/10) ≈ 10% of the bar
-
-    // Sheer Force suppresses it only for a move with a secondary effect: Iron Head flinches.
-    const sheer = {speciesForme: 'Bisharp', ability: 'Sheer Force', item: 'Life Orb'};
-    expect(find(swing(sheer, {speciesForme: 'Skarmory'}, 'Iron Head'), 'Life Orb')).toBeUndefined();
-    expect(find(swing(sheer, {speciesForme: 'Skarmory'}, 'Sucker Punch'), 'Life Orb')?.direction).toBe('loss');
-    const guarded = {speciesForme: 'Clefable', ability: 'Magic Guard', item: 'Life Orb'};
-    expect(find(swing(guarded, {speciesForme: 'Skarmory'}, 'Body Slam'), 'Life Orb')).toBeUndefined();
+  it("says nothing about a Life Orb — an invariant cost is noise, not a move's own price", () => {
+    // The calc omits Life Orb's cut and we could supply it, but it is the same ~10% on every
+    // damaging move for as long as the item is held, so it says nothing about the move being
+    // hovered — and in the KO colour it read as a threat to the FOE. Deliberately absent.
+    const orb = swing({speciesForme: 'Dragonite', item: 'Life Orb'}, {speciesForme: 'Skarmory'}, 'Outrage');
+    expect(orb.find((e) => /life orb/i.test(e.label))).toBeUndefined();
+    // A move whose OWN cost varies is still reported, Life Orb or not.
+    const both = swing({speciesForme: 'Dragonite', item: 'Life Orb'}, {speciesForme: 'Skarmory'}, 'Double-Edge');
+    expect(find(both, 'Recoil')?.direction).toBe('loss');
   });
 
   it('CORRECTION: Liquid Ooze inverts a drain into a LOSS — the calc reports the heal regardless', () => {

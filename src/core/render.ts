@@ -177,16 +177,19 @@ function sashAside(r: DamageReport, model: MoveRenderModel): string {
 
 /**
  * The attacker's own HP swing, one part per cause: "Drains: 7.2% - 8.7%", "Recoil: 4.3% -
- * 5%". A fixed figure (Life Orb's cut) collapses to a single number rather than an X - X
- * range. Losses reuse `.hichu-ko`'s red, so the cost of a Flare Blitz reads at a glance
- * with the same weight a KO chance does; gains stay plain, since healing is never the
- * thing you need warning about. Empty when nothing applies, which is the common move.
+ * 5%". A fixed figure collapses to a single number rather than an X - X range.
+ *
+ * Losses use `.hichu-note`'s amber, NOT `.hichu-ko`'s red — the colours already mean
+ * something here, and red means "this KOes THEM". Wearing it on a cost to YOURSELF inverts
+ * the reading at a glance: a Flare Blitz's recoil looked like good news. Amber is the
+ * codebase's existing "mind this" colour and carries no such claim. Gains stay plain;
+ * healing never needs a warning colour. Empty when nothing applies, the common move.
  */
 function selfHpText(r: DamageReport): string {
   const parts = (r.selfHp ?? []).map((e) => {
     const range = e.min === e.max ? `${e.min}%` : `${e.min}% - ${e.max}%`;
     const body = `<small>${esc(e.label)}:</small> ${range}`;
-    return e.direction === 'loss' ? `<span class="hichu-ko">${body}</span>` : body;
+    return e.direction === 'loss' ? `<span class="hichu-note">${body}</span>` : body;
   });
   return parts.join(' · ');
 }

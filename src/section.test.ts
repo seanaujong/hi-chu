@@ -291,6 +291,41 @@ describe('buildMoveSection with Terastallize ticked (the pre-move Tera preview)'
   });
 });
 
+describe('buildPokemonSection with Terastallize ticked (the DEFENSIVE half of the preview)', () => {
+  // A ticked Tera changes what the foe's moves do INTO us, not only what ours do out of us,
+  // and with no speed caveat: `sim/battle-queue.ts` resolves `terastallize` as its own
+  // action at order 106 against a move's 200, so our new typing is already in place whoever
+  // moves first. Un-terastallize Noivern (Flying/Dragon) and give the private team a Fire
+  // Tera to preview, so the toggle is the only thing that differs between the two renders.
+  const base = {noivernTerastallized: '', myNoivernTera: 'Fire'};
+  const foeHover = (over: object, teraSelected: boolean): string => {
+    const b = loadBattle(over);
+    return buildPokemonSection(b.battle, b.active('Tentacruel'), data, false, teraSelected);
+  };
+  /** The max % of the sets view's inline damage for one of the foe's moves. */
+  const into = (html: string, move: string): number =>
+    Number(new RegExp(`${move} \\([\\d.]+–([\\d.]+)%\\)`).exec(html)![1]);
+
+  it("recomputes the FOE's damage into us — Tera Fire turns Surf super-effective", () => {
+    // Water is neutral into Flying/Dragon and 2× into Fire.
+    expect(into(foeHover(base, true), 'Surf')).toBeGreaterThan(into(foeHover(base, false), 'Surf') * 1.8);
+  });
+
+  it('leaves a move the new typing does not change alone — Poison is neutral either way', () => {
+    expect(into(foeHover(base, true), 'Sludge Bomb')).toBe(into(foeHover(base, false), 'Sludge Bomb'));
+  });
+
+  it('changes nothing when the private team carries no Tera type to preview', () => {
+    const noTera = {noivernTerastallized: ''};
+    expect(foeHover(noTera, true)).toBe(foeHover(noTera, false));
+  });
+
+  it('changes nothing once we have actually terastallized (public facts already drive it)', () => {
+    const already = {myNoivernTera: 'Fire'}; // fixture Noivern IS already Tera Fire
+    expect(foeHover(already, true)).toBe(foeHover(already, false));
+  });
+});
+
 describe('buildMoveSection when the target item is still unknown (the Assault Vest split)', () => {
   // Tentacruel's Bulky Support can hold Assault Vest or Leftovers; un-reveal the item.
   const {battle, active} = loadBattle({tentacruelItem: ''});

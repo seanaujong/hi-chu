@@ -371,7 +371,16 @@ function isActiveMon(mon: ClientPokemon): boolean {
 }
 
 /**
- * Overlay the pending Mega forme onto OUR resolved attacker: the mon the move panel's
+ * One pending gimmick (a ticked Mega or Terastallize) applied to our own resolved mon,
+ * whichever SIDE of the calc it is on. It is our attacker on the move tooltip and the
+ * matchup view, and our defender on a foe hover — a Mega's base stats and a Tera's typing
+ * change what we deal AND what we take, so one overlay has to serve both. Undefined from a
+ * `…PreviewFor` builder means "nothing to preview", not "no change".
+ */
+type PreviewOverlay = (resolved: ResolvedMon) => ResolvedMon;
+
+/**
+ * Overlay the pending Mega forme onto OUR resolved mon: the mon the move panel's
  * Mega Evolution box is ticked for evolves this turn, so a calc where WE are the subject
  * sees its Mega forme — base stats and typing (from the forme's own dex record, or
  * `speciesData` when the calc lacks it, a Champions-invented Mega), and the forme-locked
@@ -393,14 +402,14 @@ function megaPreviewFor(
   battle: ClientBattle,
   mon: ClientPokemon,
   megaSelected: boolean,
-): ((attacker: ResolvedMon) => ResolvedMon) | undefined {
+): PreviewOverlay | undefined {
   // The Mega box belongs to the mon whose move panel is open — our ACTIVE mon. A benched
   // or revealed-but-inactive mon we're hovering can't Mega this turn even holding a stone.
   if (!megaSelected || !isActiveMon(mon)) return undefined;
   const mega = readMegaForme(battle, mon);
   if (!mega) return undefined;
-  return (attacker) => {
-    const {knownStats: _baseFormeFinals, ...rest} = attacker;
+  return (resolved) => {
+    const {knownStats: _baseFormeFinals, ...rest} = resolved;
     return {
       ...rest,
       speciesForme: mega.speciesForme,
@@ -424,11 +433,13 @@ function megaSpeedApplies(gen: number): boolean {
 
 /**
  * If Terastallize is ticked for our ACTIVE mon's pending move, overlay the preview Tera
- * type onto the resolved attacker — the same footing as the Mega preview (our own private
- * truth plus the user's declared intent, not speculation; see `megaPreviewFor`). A pure
- * overlay rather than a facts merge before resolution, so every our-view surface that can
- * carry a pending Tera — the move tooltip AND the own-hover matchup view — shares one
- * implementation instead of two copies of the "which Tera type, if any" law.
+ * type onto our resolved mon — the same footing as the Mega preview (our own private truth
+ * plus the user's declared intent, not speculation; see `megaPreviewFor`). A pure overlay
+ * rather than a facts merge before resolution, so every our-view surface that can carry a
+ * pending Tera — the move tooltip, the own-hover matchup view, and a foe hover's damage
+ * INTO us — shares one implementation instead of copies of the "which Tera type, if any"
+ * law. The defensive surface is not a separate rule: the Tera that grants STAB on our move
+ * is the same Tera that resists theirs, so the two directions cannot be allowed to disagree.
  *
  * Undefined when there's nothing to preview (box unticked, no private Tera type to show,
  * already terastallized, or not our active mon this turn — Tera, like Mega, only takes
@@ -448,19 +459,16 @@ function teraPreviewFor(
   pokemon: ClientPokemon,
   teraSelected: boolean,
   publicFacts: LiveFacts,
-): ((attacker: ResolvedMon) => ResolvedMon) | undefined {
+): PreviewOverlay | undefined {
   if (!teraSelected || publicFacts.terastallized || !isActiveMon(pokemon)) return undefined;
   const teraType = readOwnTeraType(battle, pokemon);
   if (!teraType) return undefined;
-  return (attacker) => ({...attacker, terastallized: true, teraType});
+  return (resolved) => ({...resolved, terastallized: true, teraType});
 }
 
 /** Applies each preview overlay in turn (Mega, then a pending Tera), skipping any that
  *  don't apply — shared by every our-view surface that can carry both previews at once. */
-function applyPreviews(
-  base: ResolvedMon,
-  previews: readonly (((attacker: ResolvedMon) => ResolvedMon) | undefined)[],
-): ResolvedMon {
+function applyPreviews(base: ResolvedMon, previews: readonly (PreviewOverlay | undefined)[]): ResolvedMon {
   return previews.reduce((mon, apply) => (apply ? apply(mon) : mon), base);
 }
 
@@ -1288,7 +1296,21 @@ function randbatsPokemonSection(
   const ourMon = foe ? findOpposingActive(battle, pokemon) : null;
   // The threat lands on the Pokémon really standing there, not on the disguise we're wearing.
   const ourFacts = ourMon ? ownTruth(battle, ourMon, readFacts(ourMon)) : null;
-  const defender = ourFacts ? resolveMon(ourFacts, entryOrMinimal(entryFor(data, ourFacts), ourFacts)) : null;
+  // A ticked Mega/Terastallize changes what the foe's moves do INTO us, not only what our
+  // own moves do out of us — so the same overlay that previews our attacker everywhere else
+  // previews our DEFENDER here. Unconditional, with no speed caveat: both resolve as their
+  // own action ahead of every move (`sim/battle-queue.ts` orders `terastallize` 106 and
+  // `megaEvo` 104 against a move's 200), so the new typing and stats are already in place no
+  // matter who moves first. Same private-truth-plus-declared-intent footing as the offensive
+  // preview, and deliberately the SAME `teraPreviewFor`/`megaPreviewFor` rather than a
+  // defensive fork — a Tera that grants STAB on our move is the same Tera that resists
+  // theirs, so the two directions must never disagree about which type is active.
+  const defender = ourMon && ourFacts
+    ? applyPreviews(resolveMon(ourFacts, entryOrMinimal(entryFor(data, ourFacts), ourFacts)), [
+        megaPreviewFor(battle, ourMon, megaSelected),
+        teraPreviewFor(battle, ourMon, teraSelected, ourFacts),
+      ])
+    : null;
   const field = ourMon ? readFieldFacts(battle, ourMon.side) : undefined;
   // Damage MAGNITUDE reveals an item too (core/itemreveal.ts) — the direction the reveal
   // marks above don't cover: not a side effect firing, but the NUMBER a past hit dealt.

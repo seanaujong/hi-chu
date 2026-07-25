@@ -833,7 +833,7 @@ describe('buildSwitchSection (the switch menu: a ServerPokemon, NO battle-view P
     expect(buildSwitchSection(battle, server({item: 'choicescarf'}), data)).toContain('⚡ you move first — 373 vs 216');
     // A paralyzed mon really is slower on the turn it comes in — half of 249.
     expect(buildSwitchSection(battle, server({condition: '272/272 par'}), data))
-      .toContain('<span class="hichu-ko">they move first</span> — 124 vs 216');
+      .toContain('<span class="hichu-note">they move first</span> — 124 vs 216');
   });
 
   it('gives a bench mon no boosts — it enters with none, whatever is standing there now', () => {

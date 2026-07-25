@@ -180,7 +180,7 @@ async function shoot(page, handle, {name, dir, frame}) {
   if (!dir) return html;
 
   const path = new URL(`${dir}/${name}.png`, OUT).pathname;
-  const box = await tooltipBox(page);
+  const box = await settledTooltipBox(page);
   if (!box) return html; // rendered, but gone before we could measure it — a later pass retries
   if (process.env.DEBUG) console.log(`    [debug] ${name} box: ${JSON.stringify(box)}`);
 
@@ -197,14 +197,26 @@ async function shoot(page, handle, {name, dir, frame}) {
 
   // Tooltip crop (README framing): a few px of margin so the border and drop shadow aren't
   // shaved off, clamped to the viewport — a `clip` past the edge shoots blank pixels.
+  //
+  // Re-measured AFTER the capture and retaken if it moved: a settled read is still only a
+  // prediction that the tooltip will hold still, and this is the only way to know the pixels
+  // on disk are the tooltip rather than whatever the stale coordinates pointed at.
   const view = page.viewport();
   const pad = 6;
-  const x = Math.max(0, box.x - pad);
-  const y = Math.max(0, box.y - pad);
-  await page.screenshot({
-    path,
-    clip: {x, y, width: Math.min(view.width - x, box.width + pad * 2), height: Math.min(view.height - y, box.height + pad * 2)},
-  });
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const before = attempt === 0 ? box : await settledTooltipBox(page);
+    if (!before) return html;
+    const x = Math.max(0, before.x - pad);
+    const y = Math.max(0, before.y - pad);
+    await page.screenshot({
+      path,
+      clip: {x, y, width: Math.min(view.width - x, before.width + pad * 2), height: Math.min(view.height - y, before.height + pad * 2)},
+    });
+    const after = await tooltipBox(page);
+    if (sameBox(before, after)) return html;
+    if (process.env.DEBUG) console.log(`    [debug] ${name} moved during capture; retaking`);
+  }
+  console.log(`  · ${name}: tooltip kept moving; crop may be off`);
   return html;
 }
 
@@ -214,6 +226,36 @@ async function shoot(page, handle, {name, dir, frame}) {
  * wrapper (and `.tooltipinner`) collapse to a near-empty sliver while `.tooltip` carries the
  * real box. Unions them, since a Pokémon tooltip can stack two `.tooltip` panels.
  */
+/**
+ * `tooltipBox`, held still — the fix for an intermittently wrong crop.
+ *
+ * Showdown positions the tooltip AFTER its content lands, and clamps a tall one against the
+ * viewport edge. The own-hover panel is the tallest we render (native block + matchup + every
+ * mirror candidate, ~530px), so it is the one that moves late. Measuring once and clipping to
+ * that rect is two CDP round-trips apart, and when the tooltip shifted in between, the crop
+ * photographed whatever sat at the stale coordinates — usually the battle scene.
+ *
+ * Full shots never showed it: they clip to the stable battle-room box and only extend the TOP
+ * edge, so a stale y moves an edge rather than the whole frame. Only crops ARE the box.
+ *
+ * Two guards, because "wait a bit" is not a fix: read until two consecutive reads agree, and
+ * (at the call site) re-read after the capture to confirm it never moved during it.
+ */
+async function settledTooltipBox(page, {tries = 15, gap = 100} = {}) {
+  let previous = await tooltipBox(page);
+  for (let i = 0; i < tries; i++) {
+    await sleep(gap);
+    const current = await tooltipBox(page);
+    if (!current) return null;
+    if (previous && sameBox(previous, current)) return current;
+    previous = current;
+  }
+  return previous; // never settled; no worse than the single read this replaced
+}
+
+const sameBox = (a, b) =>
+  Boolean(a && b) && ['x', 'y', 'width', 'height'].every((k) => Math.abs(a[k] - b[k]) < 1);
+
 const tooltipBox = (page) =>
   page.evaluate(() => {
     const rects = [...document.querySelectorAll('#tooltipwrapper .tooltip')].map((el) => el.getBoundingClientRect());

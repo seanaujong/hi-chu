@@ -73,6 +73,19 @@ const STYLE_ID = 'hichu-style';
  * native equivalent — the red KO figure and the orange caveat line. Don't add
  * custom font-size/opacity/colour beyond that pair — it clashes with the native
  * chrome around it.
+ *
+ * The two colours mean specific things, and the meanings are load-bearing:
+ *
+ *   `.hichu-ko` RED — a KO is on the table. Either direction: we KO them on the move
+ *     tooltip and the outgoing matchup lines; they KO us in `Incoming:` and the sets view.
+ *     Direction is carried by the block a line sits in, never by the colour.
+ *   `.hichu-note` AMBER — mind this. Caveats, assumptions, a lost speed race, and any cost
+ *     the move charges US (recoil, a drain inverted by Liquid Ooze).
+ *
+ * The rule exists because red was drifting onto things nobody dies of — a self-inflicted
+ * recoil figure read as a threat to the FOE, which is the exact opposite of what it is.
+ * Anything non-lethal that wants emphasis takes amber; red stays scarce enough to mean
+ * something. Before painting something red, ask whether a Pokémon actually faints.
  */
 export const TOOLTIP_STYLE = `
 <style id="${STYLE_ID}">
@@ -275,12 +288,19 @@ export interface SpeedLineModel {
   readonly ourName?: string;
 }
 
-/** The verdict, red when the foe acts first (that's the threat, like the KO figure). */
+/**
+ * The verdict, marked when the foe acts first — in `.hichu-note` amber, NOT the KO red.
+ * The one rule the colours follow here: **red means a KO is on the table**, in either
+ * direction (we KO them on the move tooltip; they KO us in `Incoming:` and the sets view).
+ * Losing the speed race is a threat, but nobody dies of it, so red overstated it — and
+ * spending the strongest colour on a non-lethal fact is what made the genuinely lethal
+ * lines harder to pick out. Amber is the codebase's "mind this" mark.
+ */
 function verdictText(first: SpeedOutcome['first'], long: boolean): string {
   if (first === 'tie') return 'speed tie';
   if (first === 'ours') return long ? 'you move first' : 'you do';
   const text = long ? 'they move first' : 'they do';
-  return `<span class="hichu-ko">${text}</span>`;
+  return `<span class="hichu-note">${text}</span>`;
 }
 
 /** "⚡ you move first — 231 vs 213 · if Choice Scarf: they do (319)". The lead outcome

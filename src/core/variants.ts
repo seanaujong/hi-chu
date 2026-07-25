@@ -18,9 +18,18 @@ export interface DamageBucket {
   readonly report: DamageReport;
 }
 
-/** Two variants share a bucket iff their damage % range and KO chance read identically. */
+/**
+ * Two variants share a bucket iff everything SHOWN for them reads identically — the damage
+ * % range and KO chance, plus the attacker's own HP swing where a caller asked for it.
+ * `selfHp` is what keeps a hidden Liquid Ooze honest: it inverts Giga Drain's siphon into
+ * damage without moving the damage numbers at all, so keying on those alone would collapse
+ * "you heal" and "you lose that HP" into one line. Absent (every surface but the move
+ * tooltip — see `CalcDamageOptions.selfHp`) it contributes nothing, so those buckets key
+ * exactly as they did before.
+ */
 function resultKey(r: DamageReport): string {
-  return `${r.percent.min}|${r.percent.max}|${Math.round(r.koChance * 1000)}`;
+  const self = (r.selfHp ?? []).map((e) => `${e.label}${e.direction}${e.min}-${e.max}`).join(',');
+  return `${r.percent.min}|${r.percent.max}|${Math.round(r.koChance * 1000)}|${self}`;
 }
 
 /** Dedupe strings, preserving first-seen order. */

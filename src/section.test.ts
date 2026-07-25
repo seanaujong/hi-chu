@@ -291,6 +291,42 @@ describe('buildMoveSection with Terastallize ticked (the pre-move Tera preview)'
   });
 });
 
+describe('buildPokemonSection with Terastallize ticked (the DEFENSIVE half of the preview)', () => {
+  // A ticked Tera changes what the foe's moves do INTO us, not only what ours do out of us,
+  // and with no speed caveat: `sim/battle-queue.ts` resolves `terastallize` as its own
+  // action at order 106 against a move's 200, so our new typing is already in place whoever
+  // moves first. Un-terastallize Noivern (Flying/Dragon) and give the private team a Fire
+  // Tera to preview, so the toggle is the only thing that differs between the two renders.
+  const base = {noivernTerastallized: '', myNoivernTera: 'Fire'};
+  const foeHover = (over: object, teraSelected: boolean): string => {
+    const b = loadBattle(over);
+    return buildPokemonSection(b.battle, b.active('Tentacruel'), data, false, teraSelected);
+  };
+  /** The max % of the sets view's inline damage for one of the foe's moves. */
+  const into = (html: string, move: string): number =>
+    Number(new RegExp(`${move} \\([\\d.]+–([\\d.]+)%\\)`).exec(html)![1]);
+
+  it("recomputes the FOE's damage into us — Tera Fire turns Surf super-effective", () => {
+    // Water is RESISTED by Flying/Dragon (Dragon halves it) and 2× into Fire, so the
+    // swing is ×4, not ×2 — verified on a live replay page: Surf 15.3–17.9% → 61.3–72.3%.
+    expect(into(foeHover(base, true), 'Surf')).toBeGreaterThan(into(foeHover(base, false), 'Surf') * 3.5);
+  });
+
+  it('leaves a move the new typing does not change alone — Poison is neutral either way', () => {
+    expect(into(foeHover(base, true), 'Sludge Bomb')).toBe(into(foeHover(base, false), 'Sludge Bomb'));
+  });
+
+  it('changes nothing when the private team carries no Tera type to preview', () => {
+    const noTera = {noivernTerastallized: ''};
+    expect(foeHover(noTera, true)).toBe(foeHover(noTera, false));
+  });
+
+  it('changes nothing once we have actually terastallized (public facts already drive it)', () => {
+    const already = {myNoivernTera: 'Fire'}; // fixture Noivern IS already Tera Fire
+    expect(foeHover(already, true)).toBe(foeHover(already, false));
+  });
+});
+
 describe('buildMoveSection when the target item is still unknown (the Assault Vest split)', () => {
   // Tentacruel's Bulky Support can hold Assault Vest or Leftovers; un-reveal the item.
   const {battle, active} = loadBattle({tentacruelItem: ''});
@@ -1295,5 +1331,38 @@ describe('a Transformed Ditto — the copy, not the copier', () => {
     const before = buildPokemonSection(plain.battle, plain.active('Ditto'), dittoData);
     expect(before).toContain('Transform'); // its own set, unmolested
     expect(before).not.toContain('Draco Meteor');
+  });
+});
+
+describe("the move tooltip's own-HP swing (drain, recoil, Life Orb, Liquid Ooze)", () => {
+  const {battle, active} = loadBattle();
+  const noivern = () => active('Noivern');
+
+  it('shows what a recoil move costs US, alongside what it does to them', () => {
+    const html = buildMoveSection(battle, noivern(), 'Double-Edge', data);
+    expect(html).toContain('<small>Damage:</small>'); // the ordinary line is still there
+    expect(html).toContain('Recoil:');
+  });
+
+  it("inverts a drain into a LOSS against the fixture's real Liquid Ooze Tentacruel", () => {
+    // The captured feed gives Tentacruel exactly one ability, so this is certain, not a
+    // hedge: Giga Drain into it costs us the siphon instead of healing it back.
+    const html = buildMoveSection(battle, noivern(), 'Giga Drain', data);
+    expect(html).toContain('Liquid Ooze:');
+    expect(html).not.toContain('Drains:');
+  });
+
+  it('says nothing at all for an ordinary move — no empty label on the common hover', () => {
+    const html = buildMoveSection(battle, noivern(), 'Draco Meteor', data);
+    expect(html).not.toContain('Drains:');
+    expect(html).not.toContain('Recoil:');
+    expect(html).not.toContain('Life Orb:');
+  });
+
+  it('stays OFF the compact matchup view — the move tooltip is the one surface that shows it', () => {
+    const b = loadBattle({myNoivernItem: 'heavydutyboots', myNoivernMoves: ['doubleedge', 'roost']});
+    const html = buildPokemonSection(b.battle, b.active('Noivern'), data);
+    expect(html).toContain('Double-Edge'); // the move is listed there...
+    expect(html).not.toContain('Recoil:'); // ...but without the swing line
   });
 });

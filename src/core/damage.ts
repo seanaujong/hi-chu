@@ -29,6 +29,24 @@ export interface HitCountBreakdown {
   readonly distribution: ReadonlyArray<readonly [number, number]>;
 }
 
+/**
+ * One HP change the ATTACKER takes on for landing this move, as a percent of its OWN max
+ * HP — the side of a hit the "Damage:" line never shows. Magnitudes are always positive
+ * and `direction` carries the sign, so the render layer never has to sniff the label or
+ * juggle negative ranges.
+ *
+ * A LIST, not one net figure, because the causes genuinely stack: a Life Orb Giga Drain
+ * both heals and hurts, and those read as two separate facts to a player deciding whether
+ * the trade is worth it. Netting them would also hide which one is which.
+ */
+export interface SelfHpEffect {
+  /** Names the cause for the tooltip: "Drains", "Recoil", "Life Orb", "Liquid Ooze". */
+  readonly label: string;
+  readonly direction: 'gain' | 'loss';
+  readonly min: number;
+  readonly max: number;
+}
+
 export interface DamageReport {
   readonly move: string;
   readonly category: 'Physical' | 'Special' | 'Status';
@@ -48,6 +66,13 @@ export interface DamageReport {
    * only when requested (`CalcDamageOptions.nhkoTurns`); `base[0]` equals `koChance`.
    */
   readonly nhko?: {readonly base: readonly number[]; readonly withLeftovers: readonly number[]};
+  /**
+   * The attacker's own HP swing from landing this move (drain, recoil, Life Orb, Liquid
+   * Ooze). Present only when requested (`CalcDamageOptions.selfHp`) — the move tooltip is
+   * the one surface that shows it, and leaving it off everywhere else keeps those surfaces'
+   * damage buckets keyed exactly as before (see `variants.resultKey`).
+   */
+  readonly selfHp?: readonly SelfHpEffect[];
   readonly defenderMaxHP: number;
   readonly defenderRemainingHP: number;
   /** @smogon/calc's own one-line description, kept for comparison/debugging. */
@@ -291,6 +316,7 @@ function summarizeReport(
     notes: string[];
     multiHit?: DamageReport['multiHit'];
     nhkoTurns?: number;
+    selfHp?: readonly SelfHpEffect[];
   },
 ): DamageReport {
   const t = summarize(total);
@@ -310,6 +336,7 @@ function summarizeReport(
     percent: {min: pct(t.min), max: pct(t.max), mean: pct(t.mean)},
     koChance: probabilityAtLeast(total, remainingHP),
     ...(nhko ? {nhko} : {}),
+    ...(extras.selfHp && extras.selfHp.length > 0 ? {selfHp: extras.selfHp} : {}),
     defenderMaxHP: maxHP,
     defenderRemainingHP: remainingHP,
     calcDesc,
@@ -324,6 +351,13 @@ export interface CalcDamageOptions {
   readonly field?: FieldFacts;
   /** Compute the nHKO ladder up to this many turns (omit to skip — the sets view does). */
   readonly nhkoTurns?: number;
+  /**
+   * Compute the attacker's own HP swing (drain/recoil/Life Orb/Liquid Ooze). Opt-in like
+   * `nhkoTurns`, and for the same reason: only the move tooltip renders it, and a report
+   * that doesn't carry it leaves `variants.resultKey` — and so every other surface's
+   * bucketing — byte-identical to before.
+   */
+  readonly selfHp?: boolean;
   /** Doubles: sets the calc's game type so spread moves take their 0.75× reduction. */
   readonly doubles?: boolean;
 }
@@ -381,6 +415,11 @@ export function calcDamage(
     return summarizeReport(dexMove.name, category, total, remainingHP, maxHP, safeDesc(result), {
       notes,
       ...(options.nhkoTurns ? {nhkoTurns: options.nhkoTurns} : {}),
+      // Single-hit only, on purpose: below, the total damage is OUR convolved PMF rather
+      // than the calc's own `result.damage`, so `recovery()`/`recoil()` would describe one
+      // hit of a several-hit sequence. No gen-9 multi-hit move drains or takes recoil, so
+      // this costs nothing today — revisit if one ever does.
+      ...(options.selfHp ? {selfHp: selfHpEffects(atk, def, dexMove, result)} : {}),
     });
   }
 
@@ -456,6 +495,62 @@ export function painSplit(user: ResolvedMon, foe: ResolvedMon, gen = 9): PainSpl
     user: {before: pct(userHP, userMax), after: pct(Math.min(userMax, split), userMax)},
     foe: {before: pct(foeHP, foeMax), after: pct(Math.min(foeMax, split), foeMax)},
   };
+}
+
+/**
+ * The attacker's own HP swing from landing this move — see `SelfHpEffect`. Delegated to
+ * @smogon/calc wherever it really models the mechanic (`recovery()` covers drain and Shell
+ * Bell; `recoil()` covers a move's own recoil, Rock Head included), with three corrections
+ * it does NOT model. Each was found by probing the calc directly, not by reading it:
+ *
+ *   - MAGIC GUARD cancels recoil, and `getRecoil` only ever checks Rock Head — a Magic
+ *     Guard Double-Edge still comes back reporting recoil damage.
+ *   - LIFE ORB's cut isn't in `recoil()` at all (an Outrage off a Life Orb returns [0,0]).
+ *     Its own two suppressors are Magic Guard and Sheer Force; the Sheer Force test mirrors
+ *     the calc's own (`gen789.js`: a secondary effect, or Electro Shot / Order Up, non-Max)
+ *     so the two can't drift on which moves count.
+ *   - LIQUID OOZE inverts a drain into damage; the calc reports the heal regardless. The
+ *     siphon becomes a LOSS. Suppressed entirely in the one case the two can't be told
+ *     apart — a Shell Bell attacker, whose heal `recovery()` sums into the same figure.
+ *
+ * Deliberately NOT covered: crash damage (High Jump Kick), Struggle, and Mind Blown / Steel
+ * Beam. The calc returns those as a bare number instead of a range, and in '%' notation that
+ * number is the /48 figure — High Jump Kick reports 24 next to its own "50% crash damage"
+ * text. So only the tuple form is trusted, and the rest stays a known gap rather than a
+ * confidently wrong number.
+ */
+function selfHpEffects(atk: Pokemon, def: Pokemon, move: Move, result: ReturnType<typeof calculate>): SelfHpEffect[] {
+  const effects: SelfHpEffect[] = [];
+  const pct = (hp: number): number => Math.round((hp / atk.maxHP()) * 1000) / 10;
+  const magicGuard = atk.hasAbility('Magic Guard');
+
+  // Unlike recoil's already-percent figures, `recovery()` comes back in raw HP.
+  const {recovery} = result.recovery();
+  const [healMin, healMax] = Array.isArray(recovery) ? recovery : [recovery, recovery];
+  const oozed = move.drain !== undefined && def.hasAbility('Liquid Ooze');
+  if (healMax > 0 && !(oozed && atk.hasItem('Shell Bell'))) {
+    effects.push(oozed
+      ? {label: 'Liquid Ooze', direction: 'loss', min: pct(healMin), max: pct(healMax)}
+      : {label: 'Drains', direction: 'gain', min: pct(healMin), max: pct(healMax)});
+  }
+
+  if (!magicGuard) {
+    const {recoil} = result.recoil();
+    // Tuple form only — the bare-number branches carry the wrong figure in '%' notation.
+    if (Array.isArray(recoil) && recoil[1] > 0) {
+      effects.push({label: 'Recoil', direction: 'loss', min: recoil[0], max: recoil[1]});
+    }
+  }
+
+  const sheerForce =
+    atk.hasAbility('Sheer Force') && (Boolean(move.secondaries) || move.named('Electro Shot', 'Order Up')) && !move.isMax;
+  const dealtDamage = Math.max(...rollsOf(result.damage)) > 0;
+  if (atk.hasItem('Life Orb') && dealtDamage && !magicGuard && !sheerForce) {
+    // The sim takes floor(maxHP/10), never less than 1 — not a flat 10% of the bar.
+    const cut = pct(Math.max(1, Math.floor(atk.maxHP() / 10)));
+    effects.push({label: 'Life Orb', direction: 'loss', min: cut, max: cut});
+  }
+  return effects;
 }
 
 /** @smogon/calc throws from desc()/kochance() when damage is 0 (immune); guard it. */

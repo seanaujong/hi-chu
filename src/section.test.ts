@@ -307,8 +307,9 @@ describe('buildPokemonSection with Terastallize ticked (the DEFENSIVE half of th
     Number(new RegExp(`${move} \\([\\d.]+–([\\d.]+)%\\)`).exec(html)![1]);
 
   it("recomputes the FOE's damage into us — Tera Fire turns Surf super-effective", () => {
-    // Water is neutral into Flying/Dragon and 2× into Fire.
-    expect(into(foeHover(base, true), 'Surf')).toBeGreaterThan(into(foeHover(base, false), 'Surf') * 1.8);
+    // Water is RESISTED by Flying/Dragon (Dragon halves it) and 2× into Fire, so the
+    // swing is ×4, not ×2 — verified on a live replay page: Surf 15.3–17.9% → 61.3–72.3%.
+    expect(into(foeHover(base, true), 'Surf')).toBeGreaterThan(into(foeHover(base, false), 'Surf') * 3.5);
   });
 
   it('leaves a move the new typing does not change alone — Poison is neutral either way', () => {

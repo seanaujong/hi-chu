@@ -1,39 +1,138 @@
-// Render the extension icons (16/48/128 PNG) from one inline SVG, via the Chrome
-// we already drive for drift-check (puppeteer-core) — no image toolchain needed.
-// The icon: a Showdown-blue rounded square with a Pokémon-yellow damage bolt.
-// Re-run after editing the SVG: `node scripts/make-icons.mjs`.
+// Render every icon in the repo from the one drawing in `scripts/lib/logo.mjs`, via the
+// Chrome we already drive for drift-check (puppeteer-core) — no image toolchain needed.
+//
+// "Every icon" is the point: the Chrome extension's three PNGs, the eleven in Safari's app
+// icon catalogue, the two loose Safari copies, and the README lockup all come from here, so
+// none of them can drift from the others the way hand-made copies eventually always do.
+// dist/, dist-safari/ and dist-visual/ copy public/icons at build time, so they follow along.
+//
+//   node scripts/make-icons.mjs            rewrite every icon
+//   node scripts/make-icons.mjs --proof    render a sheet to look at, write nothing else
+//
+// `--proof` exists because the optical-size thresholds in logo.mjs were chosen by rendering
+// and looking, and looking is the only way to re-check them.
 import {mkdir, writeFile} from 'node:fs/promises';
+import {dirname} from 'node:path';
 import puppeteer from 'puppeteer-core';
+import {ALL_DRAWINGS, LOCKUP_FONT, OPTICAL, PALETTE, markSvg, wordmarkSvg} from './lib/logo.mjs';
 
-const SIZES = [16, 48, 128];
 const CHROME = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+const SAFARI_APP = 'safari/hi-chu/Shared (App)';
+const APPICON = `${SAFARI_APP}/Assets.xcassets/AppIcon.appiconset`;
 
-const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#4863b0"/>
-      <stop offset="1" stop-color="#1b2547"/>
-    </linearGradient>
-  </defs>
-  <rect x="2" y="2" width="124" height="124" rx="27" fill="url(#bg)"/>
-  <path d="M74 18 L38 70 H58 L52 110 L92 56 H70 Z"
-        fill="#ffcb05" stroke="#3b2a00" stroke-width="3" stroke-linejoin="round"/>
-</svg>`;
+// path → how many pixels to render, and how many POINTS the result is displayed at. Those
+// come apart on every retina asset: Xcode's filenames carry the point size, so mac-icon-16@2x
+// is 32 pixels of an icon the user sees at 16 points. `logo.mjs` picks its drawing from the
+// point size, so the pair has to be carried here rather than inferred from the pixel count.
+const mac = (pt, scale) => [`${APPICON}/mac-icon-${pt}@${scale}x.png`, pt * scale, pt];
+
+const ICONS = [
+  ...[16, 48, 128].map((px) => [`public/icons/icon-${px}.png`, px, px]),
+  mac(16, 1),
+  mac(16, 2),
+  mac(32, 1),
+  mac(32, 2),
+  mac(128, 1),
+  mac(128, 2),
+  mac(256, 1),
+  mac(256, 2),
+  mac(512, 1),
+  mac(512, 2),
+  // iOS masks the icon to its own shape, so this one alone is drawn full-bleed — letting our
+  // own rounded tile through as well would round the corners twice.
+  [`${APPICON}/universal-icon-1024@1x.png`, 1024, 1024, {bleed: true}],
+  [`${SAFARI_APP}/Resources/Icon.png`, 128, 128],
+  [`${SAFARI_APP}/Assets.xcassets/LargeIcon.imageset/icon-128.png`, 128, 128],
+];
+
+const WORDMARKS = [
+  ['docs/brand/wordmark.png', PALETTE.ink],
+  ['docs/brand/wordmark-dark.png', PALETTE.paper],
+];
+
+const shell = (body, w, h) =>
+  `<!doctype html><meta charset="utf8"><style>*{margin:0;padding:0}
+   body{width:${w}px;height:${h}px}svg{display:block}</style>${body}`;
 
 const browser = await puppeteer.launch({executablePath: CHROME, headless: 'new', args: ['--no-sandbox']});
+const page = await browser.newPage();
+
+/** Screenshot one SVG document at its own size, on a transparent ground. */
+const shoot = async (svg, w, h = w, scale = 1) => {
+  await page.setViewport({width: w, height: h, deviceScaleFactor: scale});
+  await page.setContent(shell(svg, w, h), {waitUntil: 'load'});
+  return page.screenshot({omitBackground: true});
+};
+
+const write = async (path, png) => {
+  await mkdir(dirname(path), {recursive: true});
+  await writeFile(path, png);
+};
+
 try {
-  const page = await browser.newPage();
-  await mkdir('public/icons', {recursive: true});
-  for (const size of SIZES) {
-    await page.setViewport({width: size, height: size, deviceScaleFactor: 1});
-    await page.setContent(
-      `<!doctype html><meta charset=utf8><style>*{margin:0;padding:0}svg{display:block;width:${size}px;height:${size}px}</style>${svg}`,
-      {waitUntil: 'load'},
-    );
-    const png = await page.screenshot({omitBackground: true, clip: {x: 0, y: 0, width: size, height: size}});
-    await writeFile(`public/icons/icon-${size}.png`, png);
-    console.log(`wrote public/icons/icon-${size}.png`);
+  if (process.argv.includes('--proof')) {
+    await proof();
+  } else {
+    for (const [path, px, pt, opts] of ICONS) {
+      await write(path, await shoot(markSvg(px, {pt, ...opts}), px));
+      console.log(`${String(px).padStart(4)}px @ ${String(pt).padStart(4)}pt  ${OPTICAL(pt).padEnd(7)}  ${path}`);
+    }
+    for (const [path, color] of WORDMARKS) {
+      await write(path, await shoot(wordmarkSvg({color}), 420, 128, 3));
+      console.log(`  lockup  ${path}`);
+    }
   }
 } finally {
   await browser.close();
+}
+
+/** A sheet to judge by eye: the three drawings, the glyphs up close, and every shipped size. */
+async function proof() {
+  const swatch = (inner, bg) =>
+    `<div style="background:${bg};padding:16px;border-radius:12px;display:flex;gap:16px;align-items:center">${inner}</div>`;
+  const textGlyph = (glyphs, size, dy) =>
+    `<g transform="rotate(-16 64 64)">
+       <rect x="20" y="30" width="88" height="68" rx="22" fill="${PALETTE.cheek}"/>
+       <rect x="30" y="40" width="68" height="48" rx="14" fill="${PALETTE.ink}"/>
+       <text x="64" y="${dy}" font-family="${LOCKUP_FONT}" font-weight="700" font-size="${size}"
+             fill="${PALETTE.pika}" text-anchor="middle">${glyphs}</text></g>`;
+  const box = (label, inner) =>
+    `<div style="display:flex;flex-direction:column;gap:6px;align-items:center">
+       <div style="background:${PALETTE.ink};border-radius:12px;padding:14px">
+         <svg viewBox="0 0 128 128" width="120" height="120">${inner}</svg></div>
+       <b style="font:600 10px ui-monospace,monospace;color:#666">${label}</b></div>`;
+
+  const body = `<div style="font:13px/1.4 system-ui;background:#f0f0f2;padding:24px;
+      display:flex;flex-direction:column;gap:20px;width:1000px">
+    <b>Three drawings — bolt / percent / unknown</b>
+    ${swatch(
+      Object.values(ALL_DRAWINGS)
+        .map((d) => `<svg viewBox="0 0 128 128" width="110" height="110">
+            <rect x="2" y="2" width="124" height="124" rx="27" fill="${PALETTE.paper}"/>${d}</svg>`)
+        .join(''),
+      '#e8e8ec',
+    )}
+    <b>Glyphs up close — drawn as geometry, against the same thing set as text</b>
+    <div style="display:flex;gap:14px">
+      ${box('drawn ?%', ALL_DRAWINGS.unknown)}
+      ${box('text ?%', textGlyph('?%', 36, 77))}
+      ${box('drawn %', ALL_DRAWINGS.percent)}
+      ${box('text %', textGlyph('%', 46, 81))}
+    </div>
+    <b>Every shipped size, actual pixels</b>
+    ${['#e8e8ec', '#20232b'].map((bg) => swatch([16, 32, 48, 64, 128, 256].map((px) => markSvg(px)).join(''), bg)).join('')}
+    <b>Toolbar, actual pixels</b>
+    ${swatch([16, 16, 16].map((px) => markSvg(px)).join(''), '#20232b')}
+    <b>Lockup</b>
+    ${swatch(wordmarkSvg({color: PALETTE.ink}), '#e8e8ec')}
+    ${swatch(wordmarkSvg({color: PALETTE.paper}), '#20232b')}
+  </div>`;
+
+  await page.setViewport({width: 1000, height: 900, deviceScaleFactor: 2});
+  await page.setContent(
+    `<!doctype html><meta charset="utf8"><style>*{margin:0;padding:0;box-sizing:border-box}</style>${body}`,
+    {waitUntil: 'load'},
+  );
+  await write('.icon-proof/proof.png', await page.screenshot({fullPage: true}));
+  console.log('wrote .icon-proof/proof.png');
 }

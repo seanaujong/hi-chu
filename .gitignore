@@ -14,6 +14,10 @@ demo/*-raw.gif
 # Chrome Web Store upload assets (generated; not repo content)
 store-screenshots/
 
+# `node scripts/make-icons.mjs --proof` output — a sheet to look at while tuning the mark,
+# never shipped. The icons themselves ARE committed.
+.icon-proof/
+
 # `npm run screenshots` output — candidate shots from a throwaway battle; the keepers
 # get copied into demo/ and store-screenshots/ by hand.
 screenshots/

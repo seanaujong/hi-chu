@@ -1,4 +1,8 @@
-# hi-chu
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/wordmark-dark.png">
+  <img src="docs/brand/wordmark.png" width="300"
+       alt="hi-chu — a wrapped sweet whose window reads ?%">
+</picture>
 
 *(hi-chew × pikachu)*
 

@@ -71,10 +71,14 @@ minute), not real play.pokemonshowdown.com accounts — see the invariants secti
 demand (`gh workflow run e2e.yml`) for probing a specific format outside the release flow.
 
 Bump the version FIRST — `release.yml` releases whatever's already in the files, it doesn't
-write them. `npm version --no-git-tag-version X.Y.Z` updates `package.json`/`package-
-lock.json`; `public/manifest.json`'s `version` field needs the same bump by hand. That's a
-normal change to a protected file, so it goes through the same branch + PR + merge as
-anything else (see Contributing, below) — but **before merging that PR**, run the
+write them. **`npm run release-bump <major|minor|patch|X.Y.Z>`** does the whole bump:
+`npm version` still writes `package.json`/`package-lock.json`, and the script adds the
+`public/manifest.json` write those two always needed alongside them, then re-checks that all
+three agree and that the result is a legal Chrome Web Store version (integers only, each
+≤ 65535 — a semver pre-release tag passes npm and is rejected at upload). It deliberately
+does not commit, tag or push. That's a normal change to a protected file, so it goes through
+the same branch + PR + merge as anything else (see Contributing, below) — but **before
+merging that PR**, run
 **`npm run visual-check`** for an eyes-on pass over the surfaces nothing else reaches: the
 move tooltip, the own-hover matchup view, the switch menu, and the Tera preview. It plays a
 real two-account battle on the self-hosted server and photographs every surface **through the
@@ -130,6 +134,17 @@ actually happened on GitHub:
    duplicating the click-by-click steps here, since Google's own console UI drifts. The
    extension id (`kjdnmonplcbfldefppjoohlleelfcmik`) is public — it's in the store URL — so
    it's a plain env var in the workflow, not a secret.
+
+**Knowing a release is DUE is its own problem, and nothing above solves it.** Every workflow
+here acts only once a bump has landed, so "main has moved and nobody bumped" produces no
+signal at all — which is how this repo reached 17 unreleased commits (the Safari port, the
+CLAUDE.md restructure, itemreveal, drain/recoil) while the store still served v0.19.3.
+**`npm run release-status`** is the read-only answer: it reports which of four states you're
+in (`in-sync`, `unreleased`, `pending` — bumped but not yet tagged, so auto-tag is mid-flight
+or its verify job failed — or `mismatch`), lists the unreleased commits, and names the next
+patch/minor. `.github/workflows/release-drift.yml` runs it on every push to `main` as a job
+summary and weekly with `--fail-after=14`, so ordinary between-release drift stays quiet and
+a genuinely forgotten release goes red. It creates no tags and publishes nothing.
 
 A manual escape hatch still works if the automation is ever down: `git tag vX.Y.Z
 <merged-sha> && git push origin vX.Y.Z` triggers `release.yml` the same way, standalone.

@@ -18,6 +18,8 @@
     "drift-check": "node scripts/drift-check.mjs",
     "player-check": "node scripts/player-check.mjs",
     "release-check": "npm run build && npm run check && npm run drift-check && npm run player-check",
+    "release-status": "node scripts/release-status.mjs",
+    "release-bump": "node scripts/release-bump.mjs",
     "screenshots": "node scripts/screenshots.mjs",
     "build:visual-check": "node scripts/build-visual-check.mjs",
     "visual-check": "npm run build:visual-check && REAL_EXTENSION=1 node scripts/screenshots.mjs"

@@ -113,10 +113,15 @@ const question = (cx, cy, h, fill) => {
 // Without one the silhouette itself is the mark, which is also the more distinctive answer:
 // every other extension icon is a rounded square with something inside it.
 //
-// How far from centre the mark is allowed to reach. A bare toolbar slot can take the full
-// box; a platform that applies its own mask needs room inside it.
+// How far from centre the mark is allowed to reach, per destination. A bare toolbar slot can
+// take the full box; a platform that applies its own mask needs room inside it; and the Chrome
+// Web Store LISTING requires the artwork to sit at 96x96 inside the 128 canvas — "an
+// additional 16 pixels per side should be transparent padding" — which is a different, smaller
+// frame than the same store's packaged toolbar icon. Getting that wrong is invisible locally
+// and only shows up as an oversized tile next to every other extension on the store page.
 const REACH_FREE = 63;
 const REACH_MASKED = 52;
+const REACH_STORE = 48; // half of 96
 
 const placed = (drawing, room) => {
   const scale = (room / halfExtent(drawing.reach)).toFixed(3);
@@ -171,11 +176,21 @@ export const OPTICAL = (pt) => (pt < 40 ? 'bolt' : pt < 96 ? 'percent' : 'unknow
  * `opaque` lays the wrapper paper down as a full-bleed ground and insets the sweet. It is
  * for iOS alone, which forbids an alpha channel in an app icon (transparency is composited
  * onto black) and applies its own corner mask. Everywhere else the icon is transparent.
+ *
+ * `frame` chooses how much of the 128 box the mark may occupy: 'free' for a toolbar slot,
+ * 'masked' for a platform that crops, 'store' for the Chrome Web Store listing tile. It
+ * DEFAULTS from `opaque` rather than to 'free', because the only reason we go opaque is iOS,
+ * and iOS is also the thing that crops — pairing them by hand once meant getting it wrong
+ * once, silently, in a file nobody looks at until it is on a home screen.
+ *
+ * Keeping
+ * the transparency matters there too — an alpha-less upload gets dropped into a 12px-radius
+ * rounded frame by the store, which would put back the tile this mark deliberately has not got.
  */
-export const markSvg = (px, {pt = px, opaque = false} = {}) =>
+export const markSvg = (px, {pt = px, opaque = false, frame = opaque ? 'masked' : 'free'} = {}) =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="${px}" height="${px}">` +
   (opaque ? `<rect x="0" y="0" width="128" height="128" fill="${P.paper}"/>` : '') +
-  `${placed(DRAWINGS[OPTICAL(pt)], opaque ? REACH_MASKED : REACH_FREE)}</svg>`;
+  `${placed(DRAWINGS[OPTICAL(pt)], {free: REACH_FREE, masked: REACH_MASKED, store: REACH_STORE}[frame])}</svg>`;
 
 /** Every drawing, for the proof sheet. */
 export const ALL_DRAWINGS = DRAWINGS;

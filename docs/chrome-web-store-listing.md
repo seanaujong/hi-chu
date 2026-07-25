@@ -156,7 +156,10 @@ data is collected or sent anywhere.
 ## Assets checklist
 
 - [x] Package zip — `npm run package` → `hi-chu-<version>.zip`
-- [x] Store icon 128×128 — `public/icons/icon-128.png`
+- [x] Store icon 128×128 — `docs/brand/store-icon-128.png` (NOT `public/icons/icon-128.png`,
+      which is the packaged toolbar icon and runs edge to edge. The store frames its listing
+      tile tighter: artwork at 96×96 with 16px of transparent padding per side. Keep the
+      transparency — an alpha-less upload gets dropped into a 12px-radius rounded frame.)
 - [ ] Screenshots — 1280×800 (or 640×400), 1–5 of the tooltip in action (below)
 - [ ] Small promo tile 440×280 — optional
 - [ ] Privacy policy URL live — commit & push `PRIVACY.md` first

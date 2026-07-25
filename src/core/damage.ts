@@ -7,6 +7,14 @@
 // one run for a uniform-power move, one per hit's true BP for Triple Axel/Triple
 // Kick — and convolve those per-hit rolls over the real hit-count distribution
 // (core/multihit.ts) to get the true total, and from it an exact single-use KO chance.
+//
+// Its PACKAGING has sharper edges than its math, and they land here because this is the
+// only file that imports it. The library is CommonJS, and it publishes no type names of
+// its own — there is no `TypeName` to import, however much the call sites look like there
+// should be. A battle-sourced type string is therefore cast through the calc's own state
+// types (`State.Pokemon['teraType']`), which is the same union reached by a route the
+// package actually exports. Reaching for the import that ought to exist is the usual way
+// this file stops compiling.
 
 import {calculate, calcStat, Generations, Pokemon, Move, Field, toID, type GenerationNum, type State} from '@smogon/calc';
 import type {FieldFacts, FullStats, ResolvedMon, SpeciesData, StatID} from './types.js';

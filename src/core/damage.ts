@@ -500,15 +500,11 @@ export function painSplit(user: ResolvedMon, foe: ResolvedMon, gen = 9): PainSpl
 /**
  * The attacker's own HP swing from landing this move — see `SelfHpEffect`. Delegated to
  * @smogon/calc wherever it really models the mechanic (`recovery()` covers drain and Shell
- * Bell; `recoil()` covers a move's own recoil, Rock Head included), with three corrections
+ * Bell; `recoil()` covers a move's own recoil, Rock Head included), with two corrections
  * it does NOT model. Each was found by probing the calc directly, not by reading it:
  *
  *   - MAGIC GUARD cancels recoil, and `getRecoil` only ever checks Rock Head — a Magic
  *     Guard Double-Edge still comes back reporting recoil damage.
- *   - LIFE ORB's cut isn't in `recoil()` at all (an Outrage off a Life Orb returns [0,0]).
- *     Its own two suppressors are Magic Guard and Sheer Force; the Sheer Force test mirrors
- *     the calc's own (`gen789.js`: a secondary effect, or Electro Shot / Order Up, non-Max)
- *     so the two can't drift on which moves count.
  *   - LIQUID OOZE inverts a drain into damage; the calc reports the heal regardless. The
  *     siphon becomes a LOSS. Suppressed entirely in the one case the two can't be told
  *     apart — a Shell Bell attacker, whose heal `recovery()` sums into the same figure.
@@ -542,14 +538,14 @@ function selfHpEffects(atk: Pokemon, def: Pokemon, move: Move, result: ReturnTyp
     }
   }
 
-  const sheerForce =
-    atk.hasAbility('Sheer Force') && (Boolean(move.secondaries) || move.named('Electro Shot', 'Order Up')) && !move.isMax;
-  const dealtDamage = Math.max(...rollsOf(result.damage)) > 0;
-  if (atk.hasItem('Life Orb') && dealtDamage && !magicGuard && !sheerForce) {
-    // The sim takes floor(maxHP/10), never less than 1 — not a flat 10% of the bar.
-    const cut = pct(Math.max(1, Math.floor(atk.maxHP() / 10)));
-    effects.push({label: 'Life Orb', direction: 'loss', min: cut, max: cut});
-  }
+  // Life Orb's cut is deliberately NOT reported, though the calc misses it and we could.
+  // It is invariant: the same ~10% on every damaging move, every turn, for as long as the
+  // item is held — so it tells you nothing about the move you are hovering, which is the
+  // only question this tooltip answers. The item is already named a few lines up in the
+  // native panel. A number that never changes is noise on every hover, and it was actively
+  // misleading in red: red here means "this KOes them", and a self-inflicted cost wearing
+  // it reads as the opposite of what it is. Drain, recoil and Liquid Ooze all stay, because
+  // each varies by move and by the damage actually dealt.
   return effects;
 }
 

@@ -178,11 +178,16 @@ export const OPTICAL = (pt) => (pt < 40 ? 'bolt' : pt < 96 ? 'percent' : 'unknow
  * onto black) and applies its own corner mask. Everywhere else the icon is transparent.
  *
  * `frame` chooses how much of the 128 box the mark may occupy: 'free' for a toolbar slot,
- * 'masked' for a platform that crops, 'store' for the Chrome Web Store listing tile. Keeping
+ * 'masked' for a platform that crops, 'store' for the Chrome Web Store listing tile. It
+ * DEFAULTS from `opaque` rather than to 'free', because the only reason we go opaque is iOS,
+ * and iOS is also the thing that crops — pairing them by hand once meant getting it wrong
+ * once, silently, in a file nobody looks at until it is on a home screen.
+ *
+ * Keeping
  * the transparency matters there too — an alpha-less upload gets dropped into a 12px-radius
  * rounded frame by the store, which would put back the tile this mark deliberately has not got.
  */
-export const markSvg = (px, {pt = px, opaque = false, frame = 'free'} = {}) =>
+export const markSvg = (px, {pt = px, opaque = false, frame = opaque ? 'masked' : 'free'} = {}) =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="${px}" height="${px}">` +
   (opaque ? `<rect x="0" y="0" width="128" height="128" fill="${P.paper}"/>` : '') +
   `${placed(DRAWINGS[OPTICAL(pt)], {free: REACH_FREE, masked: REACH_MASKED, store: REACH_STORE}[frame])}</svg>`;

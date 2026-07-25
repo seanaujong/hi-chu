@@ -26,6 +26,10 @@ screenshots/
 # scripts/lib/local-server.mjs) — cloned + npm installed on first run, not repo content.
 .ps-server/
 
+# Chrome for Testing, downloaded on first `visual-check` run (see
+# scripts/lib/extension-chrome.mjs) — a 355MB browser, not repo content.
+.chrome-for-testing/
+
 # Xcode's own build cache for the Safari port (safari/hi-chu/) — regenerable, huge,
 # machine-specific; the Xcode project source itself is tracked.
 safari/build/

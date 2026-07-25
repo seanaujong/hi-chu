@@ -432,6 +432,14 @@ function megaSpeedApplies(gen: number): boolean {
  * already terastallized, or not our active mon this turn — Tera, like Mega, only takes
  * effect on the turn the move is actually used, so a benched/switch-candidate mon never
  * gets it).
+ *
+ * EVERY surface that can carry a pending Tera must go through this one function, and the
+ * reason is Protean/Libero specifically: `@smogon/calc`'s `getStabMod` grants their STAB
+ * only while `!pokemon.teraType`, and a Tera once set overrides Protean's retype for STAB
+ * purposes even when the previewed type doesn't match the move. That behaviour hangs on
+ * exactly this value — so a second, slightly-different copy of the "which Tera type, if
+ * any" decision would make the SAME move report two different numbers depending on which
+ * tooltip you hovered.
  */
 function teraPreviewFor(
   battle: ClientBattle,
@@ -592,7 +600,10 @@ function ownMovesSection(
   // True when hazards on switch-in would faint `attacker` before it can even take the
   // foe's hit — the caller already dropped `incomingMovesFor` in that case (there is
   // nothing left to survive), so this is what tells the render layer to say so instead
-  // of silently showing no Incoming group at all. See `core/hazards.ts`.
+  // of silently showing no Incoming group at all. It has to be its own flag rather than
+  // just piping 0% HP through: `calcDamage` floors remaining HP at 1, so a true 0 would
+  // come back as a technically-real but dishonest "100% to KO at 0% HP". See
+  // `core/hazards.ts`.
   hazardFaints = false,
 ): string {
   const sections = activesOpposing(battle, ourSide).map((foe) => {

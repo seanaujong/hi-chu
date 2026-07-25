@@ -11,7 +11,21 @@
 // isGrounded lives in the same non-public module as getFinalSpeed (core/speed.ts already
 // deep-imports that one, with the same rationale reused here — no `exports` map on the
 // package, so the path is reachable, and a pinned test catches a future calc upgrade that
-// moves or changes it).
+// moves or changes it). That deep import is why dependency-boundaries.test.ts's
+// @smogon/calc allow-list names this file alongside damage.ts and speed.ts.
+//
+// Applied ONCE per hover, before the per-foe loop in section.ts's ownMovesSection: hazards
+// are one-time and side-wide, so doubles is safe by construction rather than by a guard.
+// Both call sites preview a mon NOT yet on the field — buildSwitchSection (always: a
+// switch-menu candidate is benched by definition) and ownHoverMatchup's non-active branch.
+//
+// Nothing here is ever UNCERTAIN, unlike the hidden-item bucketing elsewhere in the
+// codebase: a switch candidate is our OWN mon, always resolved from the private team, so
+// its Boots/Magic Guard is known outright rather than fanned out into labelled outcomes.
+//
+// Explicit v1 cuts, not oversights: Toxic Spikes (poisons at end of turn — it doesn't
+// change whether the mon survives the next hit), G-Max Steelsurge (Dynamax-only), and
+// forced grounding from Gravity / Ingrain / Smack Down.
 import {isGrounded} from '@smogon/calc/dist/mechanics/util';
 import {Field, Generations, TYPE_CHART, type GenerationNum} from '@smogon/calc';
 import {buildPokemon} from './damage.js';

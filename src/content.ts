@@ -98,6 +98,19 @@ function append(
     } catch (error) {
       // Never let our augmentation break the native tooltip — but a real bug
       // shouldn't vanish silently either, so at least surface it in DevTools.
+      //
+      // DevTools is as far as it goes, and that is a deliberate privacy stance, not an
+      // unfinished feature: `manifest.json`'s `host_permissions` grant only the randbats
+      // feed host, so this extension is technically incapable of reporting an error
+      // anywhere off the page even if it wanted to. It reads private battle data
+      // (`myPokemon`), so adding any phone-home would need its own deliberate decision
+      // rather than arriving as a default.
+      //
+      // Only two catches in the codebase log: this one and the feed fetch in
+      // `data/randbats.ts`. The rest (`section.ts`'s two, `damage.ts`'s `safeDesc`,
+      // `randbats.ts`'s cache reads) stay silent ON PURPOSE — each guards a genuinely
+      // EXPECTED branch (a move outside the calc's dex, an immune matchup, a cold or
+      // corrupted cache), not a bug, so logging there would be noise on ordinary battles.
       console.error(`[hi-chu] ${method} augmentation failed:`, error);
     }
     return buf;

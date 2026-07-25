@@ -243,11 +243,16 @@ describe('an Illusion disguise on OUR side (the Pokémon in the slot is not the 
     expect(buildMoveSection(battle, active('Noivern'), 'Focus Blast', data, true)).toContain('Tera Fighting');
   });
 
-  it('leads our own hover with the real Zoroark’s moves, and keeps the mirror on the disguise', () => {
+  it('judges our own hover from the real Zoroark, and keeps the mirror on the disguise', () => {
     const {battle, active} = loadBattle(disguised);
     const html = buildPokemonSection(battle, active('Noivern'), data);
-    expect(html).toMatch(/Focus Blast: [\d.]+% - [\d.]+%/); // Zoroark's kit, not Noivern's
+    // The outgoing damage lines are withheld for an ACTIVE mon (its move buttons carry
+    // them — and `buildMoveSection` above already pins that they use Zoroark's numbers).
+    // What still proves the see-through on THIS surface is the ⚡ verdict: it is computed
+    // from the Pokémon really standing there, via the same slot lookup.
+    expect(html).not.toContain('Focus Blast:');
     expect(html).not.toContain('Draco Meteor:');
+    expect(html).toContain('⚡');
     // The mirror is what THEY can deduce, and they see a Noivern.
     const mirror = html.slice(html.indexOf('hichu-block'));
     expect(mirror).toContain('Fast Support'); // a Noivern role
@@ -569,10 +574,29 @@ describe('buildPokemonSection hovering OUR Noivern as the player (the matchup vi
 
   it('leads with our moves vs their active, before the mirror blocks', () => {
     const {battle, active} = loadBattle(mine);
-    const html = buildPokemonSection(battle, active('Noivern'), data);
+    const html = buildPokemonSection(battle, benched(active('Noivern')), data);
     expect(html).toContain('<small>vs</small> <b>Tentacruel</b>');
     expect(html).toMatch(/Draco Meteor: [\d.]+% - [\d.]+%/); // id form displayed as the real name
     expect(html.indexOf('<b>Tentacruel</b>')).toBeLessThan(html.indexOf('Fast Support'));
+  });
+
+  it('WITHHOLDS the outgoing damage lines for the mon already on the field', () => {
+    // Its move buttons are right there and each one's own tooltip carries that damage in
+    // more detail (nHKO ladder, Sash/Leftovers caveats, drain/recoil) — the same
+    // never-show-the-same-number-twice rule that withholds the Incoming group here.
+    const {battle, active} = loadBattle(mine);
+    const onField = buildPokemonSection(battle, active('Noivern'), data);
+    expect(onField).not.toMatch(/Draco Meteor: [\d.]+%/);
+    expect(onField).not.toMatch(/Hurricane: [\d.]+%/);
+    // ...but the header and the ⚡ verdict stay: speed appears on no other own-side surface.
+    expect(onField).toContain('<small>vs</small> <b>Tentacruel</b>');
+    expect(onField).toContain('⚡ you move first — 249 vs 216');
+  });
+
+  it('KEEPS them for a benched mon — its move buttons are not hoverable at all', () => {
+    const {battle, active} = loadBattle(mine);
+    const bench = buildPokemonSection(battle, benched(active('Noivern')), data);
+    expect(bench).toMatch(/Draco Meteor: [\d.]+% - [\d.]+%/);
   });
 
   it('gives status moves no line — damage is the question here', () => {
@@ -583,33 +607,17 @@ describe('buildPokemonSection hovering OUR Noivern as the player (the matchup vi
 
   it('shows the same numbers the move tooltip would — one truth per move', () => {
     const {battle, active} = loadBattle(mine);
-    const hover = buildPokemonSection(battle, active('Noivern'), data);
+    const hover = buildPokemonSection(battle, benched(active('Noivern')), data);
     const line = /Draco Meteor: ([\d.]+)% - ([\d.]+)%/.exec(hover)!;
     const button = buildMoveSection(battle, active('Noivern'), 'Draco Meteor', data);
     expect(button).toContain(`<small>Damage:</small> ${line[1]}% - ${line[2]}%`);
-  });
-
-  it('carries the same Terastallize preview as the move tooltip — the two surfaces must not diverge', () => {
-    const teraMine = {...mine, noivernTerastallized: '', myNoivernTera: 'Fire'};
-    const plain = loadBattle(teraMine);
-    const tera = loadBattle(teraMine);
-    const plainHtml = buildPokemonSection(plain.battle, plain.active('Noivern'), data);
-    const teraHtml = buildPokemonSection(tera.battle, tera.active('Noivern'), data, false, true);
-    const plainLine = /Flamethrower: ([\d.]+)% - ([\d.]+)%/.exec(plainHtml)!;
-    const teraLine = /Flamethrower: ([\d.]+)% - ([\d.]+)%/.exec(teraHtml)!;
-    // Flamethrower is non-STAB on Flying/Dragon Noivern; Tera Fire makes it STAB (×1.5) —
-    // the same swing `buildMoveSection`'s own Tera-preview test pins.
-    expect(Number(teraLine[2])).toBeGreaterThan(Number(plainLine[2]) * 1.4);
-    // And it must be the EXACT number the move tooltip previews — one truth, two surfaces.
-    const button = buildMoveSection(tera.battle, tera.active('Noivern'), 'Flamethrower', data, true);
-    expect(button).toContain(`<small>Damage:</small> ${teraLine[1]}% - ${teraLine[2]}%`);
   });
 
   it("splits a move into labelled outcomes when the foe's item is still unknown", () => {
     // Tentacruel's Bulky Support can hold Assault Vest or Leftovers; Draco Meteor is
     // special, so the hidden Vest changes the number — never one confidently-wrong line.
     const {battle, active} = loadBattle({...mine, tentacruelItem: ''});
-    const html = buildPokemonSection(battle, active('Noivern'), data);
+    const html = buildPokemonSection(battle, benched(active('Noivern')), data);
     expect(html).toMatch(/Draco Meteor: <small>\((Assault Vest|Leftovers)\)<\/small>/);
   });
 
@@ -864,7 +872,7 @@ describe('the ⚡ line on OUR side of the pair (matchup view + switch menu)', ()
 
   it('sits under the "vs <foe>" header, above the move lines', () => {
     const {battle, active} = loadBattle(mine);
-    const html = buildPokemonSection(battle, active('Noivern'), data);
+    const html = buildPokemonSection(battle, benched(active('Noivern')), data);
     expect(html).toContain('⚡ you move first — 249 vs 216');
     expect(html.indexOf('<b>Tentacruel</b>')).toBeLessThan(html.indexOf('⚡'));
     expect(html.indexOf('⚡')).toBeLessThan(html.indexOf('Draco Meteor:'));
@@ -1361,7 +1369,7 @@ describe("the move tooltip's own-HP swing (drain, recoil, Life Orb, Liquid Ooze)
 
   it('stays OFF the compact matchup view — the move tooltip is the one surface that shows it', () => {
     const b = loadBattle({myNoivernItem: 'heavydutyboots', myNoivernMoves: ['doubleedge', 'roost']});
-    const html = buildPokemonSection(b.battle, b.active('Noivern'), data);
+    const html = buildPokemonSection(b.battle, benched(b.active('Noivern')), data);
     expect(html).toContain('Double-Edge'); // the move is listed there...
     expect(html).not.toContain('Recoil:'); // ...but without the swing line
   });

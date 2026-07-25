@@ -698,9 +698,13 @@ function ownHoverMatchup(
   // preview law, two surfaces (see `teraPreviewFor`/`megaPreviewFor`). Speed stays Mega-only
   // (its Speed hits the ⚡ line from gen 7, `megaSpeedApplies`) — Tera never changes stats,
   // so it has nothing to add there.
+  // Only the ⚡ line can still see a pending gimmick here, and only Mega — a Mega's Speed
+  // moves the verdict from gen 7 (`megaSpeedApplies`), while Tera never changes Speed at
+  // all. The DAMAGE side takes no preview because this view no longer computes damage for
+  // an active mon (see `outgoingMoves` below), and a benched mon can neither Mega nor Tera
+  // on the turn it switches in — so `base` is the honest attacker in both cases.
   const applyMega = megaPreviewFor(battle, pokemon, megaSelected);
-  const applyTera = teraPreviewFor(battle, pokemon, teraSelected, facts);
-  const attacker = applyPreviews(base, [applyMega, applyTera]);
+  const attacker = base;
   const speedAttacker = applyMega && megaSpeedApplies(format.gen) ? applyMega(base) : base;
   // Our real item feeds the ⚡ line too: a Scarf we are holding is our own private
   // truth, and showing US our own speed as uncertain would be absurd.
@@ -714,8 +718,17 @@ function ownHoverMatchup(
   const ownHazards = isSwitchCandidate ? readOwnHazards(pokemon.side) : {stealthRock: false, spikesLayers: 0};
   const switchInAttacker = isSwitchCandidate ? applySwitchInHazards(attacker, ownHazards, format.gen) : attacker;
   const hazardFaints = isSwitchCandidate && switchInAttacker.hpPercent <= 0;
+  // The OUTGOING lines are withheld for the mon already on the field, for exactly the
+  // reason the Incoming group above them is: never show the same number on two surfaces.
+  // An active Pokémon's move buttons sit right under the tooltip and each one's own
+  // tooltip already carries that damage — with more detail than this compact view (the
+  // nHKO ladder, the Sash/Leftovers caveats, the drain/recoil swing). A benched mon has
+  // no hoverable move buttons at all, which is the whole reason this half exists, so it
+  // keeps them. The ⚡ verdict stays either way: it is a fact about the PAIR and appears
+  // on no other own-side surface.
+  const outgoingMoves = isSwitchCandidate ? moves : [];
   return ownMovesSection(
-    battle, pokemon.side, switchInAttacker, moves, format, readFacts, randbatsVariantsFor(data), speedFor,
+    battle, pokemon.side, switchInAttacker, outgoingMoves, format, readFacts, randbatsVariantsFor(data), speedFor,
     speedAttacker, hazardFaints ? undefined : incomingMovesFor, hazardFaints,
   );
 }

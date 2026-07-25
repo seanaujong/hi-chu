@@ -207,7 +207,7 @@ A **randbats** format, where everything is available:
 | Hover target | Damage | ⚡ lead | Outgoing | ⚡ per block | `Incoming:` | Our dmg into them | Sets | Mirror |
 |---|---|---|---|---|---|---|---|---|
 | Our move button | ✓ | — | — | — | — | — | — | — |
-| Our active | — | — | ✓ | ✓ | withheld | — | — | ✓ |
+| Our active | — | — | withheld | ✓ | withheld | — | — | ✓ |
 | Our benched icon | — | — | ✓ +hazards | ✓ | ✓ | — | — | ✓ |
 | Our switch menu | — | — | ✓ +hazards | ✓ | ✓ | — | — | never |
 | Foe active | — | ✓ | — | — | — | withheld | ✓ | — |
@@ -218,11 +218,15 @@ cell empties out: the move tooltip and our own matchup blocks survive (the foe's
 bracketed, ours exact), a **foe hover renders nothing at all**, and there is no ⚡ line,
 no `Incoming:` group, and no sets/mirror anywhere.
 
-Two cells say **withheld** rather than "—", and they are the same principle twice, not two
-decisions: never show the same number on two surfaces. Our active's `Incoming:` numbers are
-already on the foe's own hover, and our damage into an ACTIVE foe is already on the move
-tooltip. A switch-decision candidate has no such other source, which is the whole reason
-that half exists. "never" is a different thing entirely — the switch menu's mirror is
+Three cells say **withheld** rather than "—", and they are the same principle three times,
+not three decisions: never show the same number on two surfaces. Our active's `Incoming:`
+numbers are already on the foe's own hover; our damage into an ACTIVE foe is already on the
+move tooltip; and our active's own OUTGOING lines are already on its move buttons, which sit
+right under the tooltip and carry the number in more detail (the nHKO ladder, the
+Sash/Leftovers caveats, the drain/recoil swing). A switch-decision candidate has no such
+other source — its move buttons aren't hoverable at all — which is the whole reason that
+half exists. So an ACTIVE mon's own hover keeps only its "vs \<foe\>" header and the ⚡
+verdict, which appears on no other own-side surface. "never" is a different thing entirely — the switch menu's mirror is
 withheld for privacy, not redundancy (it would have to be derived from private facts).
 
 **In doubles the redundancy argument is only partly true.** The sets view's threat calc
@@ -416,13 +420,13 @@ them until someone adds it.
 | `assume.ts` reuses the `buildResolved` WRITER but never the `narrow` matcher | ✅ | `core/assume.ts`, `core/resolve.ts` | `resolve.test.ts` |
 | OUR OWN side is exact in open formats — server finals via a solved equivalent spread | ✅ | `core/damage.ts` (`spreadForFinalStats`), `battle/readState.ts` (`serverStats`) | `damage.test.ts`, `readState.test.ts` |
 | Delegate damage interactions to the calc; never hand-apply status/ability modifiers | ◐ | `core/damage.ts` | `damage.test.ts` |
-| `teraType` is set only when Tera is ACTIVE — one sanctioned preview, applied to our mon as ATTACKER *and* DEFENDER | ✅ | `section.ts` (`PreviewOverlay`, `teraPreviewFor`, `applyPreviews`), `core/resolve.ts` | `section.test.ts`, `resolve.test.ts`, `readState.test.ts` |
+| `teraType` is set only when Tera is ACTIVE — previewed on the move tooltip (attacker) and a foe hover's damage into us (defender) | ✅ | `section.ts` (`PreviewOverlay`, `teraPreviewFor`, `applyPreviews`), `core/resolve.ts` | `section.test.ts`, `resolve.test.ts`, `readState.test.ts` |
 | A ticked Mega box previews OUR active mon's Mega forme — offence, Speed from gen 7, and defence | ✅ | `section.ts` (`megaPreviewFor`, `megaSpeedApplies`), `battle/readState.ts` (`readMegaForme`) | `section.test.ts`, `readState.test.ts` |
 | A pending Tera/Mega preview carries NO speed caveat — both resolve ahead of every move | ✅ | `section.ts` (`applyPreviews`) | `section.test.ts` |
 | A move's own HP swing (drain, recoil, Life Orb, Liquid Ooze) is opt-in and move-tooltip only | ✅ | `core/damage.ts` (`SelfHpEffect`, `selfHpEffects`), `core/variants.ts` (`resultKey`), `core/render.ts` (`selfHpText`) | `damage.test.ts`, `section.test.ts` |
 | Set narrowing uses every public reveal, nothing private | ✅ | `core/narrow.ts` | `resolve.test.ts` |
 | `battle.myPokemon` feeds OUR-view surfaces only, never the opponent's-knowledge views | 👁 | `battle/readState.ts` (`readOwnServerPokemon`), `section.ts` | `section.test.ts`, `readState.test.ts` |
-| Hovering our OWN Pokémon leads with the matchup view; the mirror below stays public | ✅ | `section.ts` (`ownMovesSection`, `ownHoverMatchup`, `buildSwitchSection`) | `section.test.ts`, `render.test.ts`, `readState.test.ts`, `content.test.ts` |
+| Hovering our OWN Pokémon leads with the matchup view — outgoing lines withheld for the mon already on the field; the mirror below stays public | ✅ | `section.ts` (`ownMovesSection`, `ownHoverMatchup`, `buildSwitchSection`) | `section.test.ts`, `render.test.ts`, `readState.test.ts`, `content.test.ts` |
 | The matchup view's defensive half — the `Incoming:` group | ✅ | `section.ts` (`randbatsIncomingMovesFor`, `ownMovesSection`) | `section.test.ts`, `render.test.ts` |
 | Hovering a FOE's roster icon shows OUR active's damage into it | ✅ | `section.ts` (`foeSwitchInDamage`) | `section.test.ts` |
 | A LANDED damaging hit with no item revealed rules Life Orb out | ✅ | `core/deductions.ts`, `battle/readState.ts` (`hasLandedDamagingHit`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts` |

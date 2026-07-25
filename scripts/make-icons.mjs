@@ -45,10 +45,9 @@ const ICONS = [
   [`${SAFARI_APP}/Assets.xcassets/LargeIcon.imageset/icon-128.png`, 128, 128],
 ];
 
-const WORDMARKS = [
-  ['docs/brand/wordmark.png', PALETTE.ink],
-  ['docs/brand/wordmark-dark.png', PALETTE.paper],
-];
+// One lockup, not a light and a dark variant — the name is set in the wrapper's red, which
+// reads on either ground. See `wordmarkSvg` for why that is a correctness property.
+const WORDMARK = 'docs/brand/wordmark.png';
 
 const shell = (body, w, h) =>
   `<!doctype html><meta charset="utf8"><style>*{margin:0;padding:0}
@@ -77,10 +76,8 @@ try {
       await write(path, await shoot(markSvg(px, {pt, ...opts}), px));
       console.log(`${String(px).padStart(4)}px @ ${String(pt).padStart(4)}pt  ${OPTICAL(pt).padEnd(7)}  ${path}`);
     }
-    for (const [path, color] of WORDMARKS) {
-      await write(path, await shoot(wordmarkSvg({color}), 420, 128, 3));
-      console.log(`  lockup  ${path}`);
-    }
+    await write(WORDMARK, await shoot(wordmarkSvg(), 420, 128, 3));
+    console.log(`  lockup  ${WORDMARK}`);
   }
 } finally {
   await browser.close();
@@ -128,9 +125,9 @@ async function proof() {
     ${['#e8e8ec', '#20232b'].map((bg) => swatch([16, 32, 48, 64, 128, 256].map((px) => markSvg(px)).join(''), bg)).join('')}
     <b>Toolbar, actual pixels</b>
     ${swatch([16, 16, 16].map((px) => markSvg(px)).join(''), '#20232b')}
-    <b>Lockup</b>
-    ${swatch(wordmarkSvg({color: PALETTE.ink}), '#e8e8ec')}
-    ${swatch(wordmarkSvg({color: PALETTE.paper}), '#20232b')}
+    <b>Lockup — the SAME file on both grounds, which is the point</b>
+    ${swatch(wordmarkSvg(), '#ffffff')}
+    ${swatch(wordmarkSvg(), '#0d1117')}
   </div>`;
 
   await page.setViewport({width: 1000, height: 900, deviceScaleFactor: 2});

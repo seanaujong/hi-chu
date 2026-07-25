@@ -188,9 +188,17 @@ export const ALL_DRAWINGS = DRAWINGS;
  */
 export const LOCKUP_FONT = 'Avenir Next, Helvetica Neue, sans-serif';
 
-export const wordmarkSvg = ({color = P.ink} = {}) =>
+/**
+ * The name is set in the wrapper's own red, and the colour is fixed rather than an option.
+ * That is the whole point: at 3.7:1 on white and 5.1:1 on a near-black page it clears the
+ * large-text contrast bar on BOTH, so ONE file serves every ground. The lockup used to ship
+ * as a light and a dark variant, which meant any reference to the wrong one — a PR body, a
+ * doc, a slide — rendered the name at 1.2:1 and effectively invisible. One file cannot be
+ * paired with the wrong background, so it is a stronger guarantee than remembering to.
+ */
+export const wordmarkSvg = () =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 128" width="420" height="128">
     <g transform="translate(2 14) scale(0.78)">${placed(DRAWINGS.unknown, REACH_FREE)}</g>
     <text x="118" y="88" font-family="${LOCKUP_FONT}" font-weight="800" font-size="76"
-          letter-spacing="-2" fill="${color}">hi-chu</text>
+          letter-spacing="-2" fill="${P.cheek}">hi-chu</text>
   </svg>`;

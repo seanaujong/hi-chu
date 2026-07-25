@@ -55,7 +55,10 @@ size, because a retina asset is more pixels of a *small* icon and must stay simp
 a frame would have to be wider than the twist ends and could only crop or shrink them, and the
 scale that fits the mark to its box is COMPUTED from the geometry (`halfExtent`), never stored,
 so moving a vertex can't leave a stale number overhanging the edge. iOS is the one opaque icon,
-since it forbids an alpha channel. `node scripts/make-icons.mjs --proof` renders a sheet to
+since it forbids an alpha channel. The README lockup is deliberately ONE file rather than a
+light and a dark variant: the name is set in the wrapper's red, which clears the large-text
+contrast bar on white (3.7:1) and on a near-black page (5.1:1) alike, and one file cannot be
+paired with the wrong background. `node scripts/make-icons.mjs --proof` renders a sheet to
 `.icon-proof/` — the thresholds were chosen by looking, so looking is how to re-check them.
 **Shape of the suite, base to top.** Unit + integration tests (`npm run check`) are the
 base and middle — colocated `*.test.ts` beside each module, two tests driven by real

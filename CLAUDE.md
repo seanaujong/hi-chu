@@ -249,7 +249,11 @@ replacement for them.
 - **Never lie: bracket or bucket, never guess.** An unknown foe spread is bracketed by its
   extremes; a hidden item/ability splits into labelled outcomes only when the number really
   changes. See *An unknown foe spread is BRACKETED* and *Damage under a hidden item/ability
-  is split by DISTINCT outcome*.
+  is split by DISTINCT outcome*. It bites hardest in the **behavioural deductions**, where
+  the rule is stated as a preference: a rule-out is suppressed whenever an ability could
+  explain the evidence away (Sheer Force / Magic Guard), and anything genuinely ambiguous —
+  an unknown ident, an empty log — resolves to "no signal". Prefer MISSING a rule-out to
+  making a false one. See the Life Orb and Heavy-Duty Boots rows.
 
 ## Architecture — where to make a change
 A **pure core + thin browser shell**. Dependencies point one way: the shell uses the
@@ -268,8 +272,14 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
       `narrow.buildableAbilities` (see the invariant).
     - `deductions.ts` — the behavioural deduction layer: SILENT items (Life Orb, Heavy-Duty
       Boots) deduced ABSENT from public behaviour. `ruledOutItems`/`survivingItems`; adding
-      a deduction = one predicate + one line. Keeps the matcher general (it filters a pool,
-      it doesn't know mechanics).
+      a deduction = one predicate + one line in `ruledOutItems`, its unit test in the
+      colocated `deductions.test.ts` (hand-built facts via `sets.testfixtures.ts`'s
+      `liveFacts()`), plus a seam test in `resolve.test.ts` proving it actually reaches
+      `resolveVariants` — a rule that filters the pool but never reaches the fan-out is a
+      silent no-op. A new OBSERVATION it reads from the protocol log belongs in
+      `readState.ts` as a `BehaviorSignals` field; the Life Orb and Boots rows in the
+      invariant index name the pattern to copy. Keeps the matcher general (it filters a
+      pool, it doesn't know mechanics).
     - `narrow.ts` — the evidence law: `roleMatches` + `selectRoles` narrow roles by ALL
       public evidence (moves, item incl. `prevItem`, innate ability, active Tera) plus the
       deduction rule-outs. The one place the "which roles survive" rule lives —
@@ -392,6 +402,12 @@ real replay in headless Chrome) and `npm run player-check` (a real two-account b
 self-hosted server — the only way to reach anything behind `battle.myPokemon`). Neither
 runs in CI, because both need a browser. If either flags drift, re-derive from the PS
 source named in `Pointers` and update `readState.ts` and its tests in lockstep.
+
+**Reading a client field `readState.ts` doesn't already read obliges you to add a probe** to
+`scripts/drift-check.mjs` — or `scripts/player-check.mjs` if the field lives behind
+`battle.myPokemon` — and to list it under *What only a real browser can guard* below. Those
+probe lists are hand-maintained, not derived from the source, so a new read is invisible to
+them until someone adds it.
 
 | Invariant | | Reasoning owned by | Checked by |
 |---|---|---|---|

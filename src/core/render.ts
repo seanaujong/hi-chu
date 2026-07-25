@@ -382,7 +382,11 @@ function ownMoveLine(row: OwnMoveLineModel, hpPercent: number): string {
  */
 export function renderOwnMovesSection(sections: readonly OwnMovesModel[]): string {
   return sections
-    .filter((s) => s.moves.length > 0 || (s.incoming?.moves.length ?? 0) > 0 || s.incoming?.hazardFaints)
+    // A block earns its place from ANY of its three parts — outgoing damage, the ⚡
+    // verdict, or the incoming group. Speed alone is enough because our ACTIVE mon's
+    // outgoing lines are deliberately withheld (its move buttons already carry those
+    // numbers), leaving the verdict as the block's only content.
+    .filter((s) => s.moves.length > 0 || s.speed || (s.incoming?.moves.length ?? 0) > 0 || s.incoming?.hazardFaints)
     .map((s) => {
       const outgoing = block([
         targetHeader(s.foeName),

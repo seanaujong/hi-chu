@@ -43,7 +43,23 @@ unpacked** → pick `dist/`; open a Random Battle on play.pokemonshowdown.com an
 Pokémon. (The logic is covered end-to-end by tests; only this hover needs a human.)
 ```sh
 npm run drift-check   # LOCAL, needs Chrome: runs readState against a live replay (see below)
+npm run icons         # LOCAL, needs Chrome: redraw EVERY icon from scripts/lib/logo.mjs
 ```
+**The icons are generated, never hand-edited.** `scripts/lib/logo.mjs` holds the mark as pure
+SVG (no I/O), and `make-icons.mjs` renders it to all sixteen PNGs the repo ships — Chrome's
+three, Safari's eleven-file app-icon catalogue, and the two loose Safari copies — plus the
+README lockup. Editing one PNG by hand guarantees drift; edit the drawing and re-run. The mark
+exists at three levels of detail and `OPTICAL` picks between them by **point** size, not pixel
+size, because a retina asset is more pixels of a *small* icon and must stay simple (Safari's
+`mac-icon-16@2x` is 32px shown at 16pt). There is deliberately **no tile behind the sweet** —
+a frame would have to be wider than the twist ends and could only crop or shrink them, and the
+scale that fits the mark to its box is COMPUTED from the geometry (`halfExtent`), never stored,
+so moving a vertex can't leave a stale number overhanging the edge. iOS is the one opaque icon,
+since it forbids an alpha channel. The README lockup is deliberately ONE file rather than a
+light and a dark variant: the name is set in the wrapper's red, which clears the large-text
+contrast bar on white (3.7:1) and on a near-black page (5.1:1) alike, and one file cannot be
+paired with the wrong background. `node scripts/make-icons.mjs --proof` renders a sheet to
+`.icon-proof/` — the thresholds were chosen by looking, so looking is how to re-check them.
 **Shape of the suite, base to top.** Unit + integration tests (`npm run check`) are the
 base and middle — colocated `*.test.ts` beside each module, two tests driven by real
 captured data (`integration.test.ts`, `section.test.ts`), and one architecture-fitness

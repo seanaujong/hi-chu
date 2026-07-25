@@ -162,6 +162,89 @@ switching branches in place — the main checkout's `dist/` build (loaded unpack
 for manual verification) and any other in-progress branch stay undisturbed while the change
 is in flight.
 
+## Surfaces — what appears where
+The product is six hover targets crossed with a handful of sections, and most "should X
+show Y?" questions — including most bug reports — are really about one cell of that grid.
+This section IS the grid. `Architecture` below says which file owns each piece; `Conventions
+& invariants` says why each rule holds. Read this first when the change is something a
+player would SEE; go straight to Architecture when it's something we COMPUTE.
+
+### The hover targets
+`content.ts` patches only two client renderers; six distinct targets fall out of which
+arguments the client passes them.
+
+- **Our move button** — `showMoveTooltip` → `buildMoveSection`.
+- **Our active Pokémon** — `showPokemonTooltip(pokemon)` → `buildPokemonSection`, own branch.
+- **Our revealed benched Pokémon** — the sidebar roster icon, same dispatch, non-active.
+- **Our switch-menu button** — `showPokemonTooltip(null, serverPokemon)` → `buildSwitchSection`.
+  It needs its own builder because the client passes NO battle-view Pokémon here (its side
+  lookup is commented out, and a never-revealed benched mon has no battle-view object at all),
+  so this surface is built straight from the private `ServerPokemon`.
+- **The foe's active Pokémon** — `showPokemonTooltip(pokemon)` → `buildPokemonSection`, foe branch.
+- **The foe's roster icons** — same dispatch. `side.pokemon` is filled from the `|poke|` team-
+  preview lines, so this fires even for a Pokémon that has never been sent out.
+
+### The sections
+- **Damage** (`renderMoveSection`) — the "Damage:" line for one move, plus KO chance, the
+  nHKO ladder, the true multi-hit breakdown, and any Focus Sash / Leftovers caveat. One per
+  foe active, so doubles renders two.
+- **Pain Split** (`renderPainSplit`) — replaces Damage for that one move; it redistributes
+  HP rather than dealing any, so the calc returns nothing to show.
+- **⚡ speed verdict** (`renderSpeedSection`) — who moves first, as a fact about the (ours,
+  theirs) PAIR. Appears standalone leading a foe hover, and again inside each matchup block.
+- **Matchup blocks** (`renderOwnMovesSection`) — one "vs \<foe\>" block per foe active,
+  carrying up to three things: our outgoing move damage, that pair's ⚡ line, and the
+  `Incoming:` group (what the foe's own moves would do INTO the mon being hovered).
+- **Sets / mirror** (`renderSetsSection`) — the information game. On a foe hover: still-
+  possible sets with each move's damage into our active. On our own: the mirror, what the
+  opponent can deduce about us — deliberately carrying NO damage at all.
+- **Notes** (`renderNotes`) — ⚠ caveats, attached once per tooltip after the per-foe
+  sections so doubles can't repeat them.
+
+### Which target gets which section
+A **randbats** format, where everything is available:
+
+| Hover target | Damage | ⚡ lead | Outgoing | ⚡ per block | `Incoming:` | Our dmg into them | Sets | Mirror |
+|---|---|---|---|---|---|---|---|---|
+| Our move button | ✓ | — | — | — | — | — | — | — |
+| Our active | — | — | ✓ | ✓ | withheld | — | — | ✓ |
+| Our benched icon | — | — | ✓ +hazards | ✓ | ✓ | — | — | ✓ |
+| Our switch menu | — | — | ✓ +hazards | ✓ | ✓ | — | — | never |
+| Foe active | — | ✓ | — | — | — | withheld | ✓ | — |
+| Foe roster icon | — | ✓ | — | — | — | ✓ +their hazards | ✓ | — |
+
+An **open** format (OU, VGC, Custom Game) has no set feed, so every inference-dependent
+cell empties out: the move tooltip and our own matchup blocks survive (the foe's spread
+bracketed, ours exact), a **foe hover renders nothing at all**, and there is no ⚡ line,
+no `Incoming:` group, and no sets/mirror anywhere.
+
+Two cells say **withheld** rather than "—", and they are the same principle twice, not two
+decisions: never show the same number on two surfaces. Our active's `Incoming:` numbers are
+already on the foe's own hover, and our damage into an ACTIVE foe is already on the move
+tooltip. A switch-decision candidate has no such other source, which is the whole reason
+that half exists. "never" is a different thing entirely — the switch menu's mirror is
+withheld for privacy, not redundancy (it would have to be derived from private facts).
+
+### Rules that govern every surface
+Cross-cutting, so they live here once rather than being restated per-cell. Each has a full
+invariant bullet under `Conventions & invariants`, named below; this list is the map, not a
+replacement for them.
+
+- **Set inference needs a pool, damage doesn't.** The ⚡ verdict, `Incoming:`, sets/mirror,
+  Illusion and Pain Split are randbats-only; the damage surfaces run in both formats. See
+  *`detectFormat` is a discriminated union*.
+- **Private facts flow one way.** `battle.myPokemon` feeds our-view surfaces only and never
+  the opponent's-knowledge mirror — that separation is the only reason the mirror is honest.
+  See *`battle.myPokemon` feeds OUR-view surfaces only*.
+- **Field orientation follows whoever is DEFENDING.** A screen or Tailwind belongs to one
+  side, so the same tooltip reads the field twice in opposite orientations when it shows
+  both directions. This is the most repeated trap in the codebase. See the ⚡ and
+  `Incoming:` bullets.
+- **Never lie: bracket or bucket, never guess.** An unknown foe spread is bracketed by its
+  extremes; a hidden item/ability splits into labelled outcomes only when the number really
+  changes. See *An unknown foe spread is BRACKETED* and *Damage under a hidden item/ability
+  is split by DISTINCT outcome*.
+
 ## Architecture — where to make a change
 A **pure core + thin browser shell**. Dependencies point one way: the shell uses the
 core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in `README.md`.)

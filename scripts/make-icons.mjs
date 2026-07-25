@@ -49,6 +49,13 @@ const ICONS = [
 // reads on either ground. See `wordmarkSvg` for why that is a correctness property.
 const WORDMARK = 'docs/brand/wordmark.png';
 
+// The Chrome Web Store LISTING icon, which is not the same asset as the one inside the zip.
+// `chrome-webstore-upload-cli` pushes the package only, so this is uploaded by hand in the
+// dev console — and the store frames its listing tiles more tightly than a toolbar does,
+// wanting the artwork at 96x96 inside 128 with transparent padding. Generated here anyway,
+// so the hand-upload is picking a committed file rather than exporting one by eye.
+const STORE_ICON = 'docs/brand/store-icon-128.png';
+
 const shell = (body, w, h) =>
   `<!doctype html><meta charset="utf8"><style>*{margin:0;padding:0}
    body{width:${w}px;height:${h}px}svg{display:block}</style>${body}`;
@@ -76,6 +83,8 @@ try {
       await write(path, await shoot(markSvg(px, {pt, ...opts}), px));
       console.log(`${String(px).padStart(4)}px @ ${String(pt).padStart(4)}pt  ${OPTICAL(pt).padEnd(7)}  ${path}`);
     }
+    await write(STORE_ICON, await shoot(markSvg(128, {frame: 'store'}), 128));
+    console.log(` 128px @  listing  unknown  ${STORE_ICON}`);
     await write(WORDMARK, await shoot(wordmarkSvg(), 420, 128, 3));
     console.log(`  lockup  ${WORDMARK}`);
   }
@@ -112,8 +121,9 @@ async function proof() {
         ),
       )
       .join('')}
-    <b>The one opaque case — iOS, which forbids alpha and masks the corners itself</b>
-    ${swatch(markSvg(128, {opaque: true}), '#e8e8ec')}
+    <b>The two reframed cases — iOS (opaque, it forbids alpha) and the store listing tile
+       (artwork at 96 inside 128, per the store's own padding rule)</b>
+    ${swatch(`${markSvg(128, {opaque: true})}${markSvg(128, {frame: 'store'})}${markSvg(128)}`, '#e8e8ec')}
     <b>Glyphs up close — drawn as geometry, against the same thing set as text</b>
     <div style="display:flex;gap:14px">
       ${box('drawn ?%', ALL_DRAWINGS.unknown.svg)}

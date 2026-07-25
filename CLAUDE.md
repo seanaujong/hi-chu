@@ -225,6 +225,12 @@ tooltip. A switch-decision candidate has no such other source, which is the whol
 that half exists. "never" is a different thing entirely — the switch menu's mirror is
 withheld for privacy, not redundancy (it would have to be derived from private facts).
 
+**In doubles the redundancy argument is only partly true.** The sets view's threat calc
+resolves a single defender (`findOpposingActive`), while the withholding applies to BOTH
+our actives — so our SECOND active's incoming numbers appear on no surface at all. That's
+a known gap in the doubles support (see "What the ◐ rows do NOT cover"), not a rendering
+bug, but don't reason from "it's redundant here" without checking the doubles case.
+
 ### Rules that govern every surface
 Cross-cutting, so they live here once rather than being restated per-cell. Each has a full
 invariant bullet under `Conventions & invariants`, named below; this list is the map, not a
@@ -352,8 +358,8 @@ captured data** — `integration.test.ts` (real feed, synthetic mons) and `secti
 two-sided battle captured live from a replay; the fixture is `__fixtures__/replay-*.json`).
 
 For exact shapes and signatures, read the source and the colocated `*.test.ts` — the
-tests are the worked examples (and pin numbers against Showdown). Exception: `moves.ts`
-and `types.ts` are pure data/types with no colocated test; the move table is exercised
+tests are the worked examples (and pin numbers against Showdown). Exception: `moves.ts` and
+`types.ts` (pure data/types), and `facts.ts`/`narrow.ts` (covered by `resolve.test.ts`); the move table is exercised
 end-to-end in `damage.test.ts` (the `uniform-power multi-hit` cases) — add a case there
 when you add a move.
 
@@ -401,8 +407,8 @@ source named in `Pointers` and update `readState.ts` and its tests in lockstep.
 | Hovering our OWN Pokémon leads with the matchup view; the mirror below stays public | ✅ | `section.ts` (`ownMovesSection`, `ownHoverMatchup`, `buildSwitchSection`) | `section.test.ts`, `render.test.ts`, `readState.test.ts`, `content.test.ts` |
 | The matchup view's defensive half — the `Incoming:` group | ✅ | `section.ts` (`randbatsIncomingMovesFor`, `ownMovesSection`) | `section.test.ts`, `render.test.ts` |
 | Hovering a FOE's roster icon shows OUR active's damage into it | ✅ | `section.ts` (`foeSwitchInDamage`) | `section.test.ts` |
-| A LANDED damaging hit with no item revealed rules Life Orb out | ✅ | `core/deductions.ts`, `battle/readState.ts` (`hasLandedDamagingHit`) | `resolve.test.ts`, `readState.test.ts` |
-| Taking entry-hazard damage rules Heavy-Duty Boots out; switching in unharmed confirms it | ✅ | `core/deductions.ts`, `battle/readState.ts` | `resolve.test.ts`, `readState.test.ts` |
+| A LANDED damaging hit with no item revealed rules Life Orb out | ✅ | `core/deductions.ts`, `battle/readState.ts` (`hasLandedDamagingHit`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts` |
+| Taking entry-hazard damage rules Heavy-Duty Boots out; switching in unharmed confirms it | ✅ | `core/deductions.ts`, `battle/readState.ts` | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts` |
 | The forme a Pokémon IS and the one it is WEARING differ — only the calc reads the second | ✅ | `battle/readState.ts` (`readLiveForme`), `core/resolve.ts` (`buildResolved`) | `readState.test.ts`, `resolve.test.ts` |
 | A Transformed Pokémon is calculated as the one it COPIED, keeping only its own HP | ✅ | `core/transform.ts`, `section.ts` (`factsReader`) | `transform.test.ts`, `readState.test.ts`, `section.test.ts` |
 | An ability narrows a role only if a SET could have been built with it | ✅ | `core/narrow.ts` (`buildableAbilities`) | `resolve.test.ts` |
@@ -432,6 +438,21 @@ source named in `Pointers` and update `readState.ts` and its tests in lockstep.
 | Hazards are modelled ONLY for a switch-in preview — everywhere else, a deliberate no | ✅ | `core/hazards.ts` | `hazards.test.ts`, `readState.test.ts`, `section.test.ts` |
 | Strict TS (`exactOptionalPropertyTypes`, `verbatimModuleSyntax`) — conditional spreads, never `{k: x}` | ✅ | `tsconfig.json` | `npm run typecheck` |
 
+### What the ◐ rows do NOT cover
+A bare ◐ is unactionable — it says a rule is only partly guarded without saying where the
+hole is. Both holes, named:
+
+- **Delegate damage interactions to the calc.** `damage.test.ts` ("Guts negates burn")
+  guards the one known case, but nothing stops a NEW hand-rolled modifier being added
+  somewhere. This one stays on review; there is no predicate for "nobody hand-applied a
+  multiplier."
+- **Doubles.** The spread-move 0.75× and the per-foe damage sections are checked. What
+  isn't: the sets-view **threat calc reads only our FIRST active** (`findOpposingActive`
+  is singular), and doubles-only field effects (Friend Guard, Follow Me) aren't modelled
+  at all. Set inference itself is format-agnostic and correct. The first of those
+  interacts with the Surfaces grid above — see the note under "Which target gets which
+  section".
+
 ### What only a real browser can guard
 These rows have a 👁 component no CI run reaches, because the fact lives in the live client
 rather than in our code. Run the named check by hand after a Showdown client update.
@@ -448,7 +469,13 @@ rather than in our code. Run the named check by hand after a Showdown client upd
   `node scripts/player-check.mjs gen9championsrandombattle`.
 
 ## Pointers
-- `README.md` — full architecture, diagrams, install steps, known limitations.
+- `README.md` — full architecture, diagrams, install steps. (Known limitations are the ◐
+  rows in the invariant index, not a README section.)
+- `docs/chrome-web-store-listing.md` — the store listing copy OF RECORD: description,
+  privacy-practice answers, host-permission justification, reviewer test instructions,
+  submission checklist. Edit it here and paste into the dashboard; don't rewrite it there
+  from scratch. Nothing else in this file linked it, so it was easy to miss during a release.
+- `PRIVACY.md` — the privacy policy the store listing's Privacy policy URL points at.
 - **Before starting, run `git status` and check `.claude/handoffs/` for a local handoff** —
   if present it carries live status, next steps, and landmines (it may reflect on-disk work
   the committed docs lag). It is local and gitignored, so on a fresh clone it won't exist;

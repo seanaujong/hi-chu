@@ -9,12 +9,19 @@
 // drain/recoil — with nothing anywhere saying so. That is an unchecked want; this is the
 // predicate that fails.
 //
-// Read-only and offline (git + the two version files, no network, no gh). It changes no
-// version scheme and adds no Chrome Web Store traffic — it only makes the silence stop.
+// Read-only, and offline by default (git + the two version files). It changes no version
+// scheme and adds no Chrome Web Store traffic — it only makes the silence stop.
 //
-//   node scripts/release-status.mjs                 report, always exit 0
-//   node scripts/release-status.mjs --fail-after=14 exit 1 once drift is 14+ days stale
-//   node scripts/release-status.mjs --json          machine-readable, for CI summaries
+// A TAG IS NOT A SHIPMENT, which cost this repo a second time: v0.20.1 tagged, published its
+// GitHub Release, then failed the Chrome Web Store upload because Google still had v0.20.0 in
+// review. Tags were all this script read, so it cheerfully reported `in-sync` while the store
+// sat a version behind — the same class of silence it was written to end. `--check-publish`
+// closes that hole (see `publishOutcome`); it is the one flag that needs `gh` and the network.
+//
+//   node scripts/release-status.mjs                  report, always exit 0
+//   node scripts/release-status.mjs --check-publish  also verify the last tag actually shipped
+//   node scripts/release-status.mjs --fail-after=14  exit 1 once drift is 14+ days stale
+//   node scripts/release-status.mjs --json           machine-readable, for CI summaries
 
 import {execFileSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
@@ -58,8 +65,43 @@ const state = !versionsAgree ? 'mismatch'
   : commits.length > 0 ? 'unreleased'
   : 'in-sync';
 
+/**
+ * Did the release that produced the newest tag actually FINISH?
+ *
+ * A tag is not a shipment. v0.20.1 tagged, attached its zip to a GitHub Release, and then
+ * failed the last step — the Chrome Web Store upload — because Google still had v0.20.0 in
+ * review. Everything this script looks at said `in-sync` while the store sat a version
+ * behind: the exact failure it exists to prevent, in the one place it could not see.
+ *
+ * `auto-tag.yml` runs against the merge commit the tag points at, so the run is matched by
+ * SHA rather than by time — a re-run or an unrelated push can't be mistaken for it.
+ *
+ * Opt-in (`--check-publish`) because everything else here is offline and instant; this needs
+ * `gh` and the network. `release-drift.yml` always passes it. Any failure to ask (no `gh`, no
+ * auth, no network) reports "unknown" rather than a false all-clear.
+ */
+function publishOutcome(tag) {
+  if (!tag) return 'unknown';
+  try {
+    const sha = execFileSync('git', ['rev-list', '-n1', tag], {encoding: 'utf8'}).trim();
+    const runs = JSON.parse(
+      execFileSync('gh', ['run', 'list', '--workflow=auto-tag.yml', '--limit', '30', '--json', 'headSha,conclusion,databaseId'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }),
+    );
+    const run = runs.find((r) => r.headSha === sha);
+    if (!run) return 'unknown';
+    return run.conclusion === 'success' ? 'ok' : {state: 'failed', id: run.databaseId};
+  } catch {
+    return 'unknown'; // no gh, no auth, no network — say so rather than imply success
+  }
+}
+
 const failAfter = Number(process.argv.find((a) => a.startsWith('--fail-after='))?.split('=')[1] ?? NaN);
+const publish = process.argv.includes('--check-publish') ? publishOutcome(tag) : null;
 const stale = state === 'unreleased' && Number.isFinite(failAfter) && (daysStale ?? 0) >= failAfter;
+const publishBroken = publish !== null && publish !== 'ok' && publish !== 'unknown';
 
 const report = {
   state,
@@ -73,6 +115,7 @@ const report = {
   suggestedMinor: bump(pkg, 'minor'),
   commits,
   stale,
+  ...(publish ? {publish} : {}),
 };
 
 function bump(version, kind) {
@@ -99,6 +142,18 @@ if (process.argv.includes('--json')) {
     console.log(`  last release ${tag}${daysStale !== null ? ` — ${daysStale} day(s) ago` : ''}`);
     console.log(`  declared version is still ${pkg}, so nothing will publish.`);
   }
+  if (publish && publish !== 'ok') {
+    console.log(bar);
+    if (publish === 'unknown') {
+      console.log(`? could not check whether ${tag} finished publishing (no gh / auth / network).`);
+    } else {
+      console.log(`✗ ${tag} is TAGGED but its release run FAILED — it may not have reached the store.`);
+      console.log(`  gh run view ${publish.id} --log-failed`);
+      console.log('  Re-running auto-tag.yml does NOT help: the tag exists, so detect no-ops.');
+    }
+  } else if (publish === 'ok') {
+    console.log(`✓ ${tag}'s release run completed, store publish included.`);
+  }
   if (commits.length) {
     console.log(bar);
     for (const c of commits.slice(0, 20)) console.log(`  ${c}`);
@@ -110,6 +165,10 @@ if (process.argv.includes('--json')) {
   console.log(bar);
 }
 
+if (publishBroken) {
+  console.error(`\n::error::${tag} is tagged but its release run failed — check the Chrome Web Store publish.`);
+  process.exit(1);
+}
 if (stale) {
   console.error(`\n::error::${commits.length} commits have been unreleased for ${daysStale} days (threshold ${failAfter}).`);
   process.exit(1);

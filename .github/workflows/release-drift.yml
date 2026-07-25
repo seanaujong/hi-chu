@@ -1,0 +1,60 @@
+# Makes unreleased work visible. Nothing else in the pipeline can: auto-tag.yml only acts
+# once a version bump has already landed, so the state "main has moved and nobody bumped"
+# produces no signal anywhere. That state is how this repo reached 17 unreleased commits —
+# the Safari port, the CLAUDE.md restructure, itemreveal, drain/recoil — while the store
+# still served v0.19.3.
+#
+# Deliberately NOT a red build on every push. Unreleased commits are the NORMAL state
+# between releases; failing on them would train everyone to ignore the check, which is the
+# same silence in a louder costume. So:
+#   - every push to main writes a job summary (visible, zero noise)
+#   - a weekly run fails once drift is 14+ days old, which is the real smell
+#
+# Read-only: no tags, no commits, no publishing, no Chrome Web Store traffic. It cannot
+# cause a release, only report the absence of one.
+name: Release drift
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 9 * * 1' # Mondays 09:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # release-status counts commits since the last tag
+          fetch-tags: true
+
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version: 22
+
+      # The scheduled run is the one that enforces; a push just reports. Same script,
+      # same output — only the threshold differs, so there is one source of truth.
+      - name: Check release drift
+        id: drift
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            node scripts/release-status.mjs --fail-after=14 | tee status.txt
+          else
+            node scripts/release-status.mjs | tee status.txt
+          fi
+
+      - name: Write the job summary
+        if: always()
+        run: |
+          {
+            echo '## Release drift'
+            echo
+            echo '```'
+            cat status.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

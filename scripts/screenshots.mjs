@@ -21,10 +21,17 @@
 // matchup, and which shot deserves to be the README hero is a judgement call. Read the
 // printed index, pick the keepers, copy them into `demo/` and `store-screenshots/`.
 
-import {mkdirSync, rmSync, writeFileSync} from 'node:fs';
+import {mkdirSync, rmSync, writeFileSync, existsSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
 import {startBattle, readBundle, sleep, evaluate} from './lib/showdown.mjs';
 
 const FORMAT = process.argv[2] || 'gen9randombattle';
+// REAL_EXTENSION=1 installs the built extension in the browser instead of injecting the
+// bundle into the page — the difference between photographing what ships and photographing
+// a close approximation. Needs `npm run build:visual-check` first (dist-visual/), and pins
+// Chrome for Testing, since the branded build ignores --load-extension (lib/extension-chrome.mjs).
+const REAL_EXTENSION = process.env.REAL_EXTENSION === '1';
+const EXTENSION_DIR = fileURLToPath(new URL('../dist-visual/', import.meta.url));
 const TURNS = Number(process.env.TURNS ?? 6);
 const OUT = new URL('../screenshots/', import.meta.url);
 const VIEWPORT = {width: 1280, height: 800}; // wide enough for Showdown's full desktop layout
@@ -285,7 +292,15 @@ async function capturePass(page, roomid, {dir, frame}) {
   return shots;
 }
 
-const battle = await startBattle({format: FORMAT, viewport: VIEWPORT});
+if (REAL_EXTENSION && !existsSync(EXTENSION_DIR)) {
+  console.error('✗ dist-visual/ is missing — run: npm run build:visual-check');
+  process.exit(1);
+}
+const battle = await startBattle({
+  format: FORMAT,
+  viewport: VIEWPORT,
+  ...(REAL_EXTENSION ? {extensionDir: EXTENSION_DIR} : {}),
+});
 try {
   const {p1, p2, roomid} = battle;
   const players = [
@@ -302,7 +317,16 @@ try {
   // `content.ts` swallows its own throws so a bug can never break the native tooltip. That
   // is right in production and blinding here, so surface anything the page reports.
   p1.page.on('pageerror', (err) => console.log(`  · page error: ${err.message.split('\n')[0]}`));
-  await p1.page.addScriptTag({content: readBundle()});
+  if (REAL_EXTENSION) {
+    // Nothing to inject: the extension is installed. Prove it actually attached rather than
+    // silently no-op'ing (a manifest whose `matches` misses this origin fails exactly that
+    // way), so a green run can never mean "photographed the native tooltip by mistake".
+    await p1.page.waitForFunction("!!document.getElementById('hichu-style')", {timeout: 30000})
+      .then(() => console.log('✓ REAL extension attached (#hichu-style present)'))
+      .catch(() => { throw new Error('extension did not attach — check dist-visual/ manifest `matches` covers this origin'); });
+  } else {
+    await p1.page.addScriptTag({content: readBundle()});
+  }
   // The first hovers race the randbats feed fetch and render native-only. Sweep until SOME
   // surface shows our markup — which surface is not knowable up front: a foe hover renders
   // nothing in an open format (no pool to infer over), and a status move renders nothing in

@@ -71,19 +71,39 @@ minute), not real play.pokemonshowdown.com accounts — see the invariants secti
 demand (`gh workflow run e2e.yml`) for probing a specific format outside the release flow.
 
 Bump the version FIRST — `release.yml` releases whatever's already in the files, it doesn't
-write them. `npm version --no-git-tag-version X.Y.Z` updates `package.json`/`package-
-lock.json`; `public/manifest.json`'s `version` field needs the same bump by hand. That's a
-normal change to a protected file, so it goes through the same branch + PR + merge as
-anything else (see Contributing, below) — but **before merging that PR**, run the
-**`release-visual-check`** skill for a human-eyes pass, through Claude-in-Chrome, over the
-surfaces nothing scripted reaches at all: Tera/Mega preview toggling, doubles, hazards on
-switch-in, Illusion, a foe's roster-icon hover. It drives the REAL loaded extension in an
-actual Chrome session rather than injecting the bundle (a live `https://` Showdown page
-mixed-content-blocks a locally-served script, and inlining the ~500KB bundle into a tool call
-is impractical) — so it needs one manual step first: `npm run build`, then Load Unpacked (or
-hit reload) on `dist/` at `chrome://extensions`. This is the one gate that stays manual on
-principle: it needs an agent or a human actually judging what's on screen, which nothing
-below can assert.
+write them. **`npm run release-bump <major|minor|patch|X.Y.Z>`** does the whole bump:
+`npm version` still writes `package.json`/`package-lock.json`, and the script adds the
+`public/manifest.json` write those two always needed alongside them, then re-checks that all
+three agree and that the result is a legal Chrome Web Store version (integers only, each
+≤ 65535 — a semver pre-release tag passes npm and is rejected at upload). It deliberately
+does not commit, tag or push. That's a normal change to a protected file, so it goes through
+the same branch + PR + merge as anything else (see Contributing, below) — but **before
+merging that PR**, run
+**`npm run visual-check`** for an eyes-on pass over the surfaces nothing else reaches: the
+move tooltip, the own-hover matchup view, the switch menu, and the Tera preview. It plays a
+real two-account battle on the self-hosted server and photographs every surface **through the
+REAL installed extension**, not an injected bundle — `screenshots/full/` framed to the battle
+and `screenshots/crop/` at 2×. Then read the crops and judge them.
+
+**Loading the real extension is no longer manual**, which reverses a long-standing assumption
+here. The old belief was that "Load unpacked" can't be automated because nothing can drive
+`chrome://extensions` plus the native file picker — but that was never the obstacle; you pass
+`--load-extension` at launch and never open that UI. The real obstacle is that Chrome removed
+that switch from the BRANDED build as an anti-malware measure and kept it in **Chrome for
+Testing** (measured: Chrome 150 ignores it entirely, Chrome for Testing 151 honours it in both
+headful and headless — see `scripts/lib/extension-chrome.mjs`, which also strips puppeteer's
+own `--disable-extensions` default, a second thing that silently beats `--load-extension`).
+`npm run build:visual-check` produces `dist-visual/`, identical to the shipped build except
+that `matches` also covers the harness's `*.psim.us` origin — the shipped manifest matches
+only `play.pokemonshowdown.com`, so a real extension would otherwise sit dormant there. The
+run asserts `#hichu-style` actually appeared before shooting, so a green run can never mean
+"photographed the native tooltip by mistake".
+
+**What stays human is the JUDGEMENT, not the setup.** No assertion can say whether a preview
+LOOKS right, so someone still has to read the crops — that is why this gate exists and why
+merging the release PR is the one conscious checkpoint. The `release-visual-check` skill (a
+Claude-in-Chrome pass over the user's own loaded extension) remains the fallback for anything
+the harness can't stage, such as a Mega-capable format or doubles.
 
 Everything else is automatic and runs on `main` once that PR merges — no pause anywhere in
 it, on purpose: that merge is already the one conscious human checkpoint (it's what
@@ -114,6 +134,17 @@ actually happened on GitHub:
    duplicating the click-by-click steps here, since Google's own console UI drifts. The
    extension id (`kjdnmonplcbfldefppjoohlleelfcmik`) is public — it's in the store URL — so
    it's a plain env var in the workflow, not a secret.
+
+**Knowing a release is DUE is its own problem, and nothing above solves it.** Every workflow
+here acts only once a bump has landed, so "main has moved and nobody bumped" produces no
+signal at all — which is how this repo reached 17 unreleased commits (the Safari port, the
+CLAUDE.md restructure, itemreveal, drain/recoil) while the store still served v0.19.3.
+**`npm run release-status`** is the read-only answer: it reports which of four states you're
+in (`in-sync`, `unreleased`, `pending` — bumped but not yet tagged, so auto-tag is mid-flight
+or its verify job failed — or `mismatch`), lists the unreleased commits, and names the next
+patch/minor. `.github/workflows/release-drift.yml` runs it on every push to `main` as a job
+summary and weekly with `--fail-after=14`, so ordinary between-release drift stays quiet and
+a genuinely forgotten release goes red. It creates no tags and publishes nothing.
 
 A manual escape hatch still works if the automation is ever down: `git tag vX.Y.Z
 <merged-sha> && git push origin vX.Y.Z` triggers `release.yml` the same way, standalone.

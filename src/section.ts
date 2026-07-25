@@ -922,12 +922,19 @@ function scoreVariants(
   field: ReturnType<typeof readFieldFacts>,
   doubles: boolean,
   nhkoTurns?: number,
+  selfHp = false,
 ): DamageBucket[] {
   const scored: {variant: SetVariant; report: DamageReport}[] = [];
   for (const variant of variants) {
     try {
       const [atk, def] = build(variant.mon);
-      const report = calcDamage(atk, def, moveName, {gen, field, doubles, ...(nhkoTurns !== undefined ? {nhkoTurns} : {})});
+      const report = calcDamage(atk, def, moveName, {
+        gen,
+        field,
+        doubles,
+        ...(nhkoTurns !== undefined ? {nhkoTurns} : {}),
+        ...(selfHp ? {selfHp} : {}),
+      });
       if (report.category !== 'Status') scored.push({variant, report});
     } catch {
       // A move outside the calc's world for this variant shouldn't drop the section.
@@ -940,7 +947,9 @@ function scoreVariants(
  * The distinct damage outcomes for `moveName` from `attacker` into the target, one
  * per still-possible defending set, merged where they land on the same number.
  * `nhkoTurns` requests the nHKO ladder (the move tooltip shows it; the compact
- * own-hover view doesn't, and skips the survival sim).
+ * own-hover view doesn't, and skips the survival sim). `selfHp` requests the attacker's own
+ * drain/recoil swing on exactly the same terms — the move tooltip renders it, the compact
+ * views don't, and a view that doesn't ask keeps its buckets keyed as before.
  */
 function moveDamageBuckets(
   attacker: ResolvedMon,
@@ -950,8 +959,9 @@ function moveDamageBuckets(
   field: ReturnType<typeof readFieldFacts>,
   doubles: boolean,
   nhkoTurns?: number,
+  selfHp = false,
 ): DamageBucket[] {
-  return scoreVariants(defenderVariants, moveName, (mon) => [attacker, mon], gen, field, doubles, nhkoTurns);
+  return scoreVariants(defenderVariants, moveName, (mon) => [attacker, mon], gen, field, doubles, nhkoTurns, selfHp);
 }
 
 /**
@@ -1130,7 +1140,7 @@ function moveSectionHtml(
   field: ReturnType<typeof readFieldFacts>,
   targetLabel: string | undefined,
 ): string {
-  const buckets = moveDamageBuckets(attacker, defenderVariants, moveName, format.gen, field, format.doubles, 3);
+  const buckets = moveDamageBuckets(attacker, defenderVariants, moveName, format.gen, field, format.doubles, 3, true);
   if (buckets.length === 0) return ''; // status / unmodellable move
 
   // The live Tera is shared by every variant (it's a revealed fact, not a hidden set).

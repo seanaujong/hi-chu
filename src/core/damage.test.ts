@@ -508,3 +508,73 @@ describe('doubles game type (spread moves take their 0.75×)', () => {
     expect(single(true)).toBe(single(false)); // single-target unaffected
   });
 })
+
+describe("the attacker's own HP swing (drain, recoil, Life Orb, Liquid Ooze)", () => {
+  const swing = (
+    attacker: Partial<ResolvedMon> & {speciesForme: string},
+    defender: Partial<ResolvedMon> & {speciesForme: string},
+    move: string,
+  ) => calcDamage(mon(attacker), mon(defender), move, {selfHp: true}).selfHp ?? [];
+  const find = (effects: ReturnType<typeof swing>, label: string) => effects.find((e) => e.label === label);
+
+  it('is opt-in — a caller that does not ask gets nothing, so other surfaces bucket as before', () => {
+    expect(calcDamage(mon({speciesForme: 'Dragonite'}), mon({speciesForme: 'Skarmory'}), 'Double-Edge').selfHp)
+      .toBeUndefined();
+  });
+
+  it('reports a drain move as HP GAINED, as a percent of the attacker s own max HP', () => {
+    const drain = find(swing({speciesForme: 'Rillaboom'}, {speciesForme: 'Skarmory'}, 'Drain Punch'), 'Drains');
+    expect(drain?.direction).toBe('gain');
+    expect(drain!.min).toBeGreaterThan(0);
+    expect(drain!.min).toBeLessThanOrEqual(drain!.max);
+  });
+
+  it('reports a recoil move as HP LOST, and Rock Head cancels it (the calc s own guard)', () => {
+    const plain = find(swing({speciesForme: 'Dragonite'}, {speciesForme: 'Skarmory'}, 'Double-Edge'), 'Recoil');
+    expect(plain?.direction).toBe('loss');
+    expect(plain!.max).toBeGreaterThan(0);
+    const rockHead = swing({speciesForme: 'Dragonite', ability: 'Rock Head'}, {speciesForme: 'Skarmory'}, 'Double-Edge');
+    expect(find(rockHead, 'Recoil')).toBeUndefined();
+  });
+
+  // The three corrections below are ours: @smogon/calc models none of them, verified by
+  // probing it directly. Each would otherwise report a confidently wrong number.
+  it('CORRECTION: Magic Guard cancels recoil, which the calc only ever checks Rock Head for', () => {
+    const guarded = swing({speciesForme: 'Clefable', ability: 'Magic Guard'}, {speciesForme: 'Skarmory'}, 'Double-Edge');
+    expect(find(guarded, 'Recoil')).toBeUndefined();
+  });
+
+  it('CORRECTION: Life Orb s cut is reported, and Magic Guard / Sheer Force each cancel it', () => {
+    const orb = find(swing({speciesForme: 'Dragonite', item: 'Life Orb'}, {speciesForme: 'Skarmory'}, 'Outrage'), 'Life Orb');
+    expect(orb?.direction).toBe('loss');
+    expect(orb!.min).toBe(orb!.max); // a fixed cut, not a range
+    expect(orb!.max).toBeGreaterThan(9); // floor(maxHP/10) ≈ 10% of the bar
+
+    // Sheer Force suppresses it only for a move with a secondary effect: Iron Head flinches.
+    const sheer = {speciesForme: 'Bisharp', ability: 'Sheer Force', item: 'Life Orb'};
+    expect(find(swing(sheer, {speciesForme: 'Skarmory'}, 'Iron Head'), 'Life Orb')).toBeUndefined();
+    expect(find(swing(sheer, {speciesForme: 'Skarmory'}, 'Sucker Punch'), 'Life Orb')?.direction).toBe('loss');
+    const guarded = {speciesForme: 'Clefable', ability: 'Magic Guard', item: 'Life Orb'};
+    expect(find(swing(guarded, {speciesForme: 'Skarmory'}, 'Body Slam'), 'Life Orb')).toBeUndefined();
+  });
+
+  it('CORRECTION: Liquid Ooze inverts a drain into a LOSS — the calc reports the heal regardless', () => {
+    const attacker = {speciesForme: 'Rillaboom'};
+    const healed = find(swing(attacker, {speciesForme: 'Tentacruel', ability: 'Clear Body'}, 'Giga Drain'), 'Drains');
+    const oozed = find(swing(attacker, {speciesForme: 'Tentacruel', ability: 'Liquid Ooze'}, 'Giga Drain'), 'Liquid Ooze');
+    expect(healed?.direction).toBe('gain');
+    expect(oozed?.direction).toBe('loss');
+    // Same magnitude, opposite sign — Liquid Ooze redirects the siphon, it doesn't resize it.
+    expect(oozed!.max).toBeCloseTo(healed!.max, 6);
+    // ...and the heal must not ALSO be reported, or the tooltip would claim both.
+    expect(find(swing(attacker, {speciesForme: 'Tentacruel', ability: 'Liquid Ooze'}, 'Giga Drain'), 'Drains'))
+      .toBeUndefined();
+  });
+
+  it('says nothing for an ordinary move, and nothing for a multi-hit one (an explicit cut)', () => {
+    expect(swing({speciesForme: 'Garchomp'}, {speciesForme: 'Skarmory'}, 'Earthquake')).toEqual([]);
+    // Our convolved PMF replaces the calc's own damage array there, so recovery()/recoil()
+    // would describe a single hit of a several-hit sequence. No gen-9 multi-hit move drains.
+    expect(swing({speciesForme: 'Cloyster'}, {speciesForme: 'Skarmory'}, 'Icicle Spear')).toEqual([]);
+  });
+});

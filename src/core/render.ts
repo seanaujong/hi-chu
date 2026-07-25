@@ -175,6 +175,22 @@ function sashAside(r: DamageReport, model: MoveRenderModel): string {
   return ` <small>(${prefix}Focus Sash: survives at 1 HP)</small>`;
 }
 
+/**
+ * The attacker's own HP swing, one part per cause: "Drains: 7.2% - 8.7%", "Recoil: 4.3% -
+ * 5%". A fixed figure (Life Orb's cut) collapses to a single number rather than an X - X
+ * range. Losses reuse `.hichu-ko`'s red, so the cost of a Flare Blitz reads at a glance
+ * with the same weight a KO chance does; gains stay plain, since healing is never the
+ * thing you need warning about. Empty when nothing applies, which is the common move.
+ */
+function selfHpText(r: DamageReport): string {
+  const parts = (r.selfHp ?? []).map((e) => {
+    const range = e.min === e.max ? `${e.min}%` : `${e.min}% - ${e.max}%`;
+    const body = `<small>${esc(e.label)}:</small> ${range}`;
+    return e.direction === 'loss' ? `<span class="hichu-ko">${body}</span>` : body;
+  });
+  return parts.join(' · ');
+}
+
 function teraTag(attackerTera: string | undefined, defenderTera: string | undefined): string {
   const bits: string[] = [];
   if (attackerTera) bits.push(`Tera ${esc(attackerTera)}`);
@@ -190,7 +206,10 @@ function variantLine(bucket: DamageBucket, model: MoveRenderModel, tera: string)
   const koCtx = ko && model.defenderHpPercent < 0.995 ? ` at ${pct1(model.defenderHpPercent)} HP` : '';
   const koPart = ko ? ` · <span class="hichu-ko">${ko}</span>${koCtx}` : ''; // omit entirely when there's no KO
   const multi = multiHitDetail(r);
-  return `<small>Damage (${esc(bucket.label)}):</small> ${moveDamageText(r)}${tera}${koPart}${multi ? ` · ${esc(multi)}` : ''}`;
+  // The swing belongs on the line even here — a hidden Liquid Ooze splits the buckets
+  // WITHOUT moving the damage numbers, so without it two lines would read identically.
+  const self = selfHpText(r);
+  return `<small>Damage (${esc(bucket.label)}):</small> ${moveDamageText(r)}${tera}${koPart}${multi ? ` · ${esc(multi)}` : ''}${self ? ` · ${self}` : ''}`;
 }
 
 /**
@@ -221,6 +240,7 @@ export function renderMoveSection(model: MoveRenderModel): string {
         ko ? `<span class="hichu-ko">${ko}</span>${koCtx}${sashAside(r, model)}` : '', // "12% to KO" reads for itself
         nhkoLine(r.nhko, model.leftovers),
         multi ? `<small>Hits:</small> ${esc(multi)}` : '',
+        selfHpText(r),
       ]) + notesBlock(model.extraNotes)
     );
   }

@@ -1332,3 +1332,36 @@ describe('a Transformed Ditto — the copy, not the copier', () => {
     expect(before).not.toContain('Draco Meteor');
   });
 });
+
+describe("the move tooltip's own-HP swing (drain, recoil, Life Orb, Liquid Ooze)", () => {
+  const {battle, active} = loadBattle();
+  const noivern = () => active('Noivern');
+
+  it('shows what a recoil move costs US, alongside what it does to them', () => {
+    const html = buildMoveSection(battle, noivern(), 'Double-Edge', data);
+    expect(html).toContain('<small>Damage:</small>'); // the ordinary line is still there
+    expect(html).toContain('Recoil:');
+  });
+
+  it("inverts a drain into a LOSS against the fixture's real Liquid Ooze Tentacruel", () => {
+    // The captured feed gives Tentacruel exactly one ability, so this is certain, not a
+    // hedge: Giga Drain into it costs us the siphon instead of healing it back.
+    const html = buildMoveSection(battle, noivern(), 'Giga Drain', data);
+    expect(html).toContain('Liquid Ooze:');
+    expect(html).not.toContain('Drains:');
+  });
+
+  it('says nothing at all for an ordinary move — no empty label on the common hover', () => {
+    const html = buildMoveSection(battle, noivern(), 'Draco Meteor', data);
+    expect(html).not.toContain('Drains:');
+    expect(html).not.toContain('Recoil:');
+    expect(html).not.toContain('Life Orb:');
+  });
+
+  it('stays OFF the compact matchup view — the move tooltip is the one surface that shows it', () => {
+    const b = loadBattle({myNoivernItem: 'heavydutyboots', myNoivernMoves: ['doubleedge', 'roost']});
+    const html = buildPokemonSection(b.battle, b.active('Noivern'), data);
+    expect(html).toContain('Double-Edge'); // the move is listed there...
+    expect(html).not.toContain('Recoil:'); // ...but without the swing line
+  });
+});

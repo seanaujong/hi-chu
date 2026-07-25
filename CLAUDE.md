@@ -419,6 +419,7 @@ them until someone adds it.
 | `teraType` is set only when Tera is ACTIVE — one sanctioned preview, applied to our mon as ATTACKER *and* DEFENDER | ✅ | `section.ts` (`PreviewOverlay`, `teraPreviewFor`, `applyPreviews`), `core/resolve.ts` | `section.test.ts`, `resolve.test.ts`, `readState.test.ts` |
 | A ticked Mega box previews OUR active mon's Mega forme — offence, Speed from gen 7, and defence | ✅ | `section.ts` (`megaPreviewFor`, `megaSpeedApplies`), `battle/readState.ts` (`readMegaForme`) | `section.test.ts`, `readState.test.ts` |
 | A pending Tera/Mega preview carries NO speed caveat — both resolve ahead of every move | ✅ | `section.ts` (`applyPreviews`) | `section.test.ts` |
+| A move's own HP swing (drain, recoil, Life Orb, Liquid Ooze) is opt-in and move-tooltip only | ✅ | `core/damage.ts` (`SelfHpEffect`, `selfHpEffects`), `core/variants.ts` (`resultKey`), `core/render.ts` (`selfHpText`) | `damage.test.ts`, `section.test.ts` |
 | Set narrowing uses every public reveal, nothing private | ✅ | `core/narrow.ts` | `resolve.test.ts` |
 | `battle.myPokemon` feeds OUR-view surfaces only, never the opponent's-knowledge views | 👁 | `battle/readState.ts` (`readOwnServerPokemon`), `section.ts` | `section.test.ts`, `readState.test.ts` |
 | Hovering our OWN Pokémon leads with the matchup view; the mirror below stays public | ✅ | `section.ts` (`ownMovesSection`, `ownHoverMatchup`, `buildSwitchSection`) | `section.test.ts`, `render.test.ts`, `readState.test.ts`, `content.test.ts` |

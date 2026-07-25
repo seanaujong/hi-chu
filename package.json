@@ -1,6 +1,6 @@
 {
   "name": "hi-chu",
-  "version": "0.20.0",
+  "version": "0.20.1",
   "description": "hi-chu: Pokémon Showdown battle hints — per-move damage and true multi-hit KO% in every format, plus Random Battle set possibilities.",
   "private": true,
   "type": "module",

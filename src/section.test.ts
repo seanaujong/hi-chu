@@ -416,6 +416,71 @@ describe('the sets view brackets a genuinely uncertain ATTACKER item instead of 
   });
 });
 
+describe('the sets view narrows a foe’s item pool by an OBSERVED hit’s MAGNITUDE (core/itemreveal.ts)', () => {
+  // A Choice Band (×1.5 physical) vs Heavy-Duty Boots (no offensive effect) split —
+  // NOT Life Orb, deliberately: any landed hit with no item revealed already rules Life
+  // Orb out via the EXISTING recoil-absence deduction (deductions.ts), which would
+  // confound what this test is isolating. Choice Band/Boots never touch that rule, so a
+  // clean hit here tests the magnitude reveal alone. Choice Band rolls 41.9–49.8%,
+  // Heavy-Duty Boots 27.9–33.2% (verified against the real calc) — the two ranges don't
+  // overlap, so a hit landing inside one but not the other is real evidence.
+  const feed: RandbatsData = {
+    Weavile: {level: 78, abilities: ['Pressure'], items: ['Choice Band', 'Heavy-Duty Boots'], moves: ['Icicle Crash']},
+  };
+  const near = {isFar: false, sideConditions: {}, active: [] as unknown[]};
+  const far = {isFar: true, sideConditions: {}, active: [] as unknown[]};
+  const ourActive = {
+    speciesForme: 'Skarmory', level: 78, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p1: Skarmory', side: near,
+  } as unknown as ClientPokemon;
+  const foeWeavile = {
+    speciesForme: 'Weavile', level: 78, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p2: Weavile', side: far,
+  } as unknown as ClientPokemon;
+  near.active = [ourActive];
+  far.active = [foeWeavile];
+
+  it('keeps both outcomes with no observed hit in the log (the baseline, unchanged)', () => {
+    const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far]} as unknown as ClientBattle;
+    const html = buildPokemonSection(battle, foeWeavile, feed);
+    expect(html).toContain('(Choice Band)');
+    expect(html).toContain('(Heavy-Duty Boots)');
+  });
+
+  it('collapses to a single inline line (Choice Band’s range) once the log shows a hit only its range could have dealt', () => {
+    // Skarmory switches in at full HP, then Weavile's Icicle Crash takes it to 55% — a
+    // clean 45% hit: too big for Boots' 27.9–33.2%, squarely inside Band's 41.9–49.8%.
+    const stepQueue = [
+      '|switch|p1a: Skarmory|Skarmory, L78|100/100',
+      '|move|p2a: Weavile|Icicle Crash|p1a: Skarmory',
+      '|-damage|p1a: Skarmory|55/100',
+    ];
+    const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far], stepQueue} as unknown as ClientBattle;
+    const html = buildPokemonSection(battle, foeWeavile, feed);
+    // Only one item survives, so the per-item labels disappear entirely — the same
+    // "revealed item is just the one-set case" rendering rule as an actually-revealed item.
+    expect(html).not.toContain('(Choice Band)');
+    expect(html).not.toContain('(Heavy-Duty Boots)');
+    expect(html).toMatch(/Icicle Crash \(41\.9[–-]49\.8%\)/);
+  });
+
+  it('goes back to bracketing both once the hit is stale (a boost happened since)', () => {
+    // The same 45% hit as above, but Weavile got a Swords Dance boost afterward — CURRENT
+    // facts no longer describe the state that hit happened under, so the reading must be
+    // withdrawn rather than compared against stale numbers.
+    const stepQueue = [
+      '|switch|p1a: Skarmory|Skarmory, L78|100/100',
+      '|move|p2a: Weavile|Icicle Crash|p1a: Skarmory',
+      '|-damage|p1a: Skarmory|55/100',
+      '|-boost|p2a: Weavile|atk|2',
+    ];
+    const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far], stepQueue} as unknown as ClientBattle;
+    const html = buildPokemonSection(battle, foeWeavile, feed);
+    expect(html).toContain('(Choice Band)');
+    expect(html).toContain('(Heavy-Duty Boots)');
+  });
+});
+
 describe('buildPokemonSection speed order (the ⚡ line on a foe hover)', () => {
   const {battle, active} = loadBattle();
 

@@ -5,6 +5,7 @@ import {
   readTransformTarget,
   readSpeciesData,
   hasLandedDamagingHit,
+  mostRecentCleanHit,
   timesAttacked,
   tookEntryHazardDamage,
   switchedIntoStealthRockUnharmed,
@@ -360,6 +361,93 @@ describe('hasLandedDamagingHit', () => {
   it('is false with no log or no ident (conservative — never a false rule-out)', () => {
     expect(hasLandedDamagingHit(withLog([]), noivern)).toBe(false);
     expect(hasLandedDamagingHit(withLog(['|move|p1a: Noivern|Flamethrower|p2a: X', '|-damage|p2a: X|1/2']), clientMon({}))).toBe(false);
+  });
+});
+
+describe('mostRecentCleanHit (an observed hit’s MAGNITUDE reveals an item)', () => {
+  const withLog = (stepQueue: string[]): ClientBattle => ({gen: 9, tier: '[Gen 9] Random Battle', sides: [], stepQueue});
+  const attacker = {ident: 'p2: Weavile'};
+  const defender = {ident: 'p1: Skarmory'};
+
+  it('reads the move and the fraction of max HP actually lost', () => {
+    const log = [
+      '|switch|p1a: Skarmory|Skarmory, L78|100/100',
+      '|move|p2a: Weavile|Icicle Crash|p1a: Skarmory',
+      '|-damage|p1a: Skarmory|60/100',
+    ];
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toEqual({move: 'Icicle Crash', damageFraction: 0.4});
+  });
+
+  it('defaults "before" to full HP when the defender was never seen switching in', () => {
+    const log = ['|move|p2a: Weavile|Icicle Crash|p1a: Skarmory', '|-damage|p1a: Skarmory|75/100'];
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toEqual({move: 'Icicle Crash', damageFraction: 0.25});
+  });
+
+  it('excludes a multi-hit move — the shown number is a SUM, not one roll', () => {
+    const log = ['|move|p2a: Weavile|Icicle Spear|p1a: Skarmory', '|-damage|p1a: Skarmory|70/100'];
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toBeUndefined();
+  });
+
+  it('excludes a critical hit — a flat ×1.5 unrelated to the item', () => {
+    const log = [
+      '|move|p2a: Weavile|Icicle Crash|p1a: Skarmory',
+      '|-crit|p1a: Skarmory',
+      '|-damage|p1a: Skarmory|30/100',
+    ];
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toBeUndefined();
+  });
+
+  it('excludes a hit that KOed the target — the display clips at 0, only a lower bound', () => {
+    const log = ['|move|p2a: Weavile|Icicle Crash|p1a: Skarmory', '|-damage|p1a: Skarmory|0 fnt'];
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toBeUndefined();
+  });
+
+  it('excludes indirect damage ([from] hazard/status/recoil, not the move itself)', () => {
+    const log = ['|move|p2a: Weavile|Icicle Crash|p1a: Skarmory', '|-damage|p1a: Skarmory|94/100|[from] Stealth Rock'];
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toBeUndefined();
+  });
+
+  it('goes stale once a boost happens afterward — current facts no longer describe the hit', () => {
+    const log = [
+      '|move|p2a: Weavile|Icicle Crash|p1a: Skarmory',
+      '|-damage|p1a: Skarmory|60/100',
+      '|-boost|p2a: Weavile|atk|1',
+    ];
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toBeUndefined();
+  });
+
+  it('goes stale once weather/status/item changes afterward, on EITHER side', () => {
+    const hit = ['|move|p2a: Weavile|Icicle Crash|p1a: Skarmory', '|-damage|p1a: Skarmory|60/100'];
+    expect(mostRecentCleanHit(withLog([...hit, '|-weather|Sandstorm']), attacker, defender)).toBeUndefined();
+    expect(mostRecentCleanHit(withLog([...hit, '|-status|p1a: Skarmory|brn']), attacker, defender)).toBeUndefined();
+    expect(mostRecentCleanHit(withLog([...hit, '|-enditem|p2a: Weavile|Life Orb']), attacker, defender)).toBeUndefined();
+  });
+
+  it('picks the MOST RECENT clean hit, not the first', () => {
+    const log = [
+      '|move|p2a: Weavile|Icicle Crash|p1a: Skarmory',
+      '|-damage|p1a: Skarmory|80/100',
+      '|move|p2a: Weavile|Icicle Crash|p1a: Skarmory',
+      '|-damage|p1a: Skarmory|50/100',
+    ];
+    const result = mostRecentCleanHit(withLog(log), attacker, defender);
+    expect(result?.move).toBe('Icicle Crash');
+    expect(result?.damageFraction).toBeCloseTo(0.3, 10);
+  });
+
+  it('does not attribute a foe’s damage to us (mover resets on the next move)', () => {
+    const log = ['|move|p1a: Skarmory|Brave Bird|p2a: Weavile', '|-damage|p2a: Weavile|40/100'];
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toBeUndefined();
+  });
+
+  it('matches by side+name across a switch, not by slot letter', () => {
+    const log = ['|move|p2b: Weavile|Icicle Crash|p1a: Skarmory', '|-damage|p1a: Skarmory|60/100'];
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toEqual({move: 'Icicle Crash', damageFraction: 0.4});
+  });
+
+  it('is undefined with no log or no ident (conservative — never a false reading)', () => {
+    expect(mostRecentCleanHit(withLog([]), attacker, defender)).toBeUndefined();
+    expect(mostRecentCleanHit(withLog(['|move|p2a: Weavile|X|p1a: Skarmory', '|-damage|p1a: Skarmory|1/2']), {}, defender)).toBeUndefined();
   });
 });
 

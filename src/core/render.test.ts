@@ -321,7 +321,7 @@ describe('renderSpeedSection', () => {
 
   it('paints a foe-first verdict red — being outsped is the threat, like the KO figure', () => {
     const html = renderSpeedSection([{order: order(166, [{speed: 213, first: 'theirs'}])}]);
-    expect(html).toContain('<span class="hichu-ko">they move first</span> — 166 vs 213');
+    expect(html).toContain('<span class="hichu-note">they move first</span> — 166 vs 213');
   });
 
   it('leads with the majority outcome and rides the Scarf case along as an "if" aside', () => {
@@ -329,7 +329,7 @@ describe('renderSpeedSection', () => {
       {order: order(231, [{speed: 213, first: 'ours'}, {speed: 319, label: 'Choice Scarf', first: 'theirs'}])},
     ]);
     expect(html).toContain('you move first — 231 vs 213');
-    expect(html).toContain('<small>if Choice Scarf:</small> <span class="hichu-ko">they do</span> (319)');
+    expect(html).toContain('<small>if Choice Scarf:</small> <span class="hichu-note">they do</span> (319)');
   });
 
   it('labels a Trick Room verdict (already flipped upstream) so the slower-wins read explains itself', () => {
@@ -429,7 +429,7 @@ describe('renderOwnMovesSection (own hover: your moves vs the foe active)', () =
         },
       }),
     ]);
-    expect(html).toContain('<small>if Choice Scarf:</small> <span class="hichu-ko">they do</span> (324)');
+    expect(html).toContain('<small>if Choice Scarf:</small> <span class="hichu-note">they do</span> (324)');
   });
 
   it('omits the ⚡ line when there is no speed — an open format has no foe pool to read one from', () => {

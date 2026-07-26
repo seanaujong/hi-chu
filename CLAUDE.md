@@ -520,6 +520,7 @@ them until someone adds it.
 | Unburden's ×2 Speed is armed via an explicit `abilityOn` flag, not inferred from `item` | ✅ | `core/resolve.ts` (`buildResolved`), `core/damage.ts` (`buildPokemon`) | `resolve.test.ts`, `speed.test.ts` |
 | The fetch/reason/render split is a checked import graph, not just a description | ✅ | `src/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |
 | "No DOM, no network" is typechecked everywhere but the two files whose job it is | ✅ | `src/tsconfig.pure.json` | `npm run typecheck` |
+| The store's summary ships FROM the package — the listing doc, the manifest and `package.json` carry one sentence | ✅ | `docs/chrome-web-store-listing.md` (Summary) | `store-summary.test.ts` |
 | A knocked-off / consumed item resolves to NO item, not an assumed set item | ✅ | `core/resolve.ts` (`itemGone`) | `resolve.test.ts` |
 | A held Mega stone resolves to the Mega set, not the base forme | ✅ | `data/lookup.ts` (`megaEntryForItem`) | `randbats.test.ts` |
 | The Champions feed's `evs` are STAT POINTS, not EVs — converted at fetch | ✅ | `data/lookup.ts` (`championsStatPointsToEvs`), `data/randbats.ts` (`STORAGE_VERSION`) | `randbats.test.ts` |

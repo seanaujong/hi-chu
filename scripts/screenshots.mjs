@@ -15,15 +15,17 @@
 // come back ✓ confirmed, HP bars are dented, and the foe's set pool has narrowed. Then it
 // shoots each surface twice — a full shot framed to the battle (battle scene + log, with
 // Showdown's top banner and the right-hand chat-rooms pane cropped out), and a 2× crop of
-// the tooltip alone (the README's framing).
+// the tooltip alone (the README's framing) — and finally composes the four Chrome Web Store
+// screenshots, which have their own frame to fit (see `lib/store-canvas.mjs`).
 //
 // Output is gitignored and nothing is placed for you: a random battle can deal a dull
 // matchup, and which shot deserves to be the README hero is a judgement call. Read the
 // printed index, pick the keepers, copy them into `demo/` and `store-screenshots/`.
 
-import {mkdirSync, rmSync, writeFileSync, existsSync} from 'node:fs';
+import {mkdirSync, rmSync, writeFileSync, readFileSync, existsSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {startBattle, readBundle, sleep, evaluate} from './lib/showdown.mjs';
+import {STORE_CANVAS, canvasHtml, pngSize} from './lib/store-canvas.mjs';
 
 const FORMAT = process.argv[2] || 'gen9randombattle';
 // REAL_EXTENSION=1 installs the built extension in the browser instead of injecting the
@@ -151,12 +153,12 @@ async function playTo(players, roomid, turns) {
 }
 
 /**
- * Hover `handle` and, if hi-chu rendered into the tooltip, save the shot. A null `dir`
- * hovers without saving — how the feed gets warmed. With a `frame` rect the shot is clipped
- * to it (the full pass, framed to the battle); without one it crops to the tooltip (the
- * README pass). Returns the tooltip HTML (or null), so callers can report what it said.
+ * Hover `handle` and hand back the tooltip's HTML, or null if hi-chu did not render into it
+ * — either because nothing came up, or because what came up was the native tooltip alone (a
+ * status move, or a foe hover in an open format, both of which we deliberately say nothing
+ * about). Split out because the store pass hovers the same surfaces for its own framing.
  */
-async function shoot(page, handle, {name, dir, frame}) {
+async function hoverForTooltip(page, handle, name) {
   const readTooltip = () => page.evaluate(() => document.querySelector('#tooltipwrapper')?.innerHTML ?? '');
   let html = '';
   // The first hover after a relayout (a viewport change, a finished animation) is routinely
@@ -172,11 +174,22 @@ async function shoot(page, handle, {name, dir, frame}) {
     await sleep(400);
     html = await readTooltip();
   }
-
   if (!isOurs(html)) {
     if (process.env.DEBUG) console.log(`    [debug] ${name}: tooltip = ${JSON.stringify(html.slice(0, 240))}`);
     return null;
   }
+  return html;
+}
+
+/**
+ * Hover `handle` and, if hi-chu rendered into the tooltip, save the shot. A null `dir`
+ * hovers without saving — how the feed gets warmed. With a `frame` rect the shot is clipped
+ * to it (the full pass, framed to the battle); without one it crops to the tooltip (the
+ * README pass). Returns the tooltip HTML (or null), so callers can report what it said.
+ */
+async function shoot(page, handle, {name, dir, frame}) {
+  const html = await hoverForTooltip(page, handle, name);
+  if (!html) return null;
   if (!dir) return html;
 
   const path = new URL(`${dir}/${name}.png`, OUT).pathname;
@@ -334,6 +347,150 @@ async function capturePass(page, roomid, {dir, frame}) {
   return shots;
 }
 
+/**
+ * The Chrome Web Store listing, which is a different job from the two passes above.
+ *
+ * Those sweep every surface and leave the choosing to a human. This one answers a fixed
+ * question — what four pictures explain hi-chu to somebody who has never seen it? — with
+ * the two hovers that ARE the product, each shown twice: once in the battle it was read
+ * from, so the reader places it, and once close up, so they can read it.
+ *
+ * Order matters; the store shows them in it. Context first, then the detail it framed.
+ */
+const STORE_SHOTS = [
+  {name: '01-move-full', surface: 'move', framing: 'full', caption: "Hover a move — its damage into the Pokémon you're facing"},
+  {name: '02-move-tooltip', surface: 'move', framing: 'crop', caption: 'Damage and KO chance, read from the battle in front of you'},
+  {name: '03-foe-full', surface: 'foe', framing: 'full', caption: 'Hover the opponent — every set it could still be running'},
+  {name: '04-foe-tooltip', surface: 'foe', framing: 'crop', caption: "Each set's damage into you, and who moves first"},
+];
+
+// The full shots are framed wider than the passes above: at 1600 the battle room comes out
+// roughly the store canvas's own proportions, so it lands there at nearly life size instead
+// of being shrunk to fit. The crops go the other way — a small tooltip blown up — so they
+// are taken at 3× and scaled DOWN, which is the only way to enlarge something and keep it sharp.
+const STORE_FULL_VIEWPORT = {width: 1600, height: 800, deviceScaleFactor: 2};
+const STORE_CROP_VIEWPORT = {width: 1280, height: 900, deviceScaleFactor: 3};
+
+/**
+ * The move button worth photographing — the one whose tooltip is most OURS.
+ *
+ * Not a cosmetic preference. Which moves a random battle deals is luck, and slot 1 is
+ * routinely a status move, or (as one run gave us) a Poltergeist reading `Damage: 0% - 0%`
+ * against an item-less foe: a fair reading of the picture and a false one of the product.
+ * Ranking by damage alone is not enough either — it once chose Hurricane, whose eight lines
+ * of Showdown's own flavour text left hi-chu's two lines as a footnote, so the screenshot
+ * advertised the client rather than the extension.
+ *
+ * So the metric is the share of the tooltip's height that `.hichu-block` occupies, which is
+ * literally "how much of this picture is the thing being sold", with nonzero damage required
+ * and the bigger hit breaking ties.
+ */
+async function bestMoveButton(page, roomid) {
+  let best = null;
+  for (const handle of await roomEls(page, roomid, '.movemenu button[data-tooltip^="move|"]:not(.disabled)')) {
+    const move = await handle.evaluate((el) => el.getAttribute('data-tooltip').split('|')[1]);
+    const html = await hoverForTooltip(page, handle, `store-pick-${slug(move)}`);
+    if (!html) continue;
+    const damage = html.replace(/<[^>]+>/g, ' ').match(/Damage:\s*[\d.]+%\s*[-–]\s*([\d.]+)%/);
+    if (!damage || Number(damage[1]) === 0) continue;
+    const share = await page.evaluate(() => {
+      const total = document.querySelector('#tooltipwrapper .tooltip')?.getBoundingClientRect().height ?? 0;
+      const ours = [...document.querySelectorAll('#tooltipwrapper .hichu-block')].reduce((h, el) => h + el.getBoundingClientRect().height, 0);
+      return total ? ours / total : 0;
+    });
+    const score = share * 1000 + Number(damage[1]);
+    if (!best || score > best.score) best = {handle, move, score, share};
+  }
+  return best;
+}
+
+/** The rectangle a store shot is cut from, in CSS pixels, or null if the tooltip isn't up. */
+async function storeClip(page, framing, frame) {
+  const box = await settledTooltipBox(page);
+  if (!box) return null;
+  if (framing === 'crop') {
+    // A generous margin, where the README's crop takes 6px — because Showdown's tooltip is
+    // `rgba(240,240,240,.9)`, deliberately 10% see-through, and a crop cut tight to its edge
+    // strands that bleed with nothing to explain it. Blown up to fill a store screenshot it
+    // then reads as a rendering fault rather than as a panel floating over a battle. Keeping
+    // the surrounding UI in frame supplies the missing cue, and leaves the product's own
+    // appearance alone — the alternative was overriding Showdown's CSS to fake an opaque
+    // panel, which would make the picture prettier by making it untrue.
+    const view = page.viewport();
+    const pad = 48;
+    const x = Math.max(0, box.x - pad);
+    const y = Math.max(0, box.y - pad);
+    return {x, y, width: Math.min(view.width - x, box.width + pad * 2), height: Math.min(view.height - y, box.height + pad * 2)};
+  }
+  // Framed to the battle room, with only the TOP edge extended to take in a tooltip that
+  // clamped upward — the same rule the full pass uses, and for the same reason: left, right
+  // and bottom stay on the room so the chat pane can't creep back into the frame.
+  const top = Math.max(0, Math.min(frame.y, box.y - 6));
+  return {x: frame.x, y: top, width: frame.width, height: frame.y + frame.height - top};
+}
+
+/**
+ * Compose one shot onto the store canvas and write it.
+ *
+ * The composing is done by a browser page rather than an image library: we already have a
+ * browser, and this way the layout is CSS anyone can read rather than pixel arithmetic
+ * nobody can check. The written file is then measured back off disk, because "1280×800
+ * exactly" is the one thing the store enforces and the one thing that would otherwise fail
+ * silently here and loudly, days later, at upload.
+ */
+async function composeStoreShot(browser, {png, css, caption}, path) {
+  const page = await browser.newPage();
+  try {
+    await page.setViewport({...STORE_CANVAS, deviceScaleFactor: 1});
+    await page.setContent(canvasHtml({png, css, caption}), {waitUntil: 'load'});
+    await page.evaluate(() => document.querySelector('img.shot').decode());
+    await page.screenshot({path});
+  } finally {
+    await page.close();
+  }
+  const size = pngSize(readFileSync(path));
+  if (size?.width !== STORE_CANVAS.width || size?.height !== STORE_CANVAS.height) {
+    throw new Error(`${path}: composed ${size?.width}×${size?.height}, but the store takes only ${STORE_CANVAS.width}×${STORE_CANVAS.height}`);
+  }
+}
+
+/** Every store shot, taken and composed. Returns the names that made it. */
+async function storePass(browser, page, roomid) {
+  mkdirSync(new URL('store/', OUT), {recursive: true});
+  const done = [];
+  // Grouped by framing, because each needs its own viewport and a resize costs a relayout.
+  for (const framing of ['full', 'crop']) {
+    await page.setViewport(framing === 'full' ? STORE_FULL_VIEWPORT : STORE_CROP_VIEWPORT);
+    await sleep(900); // the battle scene relays out on resize
+    const frame = framing === 'full' ? await battleFrame(page, roomid) : null;
+    const move = await bestMoveButton(page, roomid);
+    if (move) console.log(`  · ${framing}: showing ${move.move} (${Math.round(move.share * 100)}% of that tooltip is ours)`);
+    const foe = await roomEl(page, roomid, '[data-tooltip="activepokemon|1|0"]');
+    const handles = {move: move?.handle ?? null, foe};
+
+    for (const shot of STORE_SHOTS.filter((s) => s.framing === framing)) {
+      const handle = handles[shot.surface];
+      if (!handle) {
+        console.log(`  · store/${shot.name}: no ${shot.surface} surface (skipped)`);
+        continue;
+      }
+      if (!(await hoverForTooltip(page, handle, shot.name))) {
+        console.log(`  · store/${shot.name}: no hi-chu section (skipped)`);
+        continue;
+      }
+      const clip = await storeClip(page, framing, frame);
+      if (!clip) {
+        console.log(`  · store/${shot.name}: tooltip vanished before it could be measured (skipped)`);
+        continue;
+      }
+      const png = Buffer.from(await page.screenshot({clip}));
+      await composeStoreShot(browser, {png, css: clip, caption: shot.caption}, new URL(`store/${shot.name}.png`, OUT).pathname);
+      done.push(shot.name);
+    }
+  }
+  return done;
+}
+
 if (REAL_EXTENSION && !existsSync(EXTENSION_DIR)) {
   console.error('✗ dist-visual/ is missing — run: npm run build:visual-check');
   process.exit(1);
@@ -403,10 +560,13 @@ try {
   await sleep(800); // the battle scene relays out on resize
   const crop = await capturePass(p1.page, roomid, {dir: 'crop'});
 
-  const index = {battle: roomid, format: FORMAT, turn: reached, full: full.map((s) => s.name), crop: crop.map((s) => s.name)};
+  console.log('\ncomposing the four Chrome Web Store shots (1280×800 exactly)…');
+  const store = await storePass(p1.browser, p1.page, roomid);
+
+  const index = {battle: roomid, format: FORMAT, turn: reached, full: full.map((s) => s.name), crop: crop.map((s) => s.name), store};
   writeFileSync(new URL('index.json', OUT).pathname, JSON.stringify({...index, tooltips: crop}, null, 2));
 
-  console.log(`\n✓ ${full.length} full + ${crop.length} crop shots → screenshots/  (battle ${roomid}, turn ${reached})`);
+  console.log(`\n✓ ${full.length} full + ${crop.length} crop + ${store.length} store shots → screenshots/  (battle ${roomid}, turn ${reached})`);
   for (const {name, text} of crop) console.log(`   ${name.padEnd(24)} ${text.slice(0, 90)}`);
   console.log('\nNothing was placed for you. Pick the keepers and copy them into demo/ and store-screenshots/.');
   if (!crop.length) {

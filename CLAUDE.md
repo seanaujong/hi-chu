@@ -101,6 +101,20 @@ real two-account battle on the self-hosted server and photographs every surface 
 REAL installed extension**, not an injected bundle — `screenshots/full/` framed to the battle
 and `screenshots/crop/` at 2×. Then read the crops and judge them.
 
+The same run also composes `screenshots/store/` — the four Chrome Web Store screenshots, the
+move hover and the foe hover each shown twice, in the battle and close up. They are the only
+output here with a **shape imposed from outside**: the store takes 1280×800 exactly and
+nothing else, which no tooltip or battle room ever is, so each is composed ONTO that canvas
+(`scripts/lib/store-canvas.mjs`) rather than cropped to it, and the written file is measured
+back off disk so a wrong size fails the run instead of the upload days later. Two framing
+decisions are load-bearing and easy to undo by accident: the crops are shot at 3× and scaled
+DOWN (the only way to enlarge something and keep it sharp), and they keep a wide margin of
+surrounding UI, because Showdown's tooltip is deliberately 10% see-through and a tight crop
+strands that bleed with nothing to explain it. The fix for that is framing, never a CSS
+override faking an opaque panel — a store screenshot may not show a product we don't ship.
+Which move gets photographed is picked by how much of the tooltip is `.hichu-block`, since
+ranking by damage alone once chose a move whose flavour text left our two lines a footnote.
+
 **Loading the real extension is no longer manual**, which reverses a long-standing assumption
 here. The old belief was that "Load unpacked" can't be automated because nothing can drive
 `chrome://extensions` plus the native file picker — but that was never the obstacle; you pass

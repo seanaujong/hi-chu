@@ -160,7 +160,13 @@ data is collected or sent anywhere.
       which is the packaged toolbar icon and runs edge to edge. The store frames its listing
       tile tighter: artwork at 96×96 with 16px of transparent padding per side. Keep the
       transparency — an alpha-less upload gets dropped into a 12px-radius rounded frame.)
-- [ ] Screenshots — 1280×800 (or 640×400), 1–5 of the tooltip in action (below)
+- [ ] Screenshots — 1280×800 (or 640×400), 1–5 of the tooltip in action. `npm run
+      visual-check` composes all four into `screenshots/store/`, already at 1280×800: the
+      move hover and the foe hover, each shown once in the battle it was read from and once
+      close up. Copy the keepers into `store-screenshots/` and upload them in name order —
+      the store shows them in the order given, and each full shot sets up the crop after it.
+      A random battle can still deal a dull matchup, so look before you upload; re-run for a
+      fresh battle.
 - [ ] Small promo tile 440×280 — optional
 - [ ] Privacy policy URL live — commit & push `PRIVACY.md` first
 

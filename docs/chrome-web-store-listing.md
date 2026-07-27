@@ -17,24 +17,27 @@ hi-chu — Showdown Randbats hints
 Battle hints on hover for Pokémon Showdown: move damage, opponent's possible sets, and who's faster.
 ```
 
+The summary is the one field the store reads **out of the package** rather than out of
+this file: it is `description` in `public/manifest.json`, and what the listing shows is
+whatever the last uploaded zip carried — so editing it in the dashboard alone lasts
+until the next release overwrites it. `package.json`'s `description` is the same
+sentence again, for the npm-facing metadata. All three are held equal by
+`src/store-summary.test.ts`, which parses this block as the copy of record; change the
+sentence here and run `npm run check` to find out which files still disagree. The
+132-char ceiling is Chrome's own limit on the manifest field, so the test enforces that
+too — a longer sentence is rejected at upload, after a tag already exists.
+
 **Category:** `Tools`
 **Language:** `English`
 
 **Description**
 
 ```
-hi-chu adds battle hints to Pokémon Showdown's tooltips, one hover away:
+hi-chu adds battle hints to Pokémon Showdown's tooltips. Hover a Pokemon or one of your moveslots to know:
 
 • How much damage will each move do?
 • What Random Battle set is the opponent Pokémon running?
 • Who's faster?
-
-Hover a Pokémon or one of your move buttons and it fills in the answer, reading
-the live battle — active Terastallization, status, boosts, weather, and more —
-so the math, delegated to @smogon/calc, resolves correctly. Set inference uses
-only what's public: moves used, revealed item, ability, and Tera.
-
-Damage works in every format; set inference is Random Battle only.
 
 hi-chu is free and open source (MIT). It collects no data. It was inspired by the
 closed-source "Randbats Tooltip" — a fresh, open, maintained take on the same

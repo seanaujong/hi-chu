@@ -155,6 +155,17 @@ export interface LiveFacts {
    */
   readonly switchedIntoStealthRockUnharmed: boolean;
   /**
+   * True once the log shows this Pokémon FREELY selecting two different moves during a
+   * single stint on the field. A Choice item locks its holder into one move until it
+   * switches out, so that rules Choice Band/Specs/Scarf out — items which, like Life Orb,
+   * never announce themselves. Scoped to one stint because the lock dies on switch-out:
+   * `revealedMoves.length >= 2` is NOT the same fact and would lie. The exclusions that
+   * make a selection "free" (called moves, a lock-rejected click, Struggle, Magic Room,
+   * Embargo) are applied in the reader; Klutz is applied downstream against the role's
+   * ability pool, so this stays a raw fact.
+   */
+  readonly usedDifferentMovesSinceSwitchIn: boolean;
+  /**
    * How many times the battle log shows this Pokémon TAKING a direct move hit — RAGE
    * FIST's power scales with it (`min(350, 50 + 50×timesAttacked)`), the sim's own
    * `pokemon.timesAttacked`. Persists across switches (the sim never resets it), so this

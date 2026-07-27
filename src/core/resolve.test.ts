@@ -197,6 +197,34 @@ describe('resolveVariants — the still-possible sets to calc over', () => {
     expect(items(resolveVariants(orbFacts({baseAbility: 'Overgrow'}), DUAL_ABILITY))).toEqual(['Choice Band']);
   });
 
+  it('drops the Choice variants once two moves in one stint have ruled them out', () => {
+    // The same seam for the Choice rule: varying moves removes Choice Band from the
+    // enumerated variants, so no phantom ×1.5 damage bucket is produced. No landed hit
+    // here, so Life Orb — the other item in the pool — is left standing on purpose.
+    const quiet = orbFacts({landedDamagingHit: false});
+    expect(items(resolveVariants(quiet, DUAL_ABILITY)).sort()).toEqual(['Choice Band', 'Life Orb']);
+    // Neither ability this role can run is Klutz, so the rule fires even unrevealed.
+    expect(items(resolveVariants({...quiet, usedDifferentMovesSinceSwitchIn: true}, DUAL_ABILITY))).toEqual(['Life Orb']);
+  });
+
+  it('rules out a Choice-ONLY role outright, not just its item line', () => {
+    // The knock-on through `narrow.roleMatches`: a role whose entire item pool is ruled out
+    // can no longer be what this Pokémon is, so it leaves the candidate list altogether.
+    const entry: RandbatsEntry = {
+      level: 80,
+      abilities: ['Overgrow'],
+      items: [],
+      roles: {
+        'Choice Attacker': {abilities: ['Overgrow'], items: ['Choice Specs'], teraTypes: ['Grass'], moves: ['Leaf Storm']},
+        'Bulky Setup': {abilities: ['Overgrow'], items: ['Leftovers'], teraTypes: ['Grass'], moves: ['Leaf Storm']},
+      },
+    };
+    const facts = orbFacts({landedDamagingHit: false, baseAbility: 'Overgrow'});
+    expect(resolveVariants(facts, entry).map((v) => v.role).sort()).toEqual(['Bulky Setup', 'Choice Attacker']);
+    const varied = {...facts, usedDifferentMovesSinceSwitchIn: true};
+    expect(resolveVariants(varied, entry).map((v) => v.role)).toEqual(['Bulky Setup']);
+  });
+
   it('dedupes roles that resolve identically — no fan-out from redundant sets', () => {
     const twin: RandbatsEntry = {
       level: 80,

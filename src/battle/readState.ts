@@ -157,6 +157,7 @@ export interface BehaviorSignals {
   readonly landedDamagingHit?: boolean;
   readonly tookEntryHazardDamage?: boolean;
   readonly switchedIntoStealthRockUnharmed?: boolean;
+  readonly usedDifferentMovesSinceSwitchIn?: boolean;
   readonly timesAttacked?: number;
 }
 
@@ -271,6 +272,7 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, spe
     landedDamagingHit: signals.landedDamagingHit ?? false,
     tookEntryHazardDamage: signals.tookEntryHazardDamage ?? false,
     switchedIntoStealthRockUnharmed: signals.switchedIntoStealthRockUnharmed ?? false,
+    usedDifferentMovesSinceSwitchIn: signals.usedDifferentMovesSinceSwitchIn ?? false,
     timesAttacked: signals.timesAttacked ?? 0,
     ...(asStatus(p.status) ? {status: asStatus(p.status)!} : {}),
     ...(p.terastallized ? {teraType: p.terastallized} : {}),
@@ -457,6 +459,72 @@ export function switchedIntoStealthRockUnharmed(battle: ClientBattle, mon: Clien
   return false;
 }
 
+/** A `-fieldstart`/`-fieldend` line naming Magic Room, which suspends every held item. */
+function isMagicRoom(parts: readonly string[]): boolean {
+  return parts.some((p) => p === 'move: Magic Room' || p === 'Magic Room');
+}
+
+/** A `-start`/`-end` line putting Embargo on, or taking it off, `me`. */
+function isEmbargoOn(parts: readonly string[], me: string): boolean {
+  return identKey(parts[2]) === me && parts.some((p) => p === 'Embargo' || p === 'move: Embargo');
+}
+
+/**
+ * Did `mon` freely select two DIFFERENT moves during a single stint on the field? A Choice
+ * item locks its holder into the first move it picks until it switches out, so a "yes"
+ * rules Choice Band/Specs/Scarf out (see deductions.ts).
+ *
+ * The stint scoping is the whole rule, not a detail: the lock dies when the mon leaves the
+ * field (its volatile clears, and the item's own `onStart` clears it again on the way back
+ * in). So the tempting one-liner — `revealedMoves.length >= 2` — is WRONG, because revealed
+ * moves accumulate across switches, and a mon that clicked Move A, switched out, came back
+ * and clicked Move B was never once un-locked. Only two free selections between the same
+ * pair of switch-ins prove anything.
+ *
+ * "Freely" is the other half, and each exclusion below is the sim's own condition rather
+ * than an approximation of it (`data/conditions.ts` `choicelock`):
+ *   - a `[from]` attribute is the protocol's spelling of the sim's `sourceEffect`, so it
+ *     covers every CALLED move (Sleep Talk, Metronome, Dancer, a bounced or snatched move)
+ *     and the continuation turns of a locked move (Outrage, Fly). The player chose the
+ *     caller, never the callee, so only the caller's own line is evidence.
+ *   - `[still]` means no animation played, which is exactly how the lock REJECTS a
+ *     different selection: `onBeforeMove` emits the move line, tags it `[still]` and fails
+ *     it. Counting that line would read the lock's own signature as proof of its absence.
+ *   - Struggle is exempted by the sim by name (`move.id !== 'struggle'`) — a locked mon out
+ *     of PP has nothing else it can do, so Struggling proves nothing.
+ *   - Magic Room and Embargo make the holder `ignoringItem()`, which suspends the lock
+ *     outright. Both are time-scoped, which is why they are tracked HERE rather than handed
+ *     downstream as a flag: either can go up and come down inside one stint.
+ * Klutz, the third `ignoringItem()` case, is an ABILITY and so is guarded downstream
+ * against the role's ability pool, the way Sheer Force guards the Life Orb rule.
+ */
+export function usedDifferentMovesSinceSwitchIn(battle: ClientBattle, mon: {readonly ident?: string}): boolean {
+  const me = identKey(mon.ident);
+  if (!me) return false;
+  let chosen: string | null = null; // the move that armed the lock this stint, if any
+  let magicRoom = false;
+  let embargo = false;
+  for (const line of battle.stepQueue ?? []) {
+    const parts = line.split('|');
+    const tag = parts[1] ?? '';
+    if (tag === '-fieldstart' && isMagicRoom(parts)) magicRoom = true;
+    else if (tag === '-fieldend' && isMagicRoom(parts)) magicRoom = false;
+    else if (tag === '-start' && isEmbargoOn(parts, me)) embargo = true;
+    else if (tag === '-end' && isEmbargoOn(parts, me)) embargo = false;
+    else if ((tag === 'switch' || tag === 'drag') && identKey(parts[2]) === me) {
+      chosen = null; // a fresh stint — whatever lock there was is gone, and so is Embargo
+      embargo = false;
+    } else if (tag === 'move' && identKey(parts[2]) === me) {
+      const move = parts[3];
+      if (!move || magicRoom || embargo || toId(move) === 'struggle') continue;
+      if (parts.slice(4).some((a) => a.startsWith('[from]') || a === '[still]')) continue;
+      if (chosen === null) chosen = move;
+      else if (chosen !== move) return true;
+    }
+  }
+  return false;
+}
+
 // Anything in this set, seen AFTER an otherwise-clean hit, means CURRENT field/boost/
 // status/item/ability/forme facts no longer describe the state that hit happened under —
 // comparing against them would be guessing, not reading, so `mostRecentCleanHit` treats
@@ -561,6 +629,7 @@ export function readBehaviors(battle: ClientBattle, mon: ClientPokemon): Behavio
     landedDamagingHit: hasLandedDamagingHit(battle, mon),
     tookEntryHazardDamage: tookEntryHazardDamage(battle, mon),
     switchedIntoStealthRockUnharmed: switchedIntoStealthRockUnharmed(battle, mon),
+    usedDifferentMovesSinceSwitchIn: usedDifferentMovesSinceSwitchIn(battle, mon),
     timesAttacked: timesAttacked(battle, mon),
   };
 }
@@ -733,6 +802,7 @@ export function serverPokemonFacts(p: ClientServerPokemon, battle?: ClientBattle
     landedDamagingHit: false,
     tookEntryHazardDamage: false,
     switchedIntoStealthRockUnharmed: false,
+    usedDifferentMovesSinceSwitchIn: battle ? usedDifferentMovesSinceSwitchIn(battle, {ident: p.ident}) : false,
     timesAttacked: battle ? timesAttacked(battle, {ident: p.ident}) : 0,
     ...(status ? {status} : {}),
     ...(p.terastallized ? {teraType: p.terastallized} : {}),

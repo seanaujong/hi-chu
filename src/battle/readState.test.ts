@@ -9,6 +9,7 @@ import {
   timesAttacked,
   tookEntryHazardDamage,
   switchedIntoStealthRockUnharmed,
+  usedDifferentMovesSinceSwitchIn,
   readOwnItem,
   readOwnAbility,
   readOwnServerPokemon,
@@ -576,6 +577,82 @@ describe('switchedIntoStealthRockUnharmed (confirms Heavy-Duty Boots)', () => {
   it('respects Stealth Rock being spun/Defogged away before the switch', () => {
     const log = [SR, '|-sideend|p2: Player|Stealth Rock|[from] move: Rapid Spin', '|switch|p2a: Corviknight|Corviknight, M|100/100', '|turn|3'];
     expect(switchedIntoStealthRockUnharmed(withLog(log), corv)).toBe(false);
+  });
+});
+
+describe('usedDifferentMovesSinceSwitchIn (rules out a Choice item)', () => {
+  const withLog = (stepQueue: string[]): ClientBattle =>
+    ({gen: 9, tier: '[Gen 9] Random Battle', sides: [], stepQueue} as unknown as ClientBattle);
+  const gholdengo = clientMon({ident: 'p2: Gholdengo'});
+  const IN = '|switch|p2a: Gholdengo|Gholdengo|100/100';
+
+  it('is true once two different moves are freely selected in one stint', () => {
+    const log = [IN, '|move|p2a: Gholdengo|Make It Rain|p1a: Chansey', '|turn|2', '|move|p2a: Gholdengo|Shadow Ball|p1a: Chansey'];
+    expect(usedDifferentMovesSinceSwitchIn(withLog(log), gholdengo)).toBe(true);
+  });
+
+  it('is false for the same move repeated — the locked mon’s normal behaviour', () => {
+    const log = [IN, '|move|p2a: Gholdengo|Make It Rain|p1a: Chansey', '|turn|2', '|move|p2a: Gholdengo|Make It Rain|p1a: Chansey'];
+    expect(usedDifferentMovesSinceSwitchIn(withLog(log), gholdengo)).toBe(false);
+  });
+
+  it('is false across a switch — the lock dies on the way out, so this proves nothing', () => {
+    // The exact case `revealedMoves.length >= 2` would get wrong: two moves, never unlocked.
+    const log = [
+      IN, '|move|p2a: Gholdengo|Make It Rain|p1a: Chansey',
+      '|switch|p2a: Corviknight|Corviknight, M|100/100',
+      IN, '|move|p2a: Gholdengo|Shadow Ball|p1a: Chansey',
+    ];
+    expect(usedDifferentMovesSinceSwitchIn(withLog(log), gholdengo)).toBe(false);
+  });
+
+  it('ignores a CALLED move — the player chose the caller, not the callee', () => {
+    const log = [IN, '|move|p2a: Gholdengo|Sleep Talk|p2a: Gholdengo', '|move|p2a: Gholdengo|Shadow Ball|p1a: Chansey|[from]Sleep Talk'];
+    expect(usedDifferentMovesSinceSwitchIn(withLog(log), gholdengo)).toBe(false);
+  });
+
+  it('ignores a `[still]` line — that IS the choice lock rejecting a different click', () => {
+    // `choicelock.onBeforeMove` emits the move line, tags it [still] and fails it. Reading
+    // that as a free selection would turn the lock's own signature into proof of its absence.
+    const log = [IN, '|move|p2a: Gholdengo|Make It Rain|p1a: Chansey', '|turn|2', '|move|p2a: Gholdengo|Shadow Ball||[still]', '|-fail|p2a: Gholdengo'];
+    expect(usedDifferentMovesSinceSwitchIn(withLog(log), gholdengo)).toBe(false);
+  });
+
+  it('ignores Struggle — the sim exempts it from the lock by name', () => {
+    const log = [IN, '|move|p2a: Gholdengo|Make It Rain|p1a: Chansey', '|turn|2', '|move|p2a: Gholdengo|Struggle|p1a: Chansey'];
+    expect(usedDifferentMovesSinceSwitchIn(withLog(log), gholdengo)).toBe(false);
+  });
+
+  it('ignores moves picked while Magic Room or Embargo suspends the item', () => {
+    const magicRoom = [
+      IN, '|-fieldstart|move: Magic Room|[of] p1a: Chansey',
+      '|move|p2a: Gholdengo|Make It Rain|p1a: Chansey', '|turn|2', '|move|p2a: Gholdengo|Shadow Ball|p1a: Chansey',
+    ];
+    expect(usedDifferentMovesSinceSwitchIn(withLog(magicRoom), gholdengo)).toBe(false);
+    const embargo = [
+      IN, '|-start|p2a: Gholdengo|Embargo',
+      '|move|p2a: Gholdengo|Make It Rain|p1a: Chansey', '|turn|2', '|move|p2a: Gholdengo|Shadow Ball|p1a: Chansey',
+    ];
+    expect(usedDifferentMovesSinceSwitchIn(withLog(embargo), gholdengo)).toBe(false);
+  });
+
+  it('resumes reading once Magic Room ends — the lock applies again', () => {
+    const log = [
+      IN, '|move|p2a: Gholdengo|Make It Rain|p1a: Chansey',
+      '|-fieldstart|move: Magic Room|[of] p1a: Chansey', '|move|p2a: Gholdengo|Recover|p2a: Gholdengo',
+      '|-fieldend|move: Magic Room|[of] p1a: Chansey', '|move|p2a: Gholdengo|Shadow Ball|p1a: Chansey',
+    ];
+    expect(usedDifferentMovesSinceSwitchIn(withLog(log), gholdengo)).toBe(true);
+  });
+
+  it('does not attribute another Pokémon’s moves to this one', () => {
+    const log = [IN, '|move|p1a: Chansey|Seismic Toss|p2a: Gholdengo', '|turn|2', '|move|p1a: Chansey|Soft-Boiled|p1a: Chansey'];
+    expect(usedDifferentMovesSinceSwitchIn(withLog(log), gholdengo)).toBe(false);
+  });
+
+  it('is false on an empty log, or for a mon with no ident', () => {
+    expect(usedDifferentMovesSinceSwitchIn(withLog([]), gholdengo)).toBe(false);
+    expect(usedDifferentMovesSinceSwitchIn(withLog([IN, '|move|p2a: Gholdengo|Make It Rain|p1a: Chansey']), clientMon({}))).toBe(false);
   });
 });
 

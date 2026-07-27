@@ -479,7 +479,10 @@ test you haven't seen fail isn't protecting anything yet.
 **Where we correct `@smogon/calc`.** Keep the line clear. A calc *gap* — something it
 should arguably handle and doesn't — is ours to own, and each one is a row below: the
 multi-hit hit-count model, the item id→name quirk, the nHKO ladder, Pain Split, Rage Fist,
-variable-power multi-hit, and unknown species/items. Our *product* is not a calc gap: the
+variable-power multi-hit, and unknown species/items. A third kind hides between those two and
+is the easiest to ship by accident: the calc answering EXACTLY what we asked, where the asking
+itself was wrong. Requesting one hit of a multi-hit move is that — the calc then reads it as a
+single-hit move and applies the Tera 60 BP floor. Our *product* is not a calc gap: the
 variant/deduction information game and the Illusion species fix are cases where the calc
 computed correctly and we chose what to ask it.
 
@@ -528,7 +531,8 @@ them until someone adds it.
 | `render.ts` matches native tooltip styling and layout almost CSS-free | 👁 | `core/render.ts` (`TOOLTIP_STYLE`, `renderMoveSection`, `renderSetsSection`) | `render.test.ts`, `section.test.ts` |
 | Foe-level item facts qualifying KO/nHKO read the RESOLVED variants, never raw facts | ✅ | `section.ts` (`itemStanding`) | `section.test.ts`, `render.test.ts` |
 | Own the hit-count model — the calc's `k × one roll` multi-hit is wrong | ✅ | `core/multihit.ts` | `multihit.test.ts`, `damage.test.ts` |
-| Variable-power multi-hit is computed per hit, through a stand-in move | ✅ | `core/damage.ts` | `damage.test.ts` |
+| Variable-power multi-hit is computed per hit, through a stand-in move — which must match the real move on CONTACT and be genuinely multi-hit | ✅ | `core/damage.ts` | `damage.test.ts` |
+| One hit of a multi-hit move is asked for as TWO — a single hit takes gen 9's Tera 60 BP floor, which no multi-hit move ever takes | ✅ | `core/damage.ts` (`TERA_FLOOR_SAFE_HITS`) | `damage.test.ts` |
 | Rage Fist's power scales with the ATTACKER's own hits taken | ✅ | `core/damage.ts` (`rageFistPower`), `battle/readState.ts` (`timesAttacked`) | `damage.test.ts`, `readState.test.ts`, `transform.test.ts` |
 | Speed order: arithmetic delegated, ORDER owned, a fact about the PAIR | ✅ | `core/speed.ts`, `section.ts` (`speedSection`, `ownMovesSection`) | `speed.test.ts`, `render.test.ts`, `section.test.ts` |
 | Unburden's ×2 Speed is armed via an explicit `abilityOn` flag, not inferred from `item` | ✅ | `core/resolve.ts` (`buildResolved`), `core/damage.ts` (`buildPokemon`) | `resolve.test.ts`, `speed.test.ts` |

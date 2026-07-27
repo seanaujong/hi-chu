@@ -63,7 +63,7 @@ function probeLiveClient() {
   // Which of the rarer client shapes this replay actually exercised — a random replay
   // usually has no transformed or forme-changed Pokémon, and a probe that never fired is
   // not a probe that passed. Reported, not failed on.
-  const seen = {formeChange: false, transform: false};
+  const seen = {formeChange: false, transform: false, calledMove: false};
 
   const format = R.detectFormat(b);
   if (!format || format.kind !== 'randbats' || !/^gen\d+random/.test(format.formatId)) {
@@ -89,7 +89,6 @@ function probeLiveClient() {
   // 4 on — over the whole replay, and report whether any `[from]` move line was actually
   // present (a random replay may have none; a probe that never fired is not one that passed).
   const moveLines = (b.stepQueue || []).filter((l) => typeof l === 'string' && l.startsWith('|move|'));
-  seen.calledMove = false;
   for (const line of moveLines) {
     const parts = line.split('|');
     if (typeof parts[2] !== 'string' || !parts[2].includes(':') || !parts[3]) {
@@ -229,6 +228,10 @@ async function main() {
     // clean bill of health — to exercise them, pick a replay that has a Ditto in it.
     console.log(`  volatiles: formechange ${seen.formeChange ? 'SEEN — checked' : 'absent (not exercised)'}, ` +
       `transform ${seen.transform ? 'SEEN — checked' : 'absent (not exercised)'}`);
+    // Same honesty for the `[from]` convention the Choice rule-out leans on: most replays
+    // have no called move at all, and its absence means that half went unexercised.
+    console.log(`  |move| lines: layout checked, [from] attribute ` +
+      `${seen.calledMove ? 'SEEN — checked' : 'absent (not exercised)'}`);
 
     if (problems.length) {
       console.error('\n✗ DRIFT DETECTED — readState.ts no longer matches the live client:');

@@ -517,7 +517,7 @@ them until someone adds it.
 | `render.ts` matches native tooltip styling and layout almost CSS-free | 👁 | `core/render.ts` (`TOOLTIP_STYLE`, `renderMoveSection`, `renderSetsSection`) | `render.test.ts`, `section.test.ts` |
 | Foe-level item facts qualifying KO/nHKO read the RESOLVED variants, never raw facts | ✅ | `section.ts` (`itemStanding`) | `section.test.ts`, `render.test.ts` |
 | Own the hit-count model — the calc's `k × one roll` multi-hit is wrong | ✅ | `core/multihit.ts` | `multihit.test.ts`, `damage.test.ts` |
-| Variable-power multi-hit is computed per hit, through a stand-in move | ✅ | `core/damage.ts` | `damage.test.ts` |
+| Variable-power multi-hit is computed per hit, through a stand-in move — which must match the real move on CONTACT and be genuinely multi-hit | ✅ | `core/damage.ts` | `damage.test.ts` |
 | One hit of a multi-hit move is asked for as TWO — a single hit takes gen 9's Tera 60 BP floor, which no multi-hit move ever takes | ✅ | `core/damage.ts` (`TERA_FLOOR_SAFE_HITS`) | `damage.test.ts` |
 | Rage Fist's power scales with the ATTACKER's own hits taken | ✅ | `core/damage.ts` (`rageFistPower`), `battle/readState.ts` (`timesAttacked`) | `damage.test.ts`, `readState.test.ts`, `transform.test.ts` |
 | Speed order: arithmetic delegated, ORDER owned, a fact about the PAIR | ✅ | `core/speed.ts`, `section.ts` (`speedSection`, `ownMovesSection`) | `speed.test.ts`, `render.test.ts`, `section.test.ts` |

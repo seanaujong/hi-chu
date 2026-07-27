@@ -468,23 +468,29 @@ export function calcDamage(
   // One damage PMF per distinct hit. A variable-power move (Triple Axel 20/40/60) needs
   // one calc run per hit's true BP — but the calc special-cases those moves BY NAME,
   // recomputing BP from `move.hits` and silently ignoring `overrides.basePower`, so each
-  // hit runs through a stand-in instead: Pound, a plain physical contact move with no
-  // special-casing, carrying the hit's BP and the real move's type/category. Probe-verified
-  // exact against the real move's hits:1 rolls, Technician and Tough Claws included (both
-  // moves, like Pound, are contact and carry no punch/slice/bite flag an ability keys on).
+  // hit runs through a stand-in instead: Fury Swipes, carrying the hit's BP and the real
+  // move's type/category. Three things make it the right body to borrow, and all three are
+  // load-bearing. It makes CONTACT, like every move it stands in for, so Tough Claws (and
+  // Rocky Helmet, Rough Skin, Iron Barbs) still reach it, while carrying no
+  // punch/slice/bite flag of its own for an ability to key on, and no name the calc
+  // special-cases. It is GENUINELY multi-hit, which is why it isn't the simpler Pound: gen 9
+  // raises a sub-60 BP move to 60 when it matches the attacker's ACTIVE Tera type, and
+  // Showdown exempts multi-hit moves outright (`!dexMove.multihit`, sim/battle-actions.ts) —
+  // an exemption @smogon/calc reads off `move.hits === 1`, so a single-hit stand-in takes a
+  // floor the move it stands in for never takes. And its hit count is a RANGE, which is what
+  // lets `hits` be passed explicitly below: the calc honours `options.hits` only for a range
+  // move and silently ignores it for a fixed-count one (`Move`'s constructor), so borrowing a
+  // fixed 2-hit body would leave this path relying on that body's own count instead of saying
+  // what it wants. Both paths therefore ask for the same thing in the same way.
   //
-  // Every one of these runs asks for a TWO-hit move and reads only the first hit, because a
-  // hit of a multi-hit move must still be priced AS a multi-hit move. Gen 9 raises a sub-60 BP
-  // move to 60 when it matches the attacker's ACTIVE Tera type, and Showdown exempts multi-hit
-  // moves outright (`!dexMove.multihit`, sim/battle-actions.ts) — an exemption @smogon/calc
-  // reads off `move.hits === 1`. Ask it for one hit and Tera Grass Bullet Seed prices each hit
-  // at 60 BP instead of 25, an error the convolution below then multiplies across every hit.
-  // So the stand-in carries `multihit` too: without it, Pound is a single-hit move and takes
-  // the floor the move it stands in for would never take.
+  // Asking for one hit is what the uniform path must avoid too: ask for one and Tera Grass
+  // Bullet Seed prices every hit at 60 BP instead of 25, an error the convolution below then
+  // multiplies across the whole hit count.
   const perHitPmfs = profile.perHitPowers
     ? profile.perHitPowers.map((basePower) => {
-        const standIn = new Move(gen, 'Pound', {
-          overrides: {basePower, type: dexMove.type, category: dexMove.category, multihit: TERA_FLOOR_SAFE_HITS},
+        const standIn = new Move(gen, 'Fury Swipes', {
+          hits: TERA_FLOOR_SAFE_HITS,
+          overrides: {basePower, type: dexMove.type, category: dexMove.category},
         });
         return pmfFromSamples(firstHitRolls(calculate(gen, atk, def, standIn, field).damage));
       })

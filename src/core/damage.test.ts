@@ -251,6 +251,32 @@ describe('Tera never raises a multi-hit move to 60 BP', () => {
     expect(r.multiHit!.perHit.min * 2).toBeLessThan(r.multiHit!.perHit.max);
   });
 
+  it('the stand-in keeps the real move CONTACT — Tough Claws still reaches it', () => {
+    // Triple Axel is a contact move, so its stand-in must be one too: pick a non-contact
+    // stand-in and Tough Claws (and Rocky Helmet, Rough Skin, Iron Barbs) silently stop
+    // applying. Nothing about the Tera fix would fail — the damage would just quietly drop.
+    const perHit = (ability?: string) =>
+      calcDamage(
+        mon({speciesForme: 'Weavile', nature: 'Jolly', ...(ability ? {ability} : {})}),
+        mon({speciesForme: 'Tyranitar'}),
+        'Triple Axel',
+      ).multiHit!.perHit;
+    expect(perHit()).toEqual({min: 25, max: 84});
+    expect(perHit('Tough Claws')).toEqual({min: 31, max: 108}); // the ×1.3, on every hit
+  });
+
+  it('the stand-in carries the real move’s TYPE and CATEGORY, not its own', () => {
+    // Double Hit is Normal and physical; Triple Kick is Fighting. Tyranitar is Rock/Dark, so
+    // a leaked Normal type would read 1× where Fighting reads 4× — and a leaked physical
+    // stat line would survive a special override. Both are pinned by the numbers below.
+    const fighting = calcDamage(
+      mon({speciesForme: 'Hitmontop', nature: 'Adamant'}),
+      mon({speciesForme: 'Tyranitar'}),
+      'Triple Kick',
+    ).multiHit!.perHit;
+    expect(fighting).toEqual({min: 48, max: 156}); // 4× effective, 10/20/30 BP ladder intact
+  });
+
   it('a fixed-count multi-hit move is untouched as well', () => {
     const plain = calcDamage(
       mon({speciesForme: 'Hitmonlee', nature: 'Adamant'}),

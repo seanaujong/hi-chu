@@ -208,6 +208,64 @@ describe('uniform-power multi-hit (Bullet Seed, 2-5)', () => {
   });
 });
 
+describe('Tera never raises a multi-hit move to 60 BP', () => {
+  // Gen 9 floors a sub-60 BP move at 60 when it matches the attacker's active Tera type, and
+  // Showdown exempts multi-hit moves outright (`!dexMove.multihit`). @smogon/calc reads that
+  // exemption off `move.hits === 1`, so asking it for a single hit of a multi-hit move claims
+  // the exemption is unavailable and prices a 25 BP hit at 60 — see TERA_FLOOR_SAFE_HITS.
+  const teraBulletSeed = (teraType?: string) =>
+    calcDamage(
+      mon({speciesForme: 'Breloom', nature: 'Adamant', ...(teraType ? {teraType, terastallized: true} : {})}),
+      mon({speciesForme: 'Tyranitar'}),
+      'Bullet Seed',
+    );
+
+  it('a 2-5 hit move gains only the STAB step, not a base-power floor', () => {
+    const plain = teraBulletSeed().multiHit!.perHit;
+    const tera = teraBulletSeed('Grass').multiHit!.perHit;
+    // Breloom is already Grass, so Tera can only take STAB 1.5 -> 2.0: a flat 4/3 per hit.
+    // The floor would take 25 BP to 60 as well, tripling it instead.
+    expect(tera.min).toBe(92);
+    expect(tera.max).toBe(112);
+    expect(tera.max).toBeLessThan(plain.max * 1.5);
+  });
+
+  it('Tera into some OTHER type changes nothing at all', () => {
+    // Fire Tera on a Grass move: the floor needs move.type === the active Tera type, so it
+    // cannot fire — and Tera keeps STAB on the ORIGINAL types, so Breloom's Grass STAB is
+    // still 1.5. Per-hit damage is therefore identical to not having Terastallized, which
+    // also pins that reading hit one of a two-hit ask is a no-op wherever no floor applies.
+    expect(teraBulletSeed('Fire').multiHit!.perHit).toEqual(teraBulletSeed().multiHit!.perHit);
+  });
+
+  it('a variable-power ladder survives Tera — the stand-in is multi-hit too', () => {
+    // Triple Axel is 20/40/60. Tera Ice scales all three alike; the floor would instead drag
+    // the 20 and 40 BP hits up to 60 and collapse the ladder into a single value.
+    const r = calcDamage(
+      mon({speciesForme: 'Weavile', nature: 'Jolly', teraType: 'Ice', terastallized: true}),
+      mon({speciesForme: 'Tyranitar'}),
+      'Triple Axel',
+    );
+    expect(r.multiHit!.perHit.min).toBe(34);
+    expect(r.multiHit!.perHit.max).toBe(112);
+    expect(r.multiHit!.perHit.min * 2).toBeLessThan(r.multiHit!.perHit.max);
+  });
+
+  it('a fixed-count multi-hit move is untouched as well', () => {
+    const plain = calcDamage(
+      mon({speciesForme: 'Hitmonlee', nature: 'Adamant'}),
+      mon({speciesForme: 'Tyranitar'}),
+      'Double Kick',
+    ).multiHit!.perHit;
+    const tera = calcDamage(
+      mon({speciesForme: 'Hitmonlee', nature: 'Adamant', teraType: 'Fighting', terastallized: true}),
+      mon({speciesForme: 'Tyranitar'}),
+      'Double Kick',
+    ).multiHit!.perHit;
+    expect(tera.max).toBeLessThan(plain.max * 1.5);
+  });
+});
+
 describe('hit-count modifiers', () => {
   it('Skill Link forces five hits', () => {
     const r = calcDamage(

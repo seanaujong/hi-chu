@@ -3,7 +3,7 @@
 // @smogon/calc owns the hard, generation-specific formula (STAB, Tera, items,
 // abilities, burn-vs-Guts, screens, …). We own what it gets wrong for multi-hit:
 // it models k hits as `k × one shared roll`, with no hit-count randomness, per-hit
-// accuracy, or Skill Link/Loaded Dice. So we ask the calc for ONE hit at a time —
+// accuracy, or Skill Link/Loaded Dice. So we read ONE hit at a time out of it —
 // one run for a uniform-power move, one per hit's true BP for Triple Axel/Triple
 // Kick — and convolve those per-hit rolls over the real hit-count distribution
 // (core/multihit.ts) to get the true total, and from it an exact single-use KO chance.
@@ -313,6 +313,21 @@ function rollsOf(damage: number | readonly number[] | readonly number[][]): numb
   return [...(damage as readonly number[])];
 }
 
+/** The hit count we ask the calc for when we want ONE hit of a multi-hit move. Two, never one:
+ *  `move.hits === 1` is how @smogon/calc recognizes a single-hit move and applies gen 9's Tera
+ *  60 BP floor — a floor no multi-hit move ever takes. We read hit one back out of the result. */
+const TERA_FLOOR_SAFE_HITS = 2;
+
+/** ONE hit's rolls: the calc returns a row per hit for a multi-hit move, and the first row is
+ *  the hit our convolution models — taken before `checkMultihitBoost` consumes an item or
+ *  accrues a boost for the hits after it. Falls back to the whole list when there is one row. */
+function firstHitRolls(damage: number | readonly number[] | readonly number[][]): number[] {
+  if (typeof damage !== 'number' && Array.isArray(damage[0])) {
+    return [...(damage as readonly number[][])[0]!];
+  }
+  return rollsOf(damage);
+}
+
 function summarizeReport(
   moveName: string,
   category: DamageReport['category'],
@@ -457,12 +472,23 @@ export function calcDamage(
   // special-casing, carrying the hit's BP and the real move's type/category. Probe-verified
   // exact against the real move's hits:1 rolls, Technician and Tough Claws included (both
   // moves, like Pound, are contact and carry no punch/slice/bite flag an ability keys on).
+  //
+  // Every one of these runs asks for a TWO-hit move and reads only the first hit, because a
+  // hit of a multi-hit move must still be priced AS a multi-hit move. Gen 9 raises a sub-60 BP
+  // move to 60 when it matches the attacker's ACTIVE Tera type, and Showdown exempts multi-hit
+  // moves outright (`!dexMove.multihit`, sim/battle-actions.ts) — an exemption @smogon/calc
+  // reads off `move.hits === 1`. Ask it for one hit and Tera Grass Bullet Seed prices each hit
+  // at 60 BP instead of 25, an error the convolution below then multiplies across every hit.
+  // So the stand-in carries `multihit` too: without it, Pound is a single-hit move and takes
+  // the floor the move it stands in for would never take.
   const perHitPmfs = profile.perHitPowers
     ? profile.perHitPowers.map((basePower) => {
-        const standIn = new Move(gen, 'Pound', {overrides: {basePower, type: dexMove.type, category: dexMove.category}});
-        return pmfFromSamples(rollsOf(calculate(gen, atk, def, standIn, field).damage));
+        const standIn = new Move(gen, 'Pound', {
+          overrides: {basePower, type: dexMove.type, category: dexMove.category, multihit: TERA_FLOOR_SAFE_HITS},
+        });
+        return pmfFromSamples(firstHitRolls(calculate(gen, atk, def, standIn, field).damage));
       })
-    : [pmfFromSamples(rollsOf(run(1).damage))]; // uniform power: every hit rolls the same
+    : [pmfFromSamples(firstHitRolls(run(TERA_FLOOR_SAFE_HITS).damage))]; // uniform: every hit rolls the same
 
   const total = totalDamagePmf(perHitPmfs, counts);
 

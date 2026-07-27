@@ -101,6 +101,20 @@ real two-account battle on the self-hosted server and photographs every surface 
 REAL installed extension**, not an injected bundle — `screenshots/full/` framed to the battle
 and `screenshots/crop/` at 2×. Then read the crops and judge them.
 
+The same run also composes `screenshots/store/` — the four Chrome Web Store screenshots, the
+move hover and the foe hover each shown twice, in the battle and close up. They are the only
+output here with a **shape imposed from outside**: the store takes 1280×800 exactly and
+nothing else, which no tooltip or battle room ever is, so each is composed ONTO that canvas
+(`scripts/lib/store-canvas.mjs`) rather than cropped to it, and the written file is measured
+back off disk so a wrong size fails the run instead of the upload days later. Two framing
+decisions are load-bearing and easy to undo by accident: the crops are shot at 3× and scaled
+DOWN (the only way to enlarge something and keep it sharp), and they keep a wide margin of
+surrounding UI, because Showdown's tooltip is deliberately 10% see-through and a tight crop
+strands that bleed with nothing to explain it. The fix for that is framing, never a CSS
+override faking an opaque panel — a store screenshot may not show a product we don't ship.
+Which move gets photographed is picked by how much of the tooltip is `.hichu-block`, since
+ranking by damage alone once chose a move whose flavour text left our two lines a footnote.
+
 **Loading the real extension is no longer manual**, which reverses a long-standing assumption
 here. The old belief was that "Load unpacked" can't be automated because nothing can drive
 `chrome://extensions` plus the native file picker — but that was never the obstacle; you pass
@@ -465,7 +479,10 @@ test you haven't seen fail isn't protecting anything yet.
 **Where we correct `@smogon/calc`.** Keep the line clear. A calc *gap* — something it
 should arguably handle and doesn't — is ours to own, and each one is a row below: the
 multi-hit hit-count model, the item id→name quirk, the nHKO ladder, Pain Split, Rage Fist,
-variable-power multi-hit, and unknown species/items. Our *product* is not a calc gap: the
+variable-power multi-hit, and unknown species/items. A third kind hides between those two and
+is the easiest to ship by accident: the calc answering EXACTLY what we asked, where the asking
+itself was wrong. Requesting one hit of a multi-hit move is that — the calc then reads it as a
+single-hit move and applies the Tera 60 BP floor. Our *product* is not a calc gap: the
 variant/deduction information game and the Illusion species fix are cases where the calc
 computed correctly and we chose what to ask it.
 
@@ -514,7 +531,8 @@ them until someone adds it.
 | `render.ts` matches native tooltip styling and layout almost CSS-free | 👁 | `core/render.ts` (`TOOLTIP_STYLE`, `renderMoveSection`, `renderSetsSection`) | `render.test.ts`, `section.test.ts` |
 | Foe-level item facts qualifying KO/nHKO read the RESOLVED variants, never raw facts | ✅ | `section.ts` (`itemStanding`) | `section.test.ts`, `render.test.ts` |
 | Own the hit-count model — the calc's `k × one roll` multi-hit is wrong | ✅ | `core/multihit.ts` | `multihit.test.ts`, `damage.test.ts` |
-| Variable-power multi-hit is computed per hit, through a stand-in move | ✅ | `core/damage.ts` | `damage.test.ts` |
+| Variable-power multi-hit is computed per hit, through a stand-in move — which must match the real move on CONTACT and be genuinely multi-hit | ✅ | `core/damage.ts` | `damage.test.ts` |
+| One hit of a multi-hit move is asked for as TWO — a single hit takes gen 9's Tera 60 BP floor, which no multi-hit move ever takes | ✅ | `core/damage.ts` (`TERA_FLOOR_SAFE_HITS`) | `damage.test.ts` |
 | Rage Fist's power scales with the ATTACKER's own hits taken | ✅ | `core/damage.ts` (`rageFistPower`), `battle/readState.ts` (`timesAttacked`) | `damage.test.ts`, `readState.test.ts`, `transform.test.ts` |
 | Speed order: arithmetic delegated, ORDER owned, a fact about the PAIR | ✅ | `core/speed.ts`, `section.ts` (`speedSection`, `ownMovesSection`) | `speed.test.ts`, `render.test.ts`, `section.test.ts` |
 | Unburden's ×2 Speed is armed via an explicit `abilityOn` flag, not inferred from `item` | ✅ | `core/resolve.ts` (`buildResolved`), `core/damage.ts` (`buildPokemon`) | `resolve.test.ts`, `speed.test.ts` |

@@ -166,6 +166,22 @@ export interface LiveFacts {
    */
   readonly usedDifferentMovesSinceSwitchIn: boolean;
   /**
+   * True once the log shows this Pokémon completing a switch-in at which a held Air Balloon
+   * would have had to ANNOUNCE itself, and staying silent. This is the mirror of every other
+   * deduction here: those read items that never speak, and Air Balloon is the sim's only
+   * item that always does — its `onStart` emits `|-item|<mon>|Air Balloon` each time its
+   * holder comes in. So silence on the way in is proof of absence, and the balloon is worth
+   * knowing about: it makes its holder immune to Ground moves outright.
+   *
+   * The suppressors that would make silence meaningless are split the usual way. Gravity and
+   * Magic Room are time-scoped, so the reader judges them at the moment of the switch-in;
+   * Klutz is an ability, so it is applied downstream against the role's ability pool, leaving
+   * this a raw fact. Embargo — the third `ignoringItem()` case — needs no handling at all: it
+   * is a volatile, and volatiles clear on the way out, so no mon can be Embargoed at the
+   * instant it switches IN.
+   */
+  readonly switchedInWithoutAnnouncingBalloon: boolean;
+  /**
    * How many times the battle log shows this Pokémon TAKING a direct move hit — RAGE
    * FIST's power scales with it (`min(350, 50 + 50×timesAttacked)`), the sim's own
    * `pokemon.timesAttacked`. Persists across switches (the sim never resets it), so this

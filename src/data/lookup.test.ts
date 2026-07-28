@@ -115,6 +115,7 @@ describe('normalizes the loose feed shape (gen9championsrandombattle)', () => {
     revealedMoves: [],
     landedDamagingHit: false, tookEntryHazardDamage: false, switchedIntoStealthRockUnharmed: false,
     usedDifferentMovesSinceSwitchIn: false,
+    switchedInWithoutAnnouncingBalloon: false,
     timesAttacked: 0,
     ...over,
   });

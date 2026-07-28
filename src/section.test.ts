@@ -522,6 +522,64 @@ describe('the sets view narrows a foe’s item pool by an OBSERVED hit’s MAGNI
   });
 });
 
+describe('a silent switch-in drops the Air Balloon bucket (core/deductions.ts)', () => {
+  // Heatran's real gen9randombattle role, item pool and all. The balloon is the one item
+  // that announces itself on the way in, so the tooltip should stop hedging about it the
+  // moment the battle shows Heatran arrive without a word — and what it stops showing is
+  // not a cosmetic label but a "0% damage" line on a move that in fact KOs.
+  const feed: RandbatsData = {
+    Heatran: {level: 79, abilities: ['Flash Fire'], items: ['Air Balloon', 'Assault Vest'], moves: ['Magma Storm']},
+    'Landorus-Therian': {level: 76, abilities: ['Intimidate'], items: ['Leftovers'], moves: ['Earthquake']},
+  };
+  const near = {isFar: false, sideConditions: {}, active: [] as unknown[]};
+  const far = {isFar: true, sideConditions: {}, active: [] as unknown[]};
+  const ourLando = {
+    speciesForme: 'Landorus-Therian', level: 76, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p1: Landorus', side: near,
+  } as unknown as ClientPokemon;
+  const foeHeatran = {
+    speciesForme: 'Heatran', level: 79, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p2: Heatran', side: far,
+  } as unknown as ClientPokemon;
+  near.active = [ourLando];
+  far.active = [foeHeatran];
+
+  const battleWith = (stepQueue: string[]): ClientBattle =>
+    ({gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far], stepQueue} as unknown as ClientBattle);
+  const SWITCH_IN = '|switch|p2a: Heatran|Heatran, M|100/100';
+
+  it('brackets both items while no switch-in has been seen — the honest baseline', () => {
+    const html = buildMoveSection(battleWith(['|turn|5']), ourLando, 'Earthquake', feed);
+    expect(html).toContain('(Air Balloon)');
+    expect(html).toContain('(Assault Vest)');
+  });
+
+  it('collapses to the one real number once Heatran arrives without announcing one', () => {
+    const html = buildMoveSection(battleWith(['|turn|4', SWITCH_IN, '|turn|5']), ourLando, 'Earthquake', feed);
+    expect(html).not.toContain('(Air Balloon)');
+    expect(html).not.toContain('(Assault Vest)'); // one item left ⇒ no per-item labels at all
+    expect(html).toContain('guaranteed KO');
+  });
+
+  it('keeps the balloon when the switch-in DID announce it, even across the foe’s switch line', () => {
+    // The lead-shaped ordering: the announcement lands after BOTH sides' |switch| lines.
+    const html = buildMoveSection(battleWith([
+      '|start', '|switch|p1a: Landorus|Landorus-Therian, M|100/100', SWITCH_IN,
+      '|-item|p2a: Heatran|Air Balloon', '|turn|1',
+    ]), ourLando, 'Earthquake', feed);
+    expect(html).toContain('(Air Balloon)');
+    expect(html).toContain('(Assault Vest)');
+  });
+
+  it('drops it from the sets view too, not just the damage line', () => {
+    const before = buildPokemonSection(battleWith(['|turn|5']), foeHeatran, feed);
+    expect(before).toContain('Air Balloon');
+    const after = buildPokemonSection(battleWith(['|turn|4', SWITCH_IN, '|turn|5']), foeHeatran, feed);
+    expect(after).not.toContain('Air Balloon');
+    expect(after).toContain('Assault Vest');
+  });
+});
+
 describe('buildPokemonSection speed order (the ⚡ line on a foe hover)', () => {
   const {battle, active} = loadBattle();
 

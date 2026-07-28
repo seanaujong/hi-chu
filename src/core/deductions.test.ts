@@ -90,3 +90,35 @@ describe('Choice rule-out (two moves in one stint ⇒ not locked into one)', () 
     expect(survivingItems(['Good as Gold'], ['Choice Specs', 'Choice Scarf'], varied({baseAbility: 'Good as Gold'}))).toEqual([]);
   });
 });
+
+describe('Air Balloon rule-out (came in silently ⇒ not holding one)', () => {
+  // The mirror of the rules above: the balloon announces itself on every switch-in, so
+  // silence is the evidence. Heatran's real randbats pool is exactly this two-item pair,
+  // which is why the rule-out PINS the item rather than merely shortening a list.
+  const pool = ['Air Balloon', 'Assault Vest'];
+  const silent = (over = {}) => liveFacts({switchedInWithoutAnnouncingBalloon: true, ...over});
+
+  it('removes Air Balloon after a switch-in that never announced one', () => {
+    expect(survivingItems(['Flash Fire'], pool, silent({baseAbility: 'Flash Fire'}))).toEqual(['Assault Vest']);
+  });
+
+  it('keeps it when the known ability is Klutz, which silences the balloon and voids it', () => {
+    expect(survivingItems(['Klutz'], pool, silent({baseAbility: 'Klutz'}))).toEqual(pool);
+  });
+
+  it('never lies: keeps it while the ability is hidden and the pool could be Klutz', () => {
+    expect(survivingItems(['Klutz', 'Limber'], pool, silent())).toEqual(pool);
+  });
+
+  it('does nothing without the signal, or once an item is revealed', () => {
+    expect(survivingItems(['Flash Fire'], pool, liveFacts())).toEqual(pool);
+    expect(survivingItems(['Flash Fire'], pool, silent({item: 'Air Balloon'}))).toEqual(pool);
+    expect(survivingItems(['Flash Fire'], pool, silent({prevItem: 'Air Balloon'}))).toEqual(pool);
+  });
+
+  it('is independent of the other rules — one silent switch-in touches only the balloon', () => {
+    const facts = silent({baseAbility: 'Flash Fire'});
+    expect(survivingItems(['Flash Fire'], ['Air Balloon', 'Life Orb', 'Choice Band'], facts))
+      .toEqual(['Life Orb', 'Choice Band']);
+  });
+});

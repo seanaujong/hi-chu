@@ -10,6 +10,7 @@ import {
   tookEntryHazardDamage,
   switchedIntoStealthRockUnharmed,
   usedDifferentMovesSinceSwitchIn,
+  switchedInWithoutAnnouncingBalloon,
   readOwnItem,
   readOwnAbility,
   readOwnServerPokemon,
@@ -653,6 +654,83 @@ describe('usedDifferentMovesSinceSwitchIn (rules out a Choice item)', () => {
   it('is false on an empty log, or for a mon with no ident', () => {
     expect(usedDifferentMovesSinceSwitchIn(withLog([]), gholdengo)).toBe(false);
     expect(usedDifferentMovesSinceSwitchIn(withLog([IN, '|move|p2a: Gholdengo|Make It Rain|p1a: Chansey']), clientMon({}))).toBe(false);
+  });
+});
+
+describe('switchedInWithoutAnnouncingBalloon (rules out Air Balloon)', () => {
+  const withLog = (stepQueue: string[]): ClientBattle =>
+    ({gen: 9, tier: '[Gen 9] Random Battle', sides: [], stepQueue} as unknown as ClientBattle);
+  const heatran = clientMon({ident: 'p1: Heatran'});
+  const IN = '|switch|p1a: Heatran|Heatran, M|344/344';
+  const SAYS_BALLOON = '|-item|p1a: Heatran|Air Balloon';
+
+  // The opening of a real battle, line for line out of the sim: BOTH sides switch in, and
+  // only then do the switch-in effects fire. This is why the scan may not stop at a switch.
+  const lead = (announces: boolean): string[] => [
+    '|start',
+    IN,
+    '|switch|p2a: Landorus|Landorus-Therian, M|340/340',
+    '|-ability|p2a: Landorus|Intimidate|boost',
+    '|-unboost|p1a: Heatran|atk|1',
+    ...(announces ? [SAYS_BALLOON] : []),
+    '|turn|1',
+  ];
+
+  it('is true when a lead comes in silently — the announcement would have preceded |turn|', () => {
+    expect(switchedInWithoutAnnouncingBalloon(withLog(lead(false)), heatran)).toBe(true);
+  });
+
+  it('is false when the lead announces one, though the OPPONENT’s switch line sits between', () => {
+    // The regression that matters: a scan stopping at the next |switch| would never reach
+    // the announcement, and would rule out a balloon the battle just showed us.
+    expect(switchedInWithoutAnnouncingBalloon(withLog(lead(true)), heatran)).toBe(false);
+  });
+
+  it('reads a mid-battle switch-in, where the announcement precedes the turn’s first move', () => {
+    const quiet = ['|turn|1', IN, '|move|p2a: Landorus|Earthquake|p1a: Heatran'];
+    expect(switchedInWithoutAnnouncingBalloon(withLog(quiet), heatran)).toBe(true);
+    const loud = ['|turn|1', IN, SAYS_BALLOON, '|move|p2a: Landorus|Earthquake|p1a: Heatran'];
+    expect(switchedInWithoutAnnouncingBalloon(withLog(loud), heatran)).toBe(false);
+  });
+
+  it('ignores a switch-in under Gravity or Magic Room, which silence the balloon', () => {
+    for (const suppressor of ['|-fieldstart|move: Gravity', '|-fieldstart|move: Magic Room|[of] p2a: Landorus']) {
+      expect(switchedInWithoutAnnouncingBalloon(withLog([suppressor, IN, '|turn|2']), heatran)).toBe(false);
+    }
+  });
+
+  it('resumes reading once the suppressor ends', () => {
+    const log = [
+      '|-fieldstart|move: Gravity', IN, '|turn|2',
+      '|-fieldend|move: Gravity', '|switch|p1a: Skarmory|Skarmory, F|292/292', IN, '|turn|4',
+    ];
+    expect(switchedInWithoutAnnouncingBalloon(withLog(log), heatran)).toBe(true);
+  });
+
+  it('counts a drag the same as a switch — Whirlwind still brings the item in', () => {
+    const log = ['|move|p2a: Landorus|Whirlwind|p1a: Skarmory', '|drag|p1a: Heatran|Heatran, M|344/344', '|turn|2'];
+    expect(switchedInWithoutAnnouncingBalloon(withLog(log), heatran)).toBe(true);
+  });
+
+  it('does not read another Pokémon’s announcement as this one’s', () => {
+    const log = [IN, '|-item|p2a: Landorus|Air Balloon', '|turn|1'];
+    expect(switchedInWithoutAnnouncingBalloon(withLog(log), heatran)).toBe(true);
+  });
+
+  it('does not read some OTHER revealed item as the balloon', () => {
+    const log = [IN, '|-item|p1a: Heatran|Leftovers|[from] move: Trick', '|turn|1'];
+    expect(switchedInWithoutAnnouncingBalloon(withLog(log), heatran)).toBe(true);
+  });
+
+  it('says nothing while the switch-in resolution is still unfinished', () => {
+    // A log that stops right after the switch has not yet reported the announcement, so
+    // reading it as silence would invent a rule-out. Missing one beats making a false one.
+    expect(switchedInWithoutAnnouncingBalloon(withLog(['|start', IN]), heatran)).toBe(false);
+  });
+
+  it('is false on an empty log, or for a mon with no ident', () => {
+    expect(switchedInWithoutAnnouncingBalloon(withLog([]), heatran)).toBe(false);
+    expect(switchedInWithoutAnnouncingBalloon(withLog(lead(false)), clientMon({}))).toBe(false);
   });
 });
 

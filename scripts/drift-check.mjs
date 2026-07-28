@@ -63,7 +63,7 @@ function probeLiveClient() {
   // Which of the rarer client shapes this replay actually exercised — a random replay
   // usually has no transformed or forme-changed Pokémon, and a probe that never fired is
   // not a probe that passed. Reported, not failed on.
-  const seen = {formeChange: false, transform: false};
+  const seen = {formeChange: false, transform: false, calledMove: false};
 
   const format = R.detectFormat(b);
   if (!format || format.kind !== 'randbats' || !/^gen\d+random/.test(format.formatId)) {
@@ -81,6 +81,24 @@ function probeLiveClient() {
   // The Life Orb recoil inference reads the protocol log; guard its shape too.
   if (!Array.isArray(b.stepQueue)) problems.push(`battle.stepQueue is ${typeof b.stepQueue}, expected an array`);
 
+  // The Choice rule-out reads `|move|` lines and, crucially, treats a `[from]` attribute as
+  // "the player did not choose this" (a called move). That convention is load-bearing in the
+  // DANGEROUS direction: if `[from]` ever stopped marking called moves, every Sleep Talk or
+  // Metronome call would read as a second free selection and we would rule Choice items out
+  // FALSELY. So assert the line's field layout — actor at 2, move name at 3, attributes from
+  // 4 on — over the whole replay, and report whether any `[from]` move line was actually
+  // present (a random replay may have none; a probe that never fired is not one that passed).
+  const moveLines = (b.stepQueue || []).filter((l) => typeof l === 'string' && l.startsWith('|move|'));
+  for (const line of moveLines) {
+    const parts = line.split('|');
+    if (typeof parts[2] !== 'string' || !parts[2].includes(':') || !parts[3]) {
+      problems.push(`|move| line not in "|move|<ident>|<name>" shape: ${JSON.stringify(line)}`);
+      break;
+    }
+    if (parts.slice(4).some((p) => p.startsWith('[from]'))) seen.calledMove = true;
+  }
+  if (moveLines.length === 0) problems.push('no |move| lines in stepQueue — the Choice rule-out reads these');
+
   // The Mega preview turns a held stone into a forme via `battle.dex.items.get(id).megaStone`
   // (a {base → Mega forme} map). A spectator replay has no move controls or private team, so
   // it can't drive `readMegaForme` end-to-end — but the dex item is battle-wide and readable.
@@ -97,6 +115,9 @@ function probeLiveClient() {
     }
     if (typeof R.hasLandedDamagingHit(b, mon) !== 'boolean') {
       problems.push(`hasLandedDamagingHit(${mon.speciesForme || '?'}) did not return a boolean`);
+    }
+    if (typeof R.usedDifferentMovesSinceSwitchIn(b, mon) !== 'boolean') {
+      problems.push(`usedDifferentMovesSinceSwitchIn(${mon.speciesForme || '?'}) did not return a boolean`);
     }
     const ok = {
       speciesForme: typeof f.speciesForme === 'string' && f.speciesForme.length > 0,
@@ -207,6 +228,10 @@ async function main() {
     // clean bill of health — to exercise them, pick a replay that has a Ditto in it.
     console.log(`  volatiles: formechange ${seen.formeChange ? 'SEEN — checked' : 'absent (not exercised)'}, ` +
       `transform ${seen.transform ? 'SEEN — checked' : 'absent (not exercised)'}`);
+    // Same honesty for the `[from]` convention the Choice rule-out leans on: most replays
+    // have no called move at all, and its absence means that half went unexercised.
+    console.log(`  |move| lines: layout checked, [from] attribute ` +
+      `${seen.calledMove ? 'SEEN — checked' : 'absent (not exercised)'}`);
 
     if (problems.length) {
       console.error('\n✗ DRIFT DETECTED — readState.ts no longer matches the live client:');

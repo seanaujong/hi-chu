@@ -339,9 +339,9 @@ replacement for them.
   changes. See *An unknown foe spread is BRACKETED* and *Damage under a hidden item/ability
   is split by DISTINCT outcome*. It bites hardest in the **behavioural deductions**, where
   the rule is stated as a preference: a rule-out is suppressed whenever an ability could
-  explain the evidence away (Sheer Force / Magic Guard), and anything genuinely ambiguous —
-  an unknown ident, an empty log — resolves to "no signal". Prefer MISSING a rule-out to
-  making a false one. See the Life Orb and Heavy-Duty Boots rows.
+  explain the evidence away (Sheer Force / Magic Guard / Klutz), and anything genuinely
+  ambiguous — an unknown ident, an empty log — resolves to "no signal". Prefer MISSING a
+  rule-out to making a false one. See the Life Orb, Heavy-Duty Boots and Choice rows.
 
 ## Architecture — where to make a change
 A **pure core + thin browser shell**. Dependencies point one way: the shell uses the
@@ -359,7 +359,9 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
       `innateAbility`'s dex check now serves `deductions.ts`; role narrowing is governed by
       `narrow.buildableAbilities` (see the invariant).
     - `deductions.ts` — the behavioural deduction layer: SILENT items (Life Orb, Heavy-Duty
-      Boots) deduced ABSENT from public behaviour. `ruledOutItems`/`survivingItems`; adding
+      Boots, the three Choice items) deduced ABSENT from public behaviour — a rule-out can
+      empty a role's whole item pool, which is how `narrow` drops the ROLE, not just the
+      item line. `ruledOutItems`/`survivingItems`; adding
       a deduction = one predicate + one line in `ruledOutItems`, its unit test in the
       colocated `deductions.test.ts` (hand-built facts via `sets.testfixtures.ts`'s
       `liveFacts()`), plus a seam test in `resolve.test.ts` proving it actually reaches
@@ -518,6 +520,7 @@ them until someone adds it.
 | Hovering a FOE's roster icon shows OUR active's damage into it | ✅ | `section.ts` (`foeSwitchInDamage`) | `section.test.ts` |
 | A LANDED damaging hit with no item revealed rules Life Orb out | ✅ | `core/deductions.ts`, `battle/readState.ts` (`hasLandedDamagingHit`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts` |
 | Taking entry-hazard damage rules Heavy-Duty Boots out; switching in unharmed confirms it | ✅ | `core/deductions.ts`, `battle/readState.ts` | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts` |
+| Two freely-chosen moves in ONE stint rule out all three Choice items — scoped per stint, since the lock dies on switch-out | ✅ | `core/deductions.ts`, `battle/readState.ts` (`usedDifferentMovesSinceSwitchIn`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts` |
 | The forme a Pokémon IS and the one it is WEARING differ — only the calc reads the second | ✅ | `battle/readState.ts` (`readLiveForme`), `core/resolve.ts` (`buildResolved`) | `readState.test.ts`, `resolve.test.ts` |
 | A Transformed Pokémon is calculated as the one it COPIED, keeping only its own HP | ✅ | `core/transform.ts`, `section.ts` (`factsReader`) | `transform.test.ts`, `readState.test.ts`, `section.test.ts` |
 | An ability narrows a role only if a SET could have been built with it | ✅ | `core/narrow.ts` (`buildableAbilities`) | `resolve.test.ts` |
@@ -571,6 +574,9 @@ rather than in our code. Run the named check by hand after a Showdown client upd
 - **`npm run drift-check`** (a spectator replay) — every client field `readState.ts` reads:
   `stepQueue`/`ident`, `volatiles`, `sideConditions` (Tailwind, and the Spikes layer index),
   `pseudoWeather`, `battle.dex` (species `abilities`, and the stone→forme map), `gameType`.
+  Also the `|move|` line's own field layout, because the Choice rule-out reads a `[from]`
+  attribute as "the player didn't choose this" — if that convention drifted, every called
+  move would read as a second free selection and rule Choice items out FALSELY.
 - **`npm run player-check`** (a real two-account battle on a self-hosted server) — anything
   behind `battle.myPokemon`, which a replay has no access to at all: the
   `ClientServerPokemon` contract incl. `stats`, the switch-menu hover and its ⚡ bench

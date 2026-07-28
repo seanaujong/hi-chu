@@ -63,3 +63,30 @@ describe('Heavy-Duty Boots rule-in (dodged Stealth Rock ⇒ holding them)', () =
     expect(survivingItems(['Overgrow'], pool, facts)).toEqual(pool);
   });
 });
+
+describe('Choice rule-out (two moves in one stint ⇒ not locked into one)', () => {
+  const pool = ['Choice Band', 'Choice Specs', 'Choice Scarf', 'Life Orb'];
+  const varied = (over = {}) => liveFacts({usedDifferentMovesSinceSwitchIn: true, ...over});
+
+  it('removes all three Choice items at once — one lock, one deduction', () => {
+    expect(survivingItems(['Good as Gold'], pool, varied({baseAbility: 'Good as Gold'}))).toEqual(['Life Orb']);
+  });
+
+  it('keeps them when the known ability is Klutz, which ignores the item entirely', () => {
+    expect(survivingItems(['Klutz'], pool, varied({baseAbility: 'Klutz'}))).toEqual(pool);
+  });
+
+  it('never lies: keeps them while the ability is hidden and the pool could be Klutz', () => {
+    expect(survivingItems(['Klutz', 'Limber'], pool, varied())).toEqual(pool);
+  });
+
+  it('does nothing without the signal, or once an item is revealed', () => {
+    expect(survivingItems(['Good as Gold'], pool, liveFacts())).toEqual(pool);
+    expect(survivingItems(['Good as Gold'], pool, varied({item: 'Choice Specs'}))).toEqual(pool);
+    expect(survivingItems(['Good as Gold'], pool, varied({prevItem: 'Choice Specs'}))).toEqual(pool);
+  });
+
+  it('can empty a Choice-only pool, which is how `narrow` rules the ROLE out', () => {
+    expect(survivingItems(['Good as Gold'], ['Choice Specs', 'Choice Scarf'], varied({baseAbility: 'Good as Gold'}))).toEqual([]);
+  });
+});

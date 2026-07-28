@@ -13,6 +13,16 @@ import {toId, innateAbility} from './facts.js';
 // Abilities that mask Life Orb's recoil, so its ABSENCE proves nothing about the item.
 const RECOIL_SUPPRESSORS = new Set(['sheerforce', 'magicguard']);
 
+// The three items the sim marks `isChoice` — the ones that lock their holder into a single
+// move per stint, and so the ones varying moves rules out together.
+const CHOICE_ITEMS = ['choiceband', 'choicespecs', 'choicescarf'];
+
+// Klutz ignores the holder's item outright, so a Klutz mon varies its moves freely even
+// while holding a Choice item — the sim's `ignoringItem()` check inside the lock. Its two
+// siblings there, Magic Room and Embargo, are time-scoped field/volatile facts and are
+// handled in the reader; only the ability half can be judged against a role's pool here.
+const ITEM_IGNORING_ABILITIES = new Set(['klutz']);
+
 /** A deduction only speaks while the item is still unknown — a revealed item (held or
  *  `prevItem`) is the stronger, positive evidence and the matcher already uses it. */
 function itemStillHidden(facts: LiveFacts): boolean {
@@ -56,11 +66,32 @@ function bootsRuledIn(facts: LiveFacts, roleAbilities: readonly string[]): boole
   return !roleAbilities.some((a) => toId(a) === 'magicguard');
 }
 
+/**
+ * A Choice item locks its holder into the first move it picks until it switches out, so
+ * two freely-selected moves in ONE stint rule all three out. The reader
+ * (`usedDifferentMovesSinceSwitchIn`) owns what counts as free and as one stint — including
+ * Magic Room and Embargo, the time-scoped half of the sim's `ignoringItem()` escape. Klutz
+ * is the half left to judge here, against the known innate ability or, while it is still
+ * hidden, everything this role could run ("never lie", exactly as for Life Orb).
+ *
+ * The knock-on is larger than one item: a role whose ENTIRE item pool is Choice items is
+ * itself ruled out by `narrow.roleMatches`, so this narrows candidate sets, not just the
+ * item line — and, because Choice Scarf is a Speed multiplier, it collapses the ⚡ verdict's
+ * "if it is Scarfed" aside into a definite answer.
+ */
+function choiceItemsRuledOut(facts: LiveFacts, roleAbilities: readonly string[]): boolean {
+  if (!facts.usedDifferentMovesSinceSwitchIn || !itemStillHidden(facts)) return false;
+  const known = innateAbility(facts);
+  if (known !== undefined) return !ITEM_IGNORING_ABILITIES.has(toId(known));
+  return !roleAbilities.some((a) => ITEM_IGNORING_ABILITIES.has(toId(a)));
+}
+
 /** The items (id form) a role can no longer be holding, by behavioural deduction. */
 export function ruledOutItems(facts: LiveFacts, roleAbilities: readonly string[]): ReadonlySet<string> {
   const out = new Set<string>();
   if (lifeOrbRuledOut(facts, roleAbilities)) out.add('lifeorb');
   if (bootsRuledOut(facts)) out.add('heavydutyboots');
+  if (choiceItemsRuledOut(facts, roleAbilities)) for (const i of CHOICE_ITEMS) out.add(i);
   return out;
 }
 

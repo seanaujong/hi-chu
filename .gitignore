@@ -6,8 +6,10 @@ dist-safari/
 .claude/
 hi-chu-*.zip
 
-# The optimized demo GIF (demo/hichu-demo.gif) IS committed so the README renders
-# it reliably; intermediate/large recordings are not.
+# The demo stills the README embeds (demo/03-own-hover.png, demo/10-move-earthquake.png)
+# ARE committed so it renders reliably; intermediate/large recordings are not. A recording
+# is the expensive kind of file to commit — it stays in every clone forever, so keep the
+# README on stills and host anything heavier outside the repo (see CLAUDE.md → Contributing).
 demo/*.mp4
 demo/*-raw.gif
 

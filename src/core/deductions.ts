@@ -30,6 +30,19 @@ function itemStillHidden(facts: LiveFacts): boolean {
 }
 
 /**
+ * Can no ability explain this evidence away? Every rule-out below is valid only while
+ * nothing could have masked what we did (or didn't) see, and each judges that the same
+ * way: against the INNATE ability once it is known, else against everything this role
+ * could still be running. "Never lie" lives here — while the ability is hidden and the
+ * role's pool CONTAINS an excuse, the deduction goes unmade rather than risk being wrong.
+ */
+function noExcuse(facts: LiveFacts, roleAbilities: readonly string[], excuses: ReadonlySet<string>): boolean {
+  const known = innateAbility(facts);
+  if (known !== undefined) return !excuses.has(toId(known));
+  return !roleAbilities.some((a) => excuses.has(toId(a)));
+}
+
+/**
  * Life Orb takes 1/10 recoil when a damaging move lands and reveals itself doing so, so a
  * landed hit with no item revealed rules it out — UNLESS a Sheer Force / Magic Guard
  * ability that would have masked the recoil is (or could still be) in play. Judged against
@@ -38,9 +51,7 @@ function itemStillHidden(facts: LiveFacts): boolean {
  */
 function lifeOrbRuledOut(facts: LiveFacts, roleAbilities: readonly string[]): boolean {
   if (!facts.landedDamagingHit || !itemStillHidden(facts)) return false;
-  const known = innateAbility(facts);
-  if (known !== undefined) return !RECOIL_SUPPRESSORS.has(toId(known));
-  return !roleAbilities.some((a) => RECOIL_SUPPRESSORS.has(toId(a)));
+  return noExcuse(facts, roleAbilities, RECOIL_SUPPRESSORS);
 }
 
 /**
@@ -81,9 +92,7 @@ function bootsRuledIn(facts: LiveFacts, roleAbilities: readonly string[]): boole
  */
 function choiceItemsRuledOut(facts: LiveFacts, roleAbilities: readonly string[]): boolean {
   if (!facts.usedDifferentMovesSinceSwitchIn || !itemStillHidden(facts)) return false;
-  const known = innateAbility(facts);
-  if (known !== undefined) return !ITEM_IGNORING_ABILITIES.has(toId(known));
-  return !roleAbilities.some((a) => ITEM_IGNORING_ABILITIES.has(toId(a)));
+  return noExcuse(facts, roleAbilities, ITEM_IGNORING_ABILITIES);
 }
 
 /** The items (id form) a role can no longer be holding, by behavioural deduction. */

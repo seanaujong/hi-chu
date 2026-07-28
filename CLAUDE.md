@@ -192,6 +192,25 @@ Afterward, `gh release edit vX.Y.Z --notes '...'` to prepend a human-readable su
 what's new before the provenance-verification boilerplate `release.yml` already writes —
 see any past release for the shape.
 
+**`npm run release-notes` drafts that summary instead of writing it from scratch**, and it
+gathers nothing new to do it. Three existing things join: squash-merge puts `(#NN)` on every
+commit subject, PR screenshots are release assets named `pr-<NN>-<what>.png` (Contributing,
+below), and `release-status` already defines the unreleased range. So each user-visible change
+arrives already illustrated by the before/after image its own PR produced, and the changelog is
+DERIVED — there is no list to maintain and no step to forget. It prints markdown to stdout and
+writes nothing:
+```sh
+npm run release-notes                              # the unreleased range
+node scripts/release-notes.mjs --since=v0.20.0     # an explicit starting tag
+node scripts/release-notes.mjs | gh release edit vX.Y.Z --notes-file -
+```
+Each image stays under its own `#NN` heading, and that framing is load-bearing rather than
+cosmetic: an image shows the UI as of ITS OWN PR, so when two PRs in one release touch the same
+surface the earlier one depicts a state that never shipped. Under a per-PR heading that is an
+honest claim about what one change did; gathered under "here is the new release" it would be a
+picture of a product we do not ship. Read the draft before publishing it — this is a starting
+point for a human summary, not a replacement for one.
+
 ## Agentic access to the `hi-chu` GCP project
 The same `hi-chu` GCP project that holds the Chrome Web Store OAuth client above also
 has a scoped identity for an agent (e.g. a Claude Code session) to run `gcloud` through,

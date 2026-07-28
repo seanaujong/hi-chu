@@ -1,6 +1,9 @@
-// The behavioural deduction layer: SILENT items — ones that never reveal themselves
-// directly — deduced ABSENT from the public mark their presence would (or wouldn't) have
-// left. Each rule turns a LiveFacts observation into a "this item can't be here"
+// The behavioural deduction layer: items deduced ABSENT from the public mark their presence
+// would (or wouldn't) have left. Most are SILENT items, ones that never reveal themselves
+// and so can only be read through a side effect (Life Orb's recoil, Heavy-Duty Boots'
+// hazard immunity, a Choice lock). Air Balloon is the opposite and the same rule reversed:
+// it announces itself on every switch-in, so its SILENCE is the mark. Each rule turns a
+// LiveFacts observation into a "this item can't be here"
 // constraint; the narrowing and resolution layers consume the union through
 // `survivingItems`, so the matcher itself stays general (it filters a pool, it doesn't
 // know Pokémon mechanics). Adding a deduction = one predicate + one line in `ruledOutItems`.
@@ -95,12 +98,33 @@ function choiceItemsRuledOut(facts: LiveFacts, roleAbilities: readonly string[])
   return noExcuse(facts, roleAbilities, ITEM_IGNORING_ABILITIES);
 }
 
+/**
+ * Air Balloon is the one item that ANNOUNCES itself on the way in, so a switch-in it stayed
+ * silent through rules it out. Every other rule here reads an item that never speaks and
+ * infers from a side effect; this one needs no side effect at all, which is why a single
+ * silent switch-in settles it — usually on turn one, before the mon has done anything.
+ *
+ * Klutz is the guard, and for a reason worth stating: it makes the holder ignore its item
+ * outright, so a Klutz mon's balloon is both silent AND inert. Judged against the known
+ * innate ability, else against the role's whole pool ("never lie", exactly as for Life Orb).
+ * The reader owns Gravity and Magic Room, the two time-scoped suppressors.
+ *
+ * Worth more than one line of the item list: Air Balloon confers a flat Ground immunity, so
+ * leaving it in the pool leaves a phantom 0-damage bucket on every Ground move aimed at a
+ * mon that has visibly been on the field without one.
+ */
+function airBalloonRuledOut(facts: LiveFacts, roleAbilities: readonly string[]): boolean {
+  if (!facts.switchedInWithoutAnnouncingBalloon || !itemStillHidden(facts)) return false;
+  return noExcuse(facts, roleAbilities, ITEM_IGNORING_ABILITIES);
+}
+
 /** The items (id form) a role can no longer be holding, by behavioural deduction. */
 export function ruledOutItems(facts: LiveFacts, roleAbilities: readonly string[]): ReadonlySet<string> {
   const out = new Set<string>();
   if (lifeOrbRuledOut(facts, roleAbilities)) out.add('lifeorb');
   if (bootsRuledOut(facts)) out.add('heavydutyboots');
   if (choiceItemsRuledOut(facts, roleAbilities)) for (const i of CHOICE_ITEMS) out.add(i);
+  if (airBalloonRuledOut(facts, roleAbilities)) out.add('airballoon');
   return out;
 }
 

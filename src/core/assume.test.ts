@@ -15,6 +15,7 @@ function facts(over: Partial<LiveFacts> = {}): LiveFacts {
     tookEntryHazardDamage: false,
     switchedIntoStealthRockUnharmed: false,
     usedDifferentMovesSinceSwitchIn: false,
+    switchedInWithoutAnnouncingBalloon: false,
     timesAttacked: 0,
     ...over,
   };

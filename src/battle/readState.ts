@@ -158,6 +158,7 @@ export interface BehaviorSignals {
   readonly tookEntryHazardDamage?: boolean;
   readonly switchedIntoStealthRockUnharmed?: boolean;
   readonly usedDifferentMovesSinceSwitchIn?: boolean;
+  readonly switchedInWithoutAnnouncingBalloon?: boolean;
   readonly timesAttacked?: number;
 }
 
@@ -273,6 +274,7 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, spe
     tookEntryHazardDamage: signals.tookEntryHazardDamage ?? false,
     switchedIntoStealthRockUnharmed: signals.switchedIntoStealthRockUnharmed ?? false,
     usedDifferentMovesSinceSwitchIn: signals.usedDifferentMovesSinceSwitchIn ?? false,
+    switchedInWithoutAnnouncingBalloon: signals.switchedInWithoutAnnouncingBalloon ?? false,
     timesAttacked: signals.timesAttacked ?? 0,
     ...(asStatus(p.status) ? {status: asStatus(p.status)!} : {}),
     ...(p.terastallized ? {teraType: p.terastallized} : {}),
@@ -469,6 +471,74 @@ function isEmbargoOn(parts: readonly string[], me: string): boolean {
   return identKey(parts[2]) === me && parts.some((p) => p === 'Embargo' || p === 'move: Embargo');
 }
 
+/** A `-fieldstart`/`-fieldend` line naming Gravity, which grounds the field — so a held
+ *  Air Balloon neither lifts its holder nor announces itself. */
+function isGravity(parts: readonly string[]): boolean {
+  return parts.some((p) => p === 'move: Gravity' || p === 'Gravity');
+}
+
+// A switch-in's resolution runs until the next of these. Deliberately NOT `switch`/`drag`:
+// when both sides come in at once — every battle's opening — the sim resolves both switches
+// and only THEN runs the switch-in effects, so the lead's `-item` announcement sits after
+// its opponent's `|switch|` line. Stopping at a switch would go blind exactly at the moment
+// a player most wants this answer.
+const SWITCH_IN_RESOLUTION_END = new Set(['move', 'turn', 'upkeep']);
+
+/** Did the switch-in starting at `lines[start]` finish without `me` announcing a balloon?
+ *  Requires the resolution to have COMPLETED: a log that simply stops partway has not yet
+ *  told us anything, and reading it as silence would invent a rule-out. */
+function switchInWasSilent(lines: ReadonlyArray<string>, start: number, me: string): boolean {
+  for (let j = start + 1; j < lines.length; j++) {
+    const l = lines[j];
+    if (l === undefined) continue;
+    const parts = l.split('|');
+    const tag = parts[1] ?? '';
+    if (SWITCH_IN_RESOLUTION_END.has(tag)) return true; // heard the whole thing; no balloon in it
+    if (tag === '-item' && identKey(parts[2]) === me && toId(parts[3] ?? '') === 'airballoon') return false;
+  }
+  return false; // log ends mid-resolution: the announcement may simply not have arrived yet
+}
+
+/**
+ * Did `mon` switch in without a held Air Balloon announcing itself? Air Balloon is the only
+ * item in the sim that reveals itself on the way in — `onStart` emits `|-item|<mon>|Air
+ * Balloon` — so a completed, silent switch-in rules it out (see deductions.ts). Every other
+ * deduction here reads an item that never speaks; this one reads the one that always does.
+ *
+ * Silence only counts where the announcement was actually obliged, which is the sim's own
+ * condition (`!target.ignoringItem() && !gravity`) minus the parts that belong elsewhere:
+ *   - Gravity and Magic Room suppress it, and both can go up and come down mid-battle, so
+ *     they are tracked HERE and a switch-in under either is skipped rather than believed.
+ *   - Klutz suppresses it too, but it is an ABILITY, so it is judged downstream against the
+ *     role's ability pool — the way Sheer Force guards the Life Orb rule.
+ *   - Embargo, the remaining `ignoringItem()` case, cannot apply: it is a volatile, and
+ *     volatiles clear on switch-out, so nothing is ever Embargoed as it switches in.
+ * ONE silent switch-in is enough, and the rule never expires: the balloon announces itself
+ * every single time its holder comes in, so a mon that was quiet once was quiet holding
+ * something else.
+ */
+export function switchedInWithoutAnnouncingBalloon(battle: ClientBattle, mon: {readonly ident?: string}): boolean {
+  const me = identKey(mon.ident);
+  if (!me) return false;
+  const lines = battle.stepQueue ?? [];
+  let gravity = false;
+  let magicRoom = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line === undefined) continue;
+    const parts = line.split('|');
+    const tag = parts[1] ?? '';
+    if (tag === '-fieldstart' || tag === '-fieldend') {
+      const on = tag === '-fieldstart';
+      if (isGravity(parts)) gravity = on;
+      else if (isMagicRoom(parts)) magicRoom = on;
+    } else if ((tag === 'switch' || tag === 'drag') && identKey(parts[2]) === me && !gravity && !magicRoom) {
+      if (switchInWasSilent(lines, i, me)) return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Did `mon` freely select two DIFFERENT moves during a single stint on the field? A Choice
  * item locks its holder into the first move it picks until it switches out, so a "yes"
@@ -630,6 +700,7 @@ export function readBehaviors(battle: ClientBattle, mon: ClientPokemon): Behavio
     tookEntryHazardDamage: tookEntryHazardDamage(battle, mon),
     switchedIntoStealthRockUnharmed: switchedIntoStealthRockUnharmed(battle, mon),
     usedDifferentMovesSinceSwitchIn: usedDifferentMovesSinceSwitchIn(battle, mon),
+    switchedInWithoutAnnouncingBalloon: switchedInWithoutAnnouncingBalloon(battle, mon),
     timesAttacked: timesAttacked(battle, mon),
   };
 }
@@ -803,6 +874,9 @@ export function serverPokemonFacts(p: ClientServerPokemon, battle?: ClientBattle
     tookEntryHazardDamage: false,
     switchedIntoStealthRockUnharmed: false,
     usedDifferentMovesSinceSwitchIn: battle ? usedDifferentMovesSinceSwitchIn(battle, {ident: p.ident}) : false,
+    // Our own item comes straight off the private entry below, so no behavioural deduction
+    // about it could ever speak — the same reason the Boots signals are hard-coded here.
+    switchedInWithoutAnnouncingBalloon: false,
     timesAttacked: battle ? timesAttacked(battle, {ident: p.ident}) : 0,
     ...(status ? {status} : {}),
     ...(p.terastallized ? {teraType: p.terastallized} : {}),

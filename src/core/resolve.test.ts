@@ -207,6 +207,31 @@ describe('resolveVariants — the still-possible sets to calc over', () => {
     expect(items(resolveVariants({...quiet, usedDifferentMovesSinceSwitchIn: true}, DUAL_ABILITY))).toEqual(['Life Orb']);
   });
 
+  it('drops the Air Balloon variant once a silent switch-in has ruled it out', () => {
+    // Heatran's real gen9randombattle role, item pool and all: two items, so the deduction
+    // does not merely shorten the list, it PINS the item — and with it the damage number,
+    // since the alternative is an Assault Vest. Left standing, the balloon would keep a
+    // phantom "0 damage" bucket on every Ground move aimed at a Heatran that has visibly
+    // been on the field without one.
+    const heatran: RandbatsEntry = {
+      level: 78,
+      abilities: ['Flash Fire'],
+      items: [],
+      roles: {
+        'Bulky Support': {
+          abilities: ['Flash Fire'],
+          items: ['Air Balloon', 'Assault Vest'],
+          teraTypes: ['Grass'],
+          moves: ['Magma Storm'],
+        },
+      },
+    };
+    const facts = liveFacts({speciesForme: 'Heatran', baseAbility: 'Flash Fire', revealedMoves: ['Magma Storm']});
+    expect(items(resolveVariants(facts, heatran)).sort()).toEqual(['Air Balloon', 'Assault Vest']);
+    expect(items(resolveVariants({...facts, switchedInWithoutAnnouncingBalloon: true}, heatran)))
+      .toEqual(['Assault Vest']);
+  });
+
   it('rules out a Choice-ONLY role outright, not just its item line', () => {
     // The knock-on through `narrow.roleMatches`: a role whose entire item pool is ruled out
     // can no longer be what this Pokémon is, so it leaves the candidate list altogether.

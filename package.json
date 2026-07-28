@@ -19,6 +19,7 @@
     "player-check": "node scripts/player-check.mjs",
     "release-check": "npm run build && npm run check && npm run drift-check && npm run player-check",
     "release-status": "node scripts/release-status.mjs",
+    "release-notes": "node scripts/release-notes.mjs",
     "release-bump": "node scripts/release-bump.mjs",
     "screenshots": "node scripts/screenshots.mjs",
     "build:visual-check": "node scripts/build-visual-check.mjs",

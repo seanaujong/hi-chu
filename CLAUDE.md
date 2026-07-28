@@ -341,7 +341,9 @@ replacement for them.
   the rule is stated as a preference: a rule-out is suppressed whenever an ability could
   explain the evidence away (Sheer Force / Magic Guard / Klutz), and anything genuinely
   ambiguous — an unknown ident, an empty log — resolves to "no signal". Prefer MISSING a
-  rule-out to making a false one. See the Life Orb, Heavy-Duty Boots and Choice rows.
+  rule-out to making a false one. See the Life Orb, Heavy-Duty Boots, Choice and Air Balloon
+  rows — the last inverts the others (it is the one item that ANNOUNCES itself, so its
+  silence is the evidence), but obeys the same preference.
 
 ## Architecture — where to make a change
 A **pure core + thin browser shell**. Dependencies point one way: the shell uses the
@@ -358,10 +360,12 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
       `isMegaForme`); a leaf so the layers below needn't depend on each other for them.
       `innateAbility`'s dex check now serves `deductions.ts`; role narrowing is governed by
       `narrow.buildableAbilities` (see the invariant).
-    - `deductions.ts` — the behavioural deduction layer: SILENT items (Life Orb, Heavy-Duty
-      Boots, the three Choice items) deduced ABSENT from public behaviour — a rule-out can
-      empty a role's whole item pool, which is how `narrow` drops the ROLE, not just the
-      item line. `ruledOutItems`/`survivingItems`; adding
+    - `deductions.ts` — the behavioural deduction layer: items deduced ABSENT from public
+      behaviour — a rule-out can empty a role's whole item pool, which is how `narrow` drops
+      the ROLE, not just the item line. Most are SILENT items read through a side effect
+      (Life Orb, Heavy-Duty Boots, the three Choice items); Air Balloon is the inversion, the
+      only item that announces itself on the way in, so a switch-in it stayed quiet through
+      rules it out. `ruledOutItems`/`survivingItems`; adding
       a deduction = one predicate + one line in `ruledOutItems`, its unit test in the
       colocated `deductions.test.ts` (hand-built facts via `sets.testfixtures.ts`'s
       `liveFacts()`), plus a seam test in `resolve.test.ts` proving it actually reaches
@@ -521,6 +525,7 @@ them until someone adds it.
 | A LANDED damaging hit with no item revealed rules Life Orb out | ✅ | `core/deductions.ts`, `battle/readState.ts` (`hasLandedDamagingHit`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts` |
 | Taking entry-hazard damage rules Heavy-Duty Boots out; switching in unharmed confirms it | ✅ | `core/deductions.ts`, `battle/readState.ts` | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts` |
 | Two freely-chosen moves in ONE stint rule out all three Choice items — scoped per stint, since the lock dies on switch-out | ✅ | `core/deductions.ts`, `battle/readState.ts` (`usedDifferentMovesSinceSwitchIn`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts` |
+| A switch-in that announced nothing rules Air Balloon out — the one item that always reveals itself, so SILENCE is the evidence | ✅ | `core/deductions.ts`, `battle/readState.ts` (`switchedInWithoutAnnouncingBalloon`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts` |
 | The forme a Pokémon IS and the one it is WEARING differ — only the calc reads the second | ✅ | `battle/readState.ts` (`readLiveForme`), `core/resolve.ts` (`buildResolved`) | `readState.test.ts`, `resolve.test.ts` |
 | A Transformed Pokémon is calculated as the one it COPIED, keeping only its own HP | ✅ | `core/transform.ts`, `section.ts` (`factsReader`) | `transform.test.ts`, `readState.test.ts`, `section.test.ts` |
 | An ability narrows a role only if a SET could have been built with it | ✅ | `core/narrow.ts` (`buildableAbilities`) | `resolve.test.ts` |
@@ -576,7 +581,12 @@ rather than in our code. Run the named check by hand after a Showdown client upd
   `pseudoWeather`, `battle.dex` (species `abilities`, and the stone→forme map), `gameType`.
   Also the `|move|` line's own field layout, because the Choice rule-out reads a `[from]`
   attribute as "the player didn't choose this" — if that convention drifted, every called
-  move would read as a second free selection and rule Choice items out FALSELY.
+  move would read as a second free selection and rule Choice items out FALSELY. And the
+  `|-item|` line's layout, for the same reason one step further: the Air Balloon rule-out
+  reads that line's ABSENCE as evidence, so a client that stopped emitting it would make
+  every balloon holder look like it had none, and call a Ground move safe into a Pokémon
+  immune to it. Both probes report whether they actually fired — a `[from]` move and an Air
+  Balloon announcement are each rare enough that a random replay often has neither.
 - **`npm run player-check`** (a real two-account battle on a self-hosted server) — anything
   behind `battle.myPokemon`, which a replay has no access to at all: the
   `ClientServerPokemon` contract incl. `stats`, the switch-menu hover and its ⚡ bench

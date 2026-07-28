@@ -63,7 +63,7 @@ function probeLiveClient() {
   // Which of the rarer client shapes this replay actually exercised — a random replay
   // usually has no transformed or forme-changed Pokémon, and a probe that never fired is
   // not a probe that passed. Reported, not failed on.
-  const seen = {formeChange: false, transform: false, calledMove: false};
+  const seen = {formeChange: false, transform: false, calledMove: false, balloonAnnounce: false};
 
   const format = R.detectFormat(b);
   if (!format || format.kind !== 'randbats' || !/^gen\d+random/.test(format.formatId)) {
@@ -99,6 +99,21 @@ function probeLiveClient() {
   }
   if (moveLines.length === 0) problems.push('no |move| lines in stepQueue — the Choice rule-out reads these');
 
+  // The Air Balloon rule-out reads `|-item|<ident>|<name>`, and leans on it in the dangerous
+  // direction: SILENCE is the evidence, so a client that stopped emitting this line (or moved
+  // its fields) would make every balloon holder look like it had none, and we would call a
+  // Ground move safe against a Pokémon that is immune to it. Assert the layout over the whole
+  // replay, and report whether an actual Air Balloon announcement was among them — most
+  // replays have none, and a probe that never fired is not a probe that passed.
+  for (const line of (b.stepQueue || []).filter((l) => typeof l === 'string' && l.startsWith('|-item|'))) {
+    const parts = line.split('|');
+    if (typeof parts[2] !== 'string' || !parts[2].includes(':') || !parts[3]) {
+      problems.push(`|-item| line not in "|-item|<ident>|<name>" shape: ${JSON.stringify(line)}`);
+      break;
+    }
+    if (parts[3].replace(/[^a-z0-9]+/gi, '').toLowerCase() === 'airballoon') seen.balloonAnnounce = true;
+  }
+
   // The Mega preview turns a held stone into a forme via `battle.dex.items.get(id).megaStone`
   // (a {base → Mega forme} map). A spectator replay has no move controls or private team, so
   // it can't drive `readMegaForme` end-to-end — but the dex item is battle-wide and readable.
@@ -118,6 +133,9 @@ function probeLiveClient() {
     }
     if (typeof R.usedDifferentMovesSinceSwitchIn(b, mon) !== 'boolean') {
       problems.push(`usedDifferentMovesSinceSwitchIn(${mon.speciesForme || '?'}) did not return a boolean`);
+    }
+    if (typeof R.switchedInWithoutAnnouncingBalloon(b, mon) !== 'boolean') {
+      problems.push(`switchedInWithoutAnnouncingBalloon(${mon.speciesForme || '?'}) did not return a boolean`);
     }
     const ok = {
       speciesForme: typeof f.speciesForme === 'string' && f.speciesForme.length > 0,
@@ -232,6 +250,10 @@ async function main() {
     // have no called move at all, and its absence means that half went unexercised.
     console.log(`  |move| lines: layout checked, [from] attribute ` +
       `${seen.calledMove ? 'SEEN — checked' : 'absent (not exercised)'}`);
+    // And for the announcement the Air Balloon rule-out reads as present-or-absent. To
+    // exercise it, pick a replay with a Glimmora, Heatran or Iron Thorns in it.
+    console.log(`  |-item| lines: layout checked, Air Balloon announcement ` +
+      `${seen.balloonAnnounce ? 'SEEN — checked' : 'absent (not exercised)'}`);
 
     if (problems.length) {
       console.error('\n✗ DRIFT DETECTED — readState.ts no longer matches the live client:');

@@ -246,6 +246,32 @@ rebase that silently dropped two `package.json` script entries while CI stayed g
 the workflows invoked those script files by path rather than through `npm run`, so nothing
 exercised the entries that had gone.
 
+**A PR that changes what the user sees needs a before/after image — hosted OUTSIDE the repo.**
+A screenshot committed to a branch is a permanent, mandatory cost: an object reachable from any
+ref ships in every clone forever, whether or not anyone ever opens the picture, and deleting the
+branch later reclaims nothing from the clones that already have it. Release assets live outside
+the git object store, so they cost the repository nothing and move bytes only when someone
+actually views the image. Upload to the `pr-assets` tag, then link the download URL from the PR
+body:
+```sh
+gh release upload pr-assets screenshots/crop/pr-<number>-<what-it-shows>.png
+# → https://github.com/seanaujong/hi-chu/releases/download/pr-assets/pr-<number>-<what-it-shows>.png
+```
+`pr-assets` is a **pre-release on a non-`v` tag**, and both halves carry weight: `release.yml`
+triggers on `tags: ['v*']` and `release-status` reads only `git tag --list 'v*'`, so this tag
+fires no workflow and is invisible to the release tooling, while the pre-release flag stops it
+ever taking the "Latest" badge from a real version. Do not reuse the name for a branch as well —
+a ref that is both `refs/heads/pr-assets` and `refs/tags/pr-assets` makes every bare `pr-assets`
+ambiguous, and `git push origin --delete` refuses it until you spell out the full ref path.
+
+GitHub serves the asset as `application/octet-stream` with `Content-Disposition: attachment` and
+does **not** camo-proxy a `github.com` URL, so the rendered markdown points an `<img>` straight at
+it; Chrome renders it anyway, since the response carries no `nosniff` and a subresource load
+ignores the disposition header. That was measured, not assumed. The native `user-attachments` CDN
+would be the one better host — same zero cost, no extra tag — but it has no API at all (GitHub
+closed the request: its upload flow needs browser session cookies), so it is reachable only by
+driving a real browser.
+
 ## Surfaces — what appears where
 The product is six hover targets crossed with a handful of sections, and most "should X
 show Y?" questions — including most bug reports — are really about one cell of that grid.

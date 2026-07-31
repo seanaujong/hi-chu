@@ -659,3 +659,122 @@ describe("the attacker's own HP swing (drain, recoil, Life Orb, Liquid Ooze)", (
     expect(swing({speciesForme: 'Cloyster'}, {speciesForme: 'Skarmory'}, 'Icicle Spear')).toEqual([]);
   });
 });
+
+describe('a damage-callback move — no base power, so no damage formula (a calc gap)', () => {
+  // Showdown gives these moves a `damageCallback(pokemon, target)` instead of a base power.
+  // @smogon/calc implements some of the family (Seismic Toss, Night Shade — pinned at the
+  // bottom of this block) and simply lacks these, running the ordinary formula over a zero
+  // and returning nothing. The tooltip printed that as "0% - 0%": a move that takes half
+  // your HP, reported as doing nothing at all. Values pinned against the sim's own formula
+  // in `data/moves.ts`, whose `clampIntRange` floors before it clamps.
+  const chansey = mon({speciesForme: 'Chansey'});
+
+  it('Super Fang takes half the target’s current HP — 336 of a full 672', () => {
+    const r = calcDamage(chansey, mon({speciesForme: 'Blissey'}), 'Super Fang');
+    expect(r.defenderMaxHP).toBe(672);
+    expect([r.total.min, r.total.max]).toEqual([336, 336]);
+    expect(r.percent.min).toBe(50);
+  });
+
+  it('...half of CURRENT HP, not of max — and it floors', () => {
+    // 40% of 672 is 269 remaining; half of that floors to 134, which is 19.9% of max —
+    // not the 20% a reader assuming "half of max, scaled" would predict.
+    const r = calcDamage(chansey, mon({speciesForme: 'Blissey', hpPercent: 0.4}), 'Super Fang');
+    expect(r.defenderRemainingHP).toBe(269);
+    expect([r.total.min, r.total.max]).toEqual([134, 134]);
+    expect(r.percent.min).toBe(19.9);
+  });
+
+  it('...and never less than 1, so it KOes a target down to its last HP', () => {
+    // Half of 1 floors to 0; the sim clamps that to 1, which is exactly lethal.
+    const r = calcDamage(chansey, mon({speciesForme: 'Blissey', hpPercent: 0.001}), 'Super Fang');
+    expect(r.defenderRemainingHP).toBe(1);
+    expect([r.total.min, r.total.max]).toEqual([1, 1]);
+    expect(r.koChance).toBe(1);
+  });
+
+  it('deals one exact amount, never a roll — nothing for a range to come from', () => {
+    const r = calcDamage(chansey, mon({speciesForme: 'Blissey'}), 'Super Fang');
+    expect(r.total.min).toBe(r.total.max);
+    expect(r.total.mean).toBe(r.total.min);
+    expect(r.multiHit).toBeUndefined();
+  });
+
+  it('ignores everything the damage formula reads — +6 Defense and Reflect change nothing', () => {
+    const skarmory = (over: Partial<ResolvedMon> = {}) => mon({speciesForme: 'Skarmory', ...over});
+    const plain = calcDamage(chansey, skarmory(), 'Super Fang');
+    const boosted = calcDamage(chansey, skarmory({boosts: {def: 6}}), 'Super Fang');
+    const screened = calcDamage(chansey, skarmory(), 'Super Fang', {
+      field: {defenderScreens: {reflect: true, lightScreen: false, auroraVeil: false}},
+    });
+    expect([plain.total.min, plain.total.max]).toEqual([146, 146]);
+    expect(boosted.total).toEqual(plain.total);
+    expect(screened.total).toEqual(plain.total);
+  });
+
+  it('Ruination follows the same law from the special side', () => {
+    const r = calcDamage(mon({speciesForme: 'Ting-Lu'}), mon({speciesForme: 'Corviknight'}), 'Ruination');
+    expect(r.category).toBe('Special');
+    expect([r.total.min, r.total.max]).toEqual([179, 179]);
+    expect(r.percent.min).toBe(50);
+  });
+
+  it('a RESISTANCE does not scale it — Fairy resists Dark and still loses exactly half', () => {
+    const r = calcDamage(mon({speciesForme: 'Ting-Lu'}), mon({speciesForme: 'Flutter Mane'}), 'Ruination');
+    expect([r.total.min, r.total.max]).toEqual([136, 136]);
+    expect(r.percent.min).toBe(50);
+  });
+
+  // ...but an IMMUNITY does stop it dead, which is the half of the mechanic that a table of
+  // formulas alone would get wrong. `connects` puts that one question back to the calc.
+  it('an IMMUNITY stops it dead — Super Fang is Normal, so a Ghost takes nothing', () => {
+    const r = calcDamage(chansey, mon({speciesForme: 'Gengar'}), 'Super Fang');
+    expect([r.total.min, r.total.max]).toEqual([0, 0]);
+    expect(r.koChance).toBe(0);
+  });
+
+  it('...including an immunity the defender only just acquired by terastallizing', () => {
+    // The type chart alone would say Blissey is Normal and takes half. The live Tera is what
+    // makes it a Ghost, and asking the calc is what sees it.
+    const teraGhost = mon({speciesForme: 'Blissey', teraType: 'Ghost', terastallized: true});
+    expect(calcDamage(chansey, teraGhost, 'Super Fang').total.max).toBe(0);
+    expect(calcDamage(chansey, mon({speciesForme: 'Blissey'}), 'Super Fang').total.max).toBe(336);
+  });
+
+  it('Endeavor drags the target down to the ATTACKER’s own HP', () => {
+    // Luvdisc at 20% of its 248 max is on 50 HP; a full Blissey on 672 loses the 622 between.
+    const r = calcDamage(mon({speciesForme: 'Luvdisc', hpPercent: 0.2}), mon({speciesForme: 'Blissey'}), 'Endeavor');
+    expect([r.total.min, r.total.max]).toEqual([622, 622]);
+    expect(r.percent.min).toBe(92.6);
+  });
+
+  it('...and fails outright when the attacker is not the lower of the two', () => {
+    // Showdown guards it with `onTryImmunity: pokemon.hp < target.hp`; a non-positive
+    // difference says the same thing without a second rule.
+    const r = calcDamage(mon({speciesForme: 'Blissey'}), mon({speciesForme: 'Luvdisc'}), 'Endeavor');
+    expect([r.total.min, r.total.max]).toEqual([0, 0]);
+  });
+
+  it('carries NO nHKO ladder, even when one is asked for', () => {
+    // `koLadder` re-applies the same damage every turn, which is the one thing these moves
+    // never do. Super Fang halves what is LEFT: from full HP a constant 50% would ladder to
+    // "2HKO 100%", but it only ever approaches 1 HP. The single-use KO chance stays exact.
+    const r = calcDamage(chansey, mon({speciesForme: 'Blissey'}), 'Super Fang', {nhkoTurns: 3});
+    expect(r.nhko).toBeUndefined();
+    expect(r.koChance).toBe(0);
+    const endeavor = calcDamage(mon({speciesForme: 'Luvdisc', hpPercent: 0.2}), mon({speciesForme: 'Blissey'}), 'Endeavor', {nhkoTurns: 3});
+    expect(endeavor.nhko).toBeUndefined();
+  });
+
+  it('leaves the family members the calc DOES model to the calc, ladder and all', () => {
+    // Re-deriving a mechanic @smogon/calc already implements is how two answers drift, so
+    // Seismic Toss and Night Shade are deliberately absent from our table. Both deal the
+    // attacker's level, and both keep the ordinary nHKO ladder — their damage really is the
+    // same every turn.
+    for (const move of ['Seismic Toss', 'Night Shade']) {
+      const r = calcDamage(chansey, mon({speciesForme: 'Corviknight'}), move, {nhkoTurns: 3});
+      expect([r.total.min, r.total.max]).toEqual([100, 100]); // level 100
+      expect(r.nhko).toBeDefined();
+    }
+  });
+});

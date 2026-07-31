@@ -451,7 +451,8 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
   - `render.ts` — model → tooltip HTML string: `renderMoveSection` (one move's damage,
     or one labelled line per damage bucket when the target's item is unknown) and
     `renderSetsSection` (the information game, both perspectives). `moves.ts` —
-    multi-hit move table (data only; no colocated test — covered via `damage.test.ts`).
+    the move tables (data only; no colocated test — covered via `damage.test.ts`): the
+    multi-hit table, and the damage callbacks of moves that have no base power at all.
   - `types.ts` — shared vocabulary (`LiveFacts`, `RandbatsEntry`, `ResolvedMon`,
     `SetVariant`, `SetKnowledge`, `FieldFacts`).
 - `src/battle/readState.ts` — Showdown's untyped client objects → typed `LiveFacts`/`FieldFacts`.
@@ -508,9 +509,9 @@ two-sided battle captured live from a replay; the fixture is `__fixtures__/repla
 
 For exact shapes and signatures, read the source and the colocated `*.test.ts` — the
 tests are the worked examples (and pin numbers against Showdown). Exception: `moves.ts` and
-`types.ts` (pure data/types), and `facts.ts`/`narrow.ts` (covered by `resolve.test.ts`); the move table is exercised
-end-to-end in `damage.test.ts` (the `uniform-power multi-hit` cases) — add a case there
-when you add a move.
+`types.ts` (pure data/types), and `facts.ts`/`narrow.ts` (covered by `resolve.test.ts`); the move tables are exercised
+end-to-end in `damage.test.ts` (the `uniform-power multi-hit` and `damage-callback move`
+cases) — add a case there when you add a move to either.
 
 ## Conventions & invariants — don't break these
 An **index**, not the argument. Each rule is stated once with its enforcement level, the
@@ -530,7 +531,7 @@ test you haven't seen fail isn't protecting anything yet.
 **Where we correct `@smogon/calc`.** Keep the line clear. A calc *gap* — something it
 should arguably handle and doesn't — is ours to own, and each one is a row below: the
 multi-hit hit-count model, the item id→name quirk, the nHKO ladder, Pain Split, Rage Fist,
-variable-power multi-hit, and unknown species/items. A third kind hides between those two and
+variable-power multi-hit, damage-callback moves, and unknown species/items. A third kind hides between those two and
 is the easiest to ship by accident: the calc answering EXACTLY what we asked, where the asking
 itself was wrong. Requesting one hit of a multi-hit move is that — the calc then reads it as a
 single-hit move and applies the Tera 60 BP floor. Our *product* is not a calc gap: the
@@ -587,6 +588,7 @@ them until someone adds it.
 | Variable-power multi-hit is computed per hit, through a stand-in move — which must match the real move on CONTACT and be genuinely multi-hit | ✅ | `core/damage.ts` | `damage.test.ts` |
 | One hit of a multi-hit move is asked for as TWO — a single hit takes gen 9's Tera 60 BP floor, which no multi-hit move ever takes | ✅ | `core/damage.ts` (`TERA_FLOOR_SAFE_HITS`) | `damage.test.ts` |
 | Rage Fist's power scales with the ATTACKER's own hits taken | ✅ | `core/damage.ts` (`rageFistPower`), `battle/readState.ts` (`timesAttacked`) | `damage.test.ts`, `readState.test.ts`, `transform.test.ts` |
+| A move with NO base power takes its damage from a callback over current HP — one exact amount, no nHKO ladder, but still stopped by an immunity | ✅ | `core/moves.ts` (`damageCallback`), `core/damage.ts` (`connects`) | `damage.test.ts`, `section.test.ts` |
 | Speed order: arithmetic delegated, ORDER owned, a fact about the PAIR | ✅ | `core/speed.ts`, `section.ts` (`speedSection`, `ownMovesSection`) | `speed.test.ts`, `render.test.ts`, `section.test.ts` |
 | Unburden's ×2 Speed is armed via an explicit `abilityOn` flag, not inferred from `item` | ✅ | `core/resolve.ts` (`buildResolved`), `core/damage.ts` (`buildPokemon`) | `resolve.test.ts`, `speed.test.ts` |
 | The fetch/reason/render split is a checked import graph, not just a description | ✅ | `src/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |

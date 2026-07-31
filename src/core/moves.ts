@@ -1,7 +1,13 @@
-// The multi-hit move table — data, derived directly from Pokémon Showdown's
-// `data/moves.ts` (every move whose definition carries a `multihit`).
+// Move tables — data, derived directly from Pokémon Showdown's `data/moves.ts`. Two
+// mechanics live here, and they share this file because they share a shape: a lookup
+// by move name carrying something @smogon/calc's own move data does not.
 //
-// Three facts per move matter for our math:
+//   multiHitProfile — how many times a move hits, and at what power per hit.
+//   damageCallback  — the damage of a move that has no damage formula at all.
+//
+// --- The multi-hit table ----------------------------------------------------
+// Every move whose Showdown definition carries a `multihit`. Three facts per move
+// matter for our math:
 //   - its HitSpec (how many times it hits),
 //   - whether it checks accuracy before each hit (`multiaccuracy`, carried on the
 //     HitSpec — Population Bomb, Triple Axel, Triple Kick, all 90%), and
@@ -75,4 +81,44 @@ const TABLE: Map<string, MultiHitMove> = (() => {
 /** The multi-hit profile of a move, or `undefined` for an ordinary single-hit move. */
 export function multiHitProfile(moveName: string): MultiHitMove | undefined {
   return TABLE.get(moveName);
+}
+
+// --- The damage-callback table ----------------------------------------------
+// A handful of moves have no base power at all: Showdown gives them a
+// `damageCallback(pokemon, target)` and computes the damage from the battle state
+// instead of from the damage formula. Stats, STAB, items, screens, weather and crits
+// are all irrelevant to them — the answer is a formula over current HP.
+//
+// @smogon/calc models SOME of them (Seismic Toss, Night Shade, Dragon Rage, Sonic Boom,
+// Final Gambit, Nature's Madness, Guardian of Alola) and simply lacks the rest, for which
+// it falls through to the ordinary damage formula and returns the zero a 0-BP move
+// deserves. Those are the ones below; the ones the calc already knows are deliberately
+// absent, because re-deriving a mechanic the calc models is how the two answers drift.
+
+/**
+ * How much damage a move with no base power deals, given both sides' CURRENT HP in raw
+ * points. The whole amount, not a roll: these moves have no 85–100% spread and cannot
+ * crit, so one number is the complete answer.
+ */
+export type DamageCallback = (currentHP: {readonly attacker: number; readonly defender: number}) => number;
+
+/** Half the target's current HP, and never less than 1 — Showdown's
+ *  `clampIntRange(target.getUndynamaxedHP() / 2, 1)`, whose `clampIntRange` floors first.
+ *  The clamp is what makes these moves KO a target already down to its last HP. */
+const HALVE_CURRENT_HP: DamageCallback = ({defender}) => Math.max(1, Math.floor(defender / 2));
+
+const DAMAGE_CALLBACKS: Map<string, DamageCallback> = new Map<string, DamageCallback>([
+  ['Super Fang', HALVE_CURRENT_HP],
+  ['Ruination', HALVE_CURRENT_HP],
+  // Endeavor drags the target down to the ATTACKER's own HP, so it deals the difference.
+  // It also fails outright unless the attacker is the lower of the two (Showdown guards it
+  // with `onTryImmunity: pokemon.hp < target.hp`) — which the subtraction already says: a
+  // difference that isn't positive is no damage, and the clamp keeps it from going negative.
+  ['Endeavor', ({attacker, defender}) => Math.max(0, defender - attacker)],
+]);
+
+/** How this move computes its damage when it has no base power to compute it from, or
+ *  `undefined` for the overwhelming majority of moves, which use the damage formula. */
+export function damageCallback(moveName: string): DamageCallback | undefined {
+  return DAMAGE_CALLBACKS.get(moveName);
 }

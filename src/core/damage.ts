@@ -8,6 +8,13 @@
 // Kick — and convolve those per-hit rolls over the real hit-count distribution
 // (core/multihit.ts) to get the true total, and from it an exact single-use KO chance.
 //
+// We also own the moves it has no formula for at all. A `damageCallback` move (Super
+// Fang, Ruination, Endeavor) carries no base power, so the calc runs the ordinary damage
+// formula over a zero and honestly returns nothing — which the tooltip would then print
+// as "0% - 0%", the most confident possible lie about a move that takes half your HP.
+// The table is in core/moves.ts; the one thing the calc still answers for them is whether
+// the move connects at all (see `connects`).
+//
 // Its PACKAGING has sharper edges than its math, and they land here because this is the
 // only file that imports it. The library is CommonJS, and it publishes no type names of
 // its own — there is no `TypeName` to import, however much the call sites look like there
@@ -18,7 +25,7 @@
 
 import {calculate, calcStat, Generations, Pokemon, Move, Field, toID, type GenerationNum, type State} from '@smogon/calc';
 import type {FieldFacts, FullStats, ResolvedMon, SpeciesData, StatID} from './types.js';
-import {multiHitProfile} from './moves.js';
+import {damageCallback, multiHitProfile} from './moves.js';
 import {
   type HitCountMods,
   type Pmf,
@@ -313,6 +320,35 @@ function rollsOf(damage: number | readonly number[] | readonly number[][]): numb
   return [...(damage as readonly number[])];
 }
 
+/** A live HP percentage as raw HP: at least 1, since a Pokémon on the field hasn't
+ *  fainted, and never above its own max. */
+function currentHP(maxHP: number, hpPercent: number): number {
+  return Math.max(1, Math.min(maxHP, Math.round(maxHP * hpPercent)));
+}
+
+/** The base power the immunity probe below lends a powerless move. Any positive number
+ *  does — the probe reads only whether the answer came back zero. */
+const IMMUNITY_PROBE_POWER = 50;
+
+/**
+ * Whether this move connects at all — the one question a `damageCallback` move still has
+ * to put to the calc. Such a move ignores stats, items and screens, but NOT immunity:
+ * Super Fang is Normal, so a Ghost takes nothing from it, and reporting half that Ghost's
+ * HP would be a confident lie about a move that does literally nothing.
+ *
+ * Asked by lending the move a base power and reading whether the result is zero, rather
+ * than by consulting a type chart here. The calc floors every connecting hit at 1 HP
+ * (`getFinalDamage`'s `Math.max(1, …)`), so zero means it bailed out early — and it bails
+ * for every reason at once: the type chart, an active Tera that changed the defender's
+ * type, Levitate, Volt Absorb, Air Balloon, Wonder Guard, Psychic Terrain against
+ * priority. Borrowing the calc's own answer is what keeps that list correct as the calc
+ * grows, and it is the same "delegate the interactions" rule the rest of this file follows.
+ */
+function connects(gen: Gen, atk: Pokemon, def: Pokemon, moveName: string, field: Field | undefined): boolean {
+  const probe = new Move(gen, moveName, {overrides: {basePower: IMMUNITY_PROBE_POWER}});
+  return rollsOf(calculate(gen, atk, def, probe, field).damage).some((roll) => roll > 0);
+}
+
 /** The hit count we ask the calc for when we want ONE hit of a multi-hit move. Two, never one:
  *  `move.hits === 1` is how @smogon/calc recognizes a single-hit move and applies gen 9's Tera
  *  60 BP floor — a floor no multi-hit move ever takes. We read hit one back out of the result. */
@@ -413,7 +449,7 @@ export function calcDamage(
   // Build the defender twice: once to learn its max HP, once with the real current HP
   // (curHP changes Multiscale, Sap Sipper-style abilities, and KO math).
   const maxHP = buildPokemon(gen, defender).maxHP();
-  const remainingHP = Math.max(1, Math.min(maxHP, Math.round(maxHP * defender.hpPercent)));
+  const remainingHP = currentHP(maxHP, defender.hpPercent);
   const def = buildPokemon(gen, defender, remainingHP);
 
   const profile = multiHitProfile(moveName);
@@ -423,6 +459,26 @@ export function calcDamage(
   const dexMove = new Move(gen, moveName);
   const category = dexMove.category;
   const field = options.field ? buildField(options.field, options.doubles ?? false) : undefined;
+
+  // --- A move whose damage is a callback, not a formula ----------------------
+  // Looked up by the DEX's display name, so an id-form move name ("superfang", the shape
+  // `battle.myPokemon` carries) finds the table entry too.
+  const callback = damageCallback(dexMove.name);
+  if (callback) {
+    const dealt = connects(gen, atk, def, moveName, field)
+      ? callback({attacker: currentHP(atk.maxHP(), attacker.hpPercent), defender: remainingHP})
+      : 0;
+    // The extras carry no nHKO ladder, and `nhkoTurns` is ignored rather than honoured.
+    // `koLadder` re-applies the SAME damage every turn, which is the one assumption a
+    // callback move breaks. Super Fang halves whatever is LEFT, so from full HP it reads
+    // 50% and would ladder to a "2HKO 100%" that can never happen: it approaches 1 HP and
+    // never reaches 0. Endeavor breaks it harder — its second use deals nothing at all,
+    // the first having left both sides on equal HP. The single-use `koChance` stays exact
+    // either way (Super Fang really does KO a target sitting on 1 HP), and the sets view's
+    // `koTier` reads the absent ladder and correctly declines to flag a 2HKO.
+    const total = pmfFromSamples([dealt]);
+    return summarizeReport(dexMove.name, category, total, remainingHP, maxHP, callbackDesc(dexMove.name, dealt), {notes});
+  }
 
   // Rage Fist's actual power, not the dex's flat 50 — see `rageFistPower`.
   const powerOverride =
@@ -596,4 +652,11 @@ function safeDesc(result: ReturnType<typeof calculate>): string {
   } catch {
     return 'no damage';
   }
+}
+
+/** The stand-in for `desc()` on a callback move: the calc has no sentence to offer about a
+ *  move it computed nothing for, so say the amount and why it came from elsewhere. Like
+ *  every `calcDesc`, this is for comparison and debugging — no tooltip renders it. */
+function callbackDesc(moveName: string, dealt: number): string {
+  return `${moveName}: ${dealt} HP (damage callback — @smogon/calc has no model for it)`;
 }

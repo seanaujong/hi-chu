@@ -155,6 +155,16 @@ describe('buildMoveSection on the real captured battle (our move buttons)', () =
     expect(html).toMatch(/foe [\d.]+% → [\d.]+%/);
   });
 
+  it('shows the real number for a damage-callback move (Super Fang, which the calc computes as nothing)', () => {
+    // @smogon/calc has no formula for Super Fang, so this whole surface used to render
+    // "Damage: 0% - 0%" — a move that takes half your HP, reported as doing nothing. The
+    // capture has Tentacruel on 256 of 272 HP, and half of what is LEFT is 47.1% of its max,
+    // which is also why this is not the flat 50% a full-HP target would show.
+    const html = buildMoveSection(battle, active('Noivern'), 'Super Fang', data);
+    expect(html).toContain('<small>Damage:</small> 47.1% - 47.1%');
+    expect(html).not.toContain('0% - 0%');
+  });
+
   it('doubles: shows a labelled damage section for EACH foe', () => {
     // Two foes on the far side → one "vs <name>" section apiece (singles shows one, unlabelled).
     const clientMon = (speciesForme: string, side: unknown, slot: string): ClientPokemon =>

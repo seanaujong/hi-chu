@@ -208,7 +208,11 @@ Each image stays under its own `#NN` heading, and that framing is load-bearing r
 cosmetic: an image shows the UI as of ITS OWN PR, so when two PRs in one release touch the same
 surface the earlier one depicts a state that never shipped. Under a per-PR heading that is an
 honest claim about what one change did; gathered under "here is the new release" it would be a
-picture of a product we do not ship. Read the draft before publishing it — this is a starting
+picture of a product we do not ship. The `-before` half of a pair is dropped outright for the
+same reason taken one step further — it depicts the state its own PR replaced, so it is not
+merely stale but usually a photograph of the bug. A PR that uploaded ONLY a before shot counts
+as un-illustrated and falls to the plain list, which is the honest outcome: there is no picture
+of what shipped. Read the draft before publishing it — this is a starting
 point for a human summary, not a replacement for one.
 
 ## Agentic access to the `hi-chu` GCP project
@@ -276,6 +280,11 @@ body:
 gh release upload pr-assets screenshots/crop/pr-<number>-<what-it-shows>.png
 # → https://github.com/seanaujong/hi-chu/releases/download/pr-assets/pr-<number>-<what-it-shows>.png
 ```
+**Name the old-state shot of a pair `…-before.png`**, and the new-state one anything else
+(`…-after.png` reads best beside it). That suffix is the ONE part of the filename beyond the
+number that carries meaning: `release-notes` drops a `-before` asset, because a changelog that
+showed it would be publishing a picture of the very bug the release fixed. Misname it and the
+old state ships to users as though it were the feature.
 `pr-assets` is a **pre-release on a non-`v` tag**, and both halves carry weight: `release.yml`
 triggers on `tags: ['v*']` and `release-status` reads only `git tag --list 'v*'`, so this tag
 fires no workflow and is invisible to the release tooling, while the pre-release flag stops it

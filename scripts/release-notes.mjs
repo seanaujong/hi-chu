@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 // Composes the human half of a release body: what changed since the last release, with
-// each user-visible change shown as the before/after image its own PR already produced.
+// each user-visible change shown as the screenshot its own PR already produced — the SHIPPED
+// half of it, where that PR posted a before/after pair (see `assetsByPr`).
 //
 // Nothing here gathers anything new. Three things that already exist happen to join:
 //   1. PRs are SQUASH-merged, so every commit subject on main ends with `(#NN)` — the PR
 //      number is never missing (see CLAUDE.md → Contributing).
 //   2. PR screenshots are release assets on the `pr-assets` tag, named `pr-<NN>-<what>.png`
-//      (same section). The number in the filename is the join key.
+//      (same section). The number in the filename is the join key, and a `-before` suffix
+//      is the one other part of the name this reads — as "old state, not for the changelog".
 //   3. `release-status.mjs` already defines which commits are unreleased.
 // So the changelog is DERIVED, not maintained. There is no list to keep up to date and no
 // step anyone can forget; a PR that shipped a screenshot is automatically illustrated here.
@@ -55,13 +57,31 @@ export function parseSubject(subject) {
   return {number: Number(match[2]), title: match[1]};
 }
 
-/** Assets named `pr-<NN>-<anything>` grouped by PR number. Anything else in the release
- *  (a stray upload, GitHub's own source tarballs) simply doesn't match and is ignored. */
+/** The `-before` half of a PR's before/after pair, matched on the basename so that a shot
+ *  legitimately called `pr-99-before-and-after.png` is not caught by accident. */
+function isBeforeShot(name) {
+  return /-before$/.test(name.replace(/\.[^./]+$/, ''));
+}
+
+/**
+ * Assets named `pr-<NN>-<anything>` grouped by PR number. Anything else in the release
+ * (a stray upload, GitHub's own source tarballs) simply doesn't match and is ignored.
+ *
+ * A `-before` shot is dropped, and that is a rule about what a changelog may CLAIM rather
+ * than a formatting preference. A before shot exists to prove a PR changed something, so it
+ * depicts the state that PR replaced. Carried into release notes it becomes a picture of a
+ * product we do not ship — exactly what the framing note above exists to prevent — and,
+ * unlabelled beside its after shot, it reads as a second feature rather than as the old one.
+ * It is worse than a stale image: it is usually a photograph of the bug being fixed.
+ *
+ * A PR that uploaded ONLY a before shot therefore counts as un-illustrated and falls to the
+ * plain list. That is the honest outcome — we have no picture of what actually shipped.
+ */
 export function assetsByPr(assets) {
   const byPr = new Map();
   for (const asset of assets) {
     const match = /^pr-(\d+)-/.exec(asset.name);
-    if (!match) continue;
+    if (!match || isBeforeShot(asset.name)) continue;
     const pr = Number(match[1]);
     byPr.set(pr, [...(byPr.get(pr) ?? []), asset]);
   }

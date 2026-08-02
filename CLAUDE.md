@@ -219,6 +219,15 @@ landed on main afterwards isn't in either — a dispatch runs the definition on 
 branch, which is the only way a fixed workflow reaches a tag cut before the fix:
 `gh workflow run release.yml -f tag=vX.Y.Z`.
 
+**The workflow comes from the default branch; the SCRIPTS come from the tag.** A dispatch
+checks out `ref: <the tag>`, so `release-notes.mjs` and everything else under `scripts/` run
+as they were when that tag was cut — a fix to them never applies retroactively, and for a tag
+older than the script itself there is nothing to run. That is why a re-run refreshes only the
+release's ASSETS and never its body: composing notes from an old tag's tree yields worse notes
+than whatever is already there, and v0.22.0 had a hand-written body silently replaced with
+boilerplate before that was understood. Refine a body with `gh release edit` and a re-run will
+now leave it alone.
+
 **The store upload's own credentials expire, which looks like a code failure and isn't.**
 v0.22.0 tagged, published its GitHub release, then died on `Invalid grant: The authentication
 keys are probably invalid or expired`. Nothing about the build was wrong, and re-running

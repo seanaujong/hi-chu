@@ -36,3 +36,10 @@ screenshots/
 # machine-specific; the Xcode project source itself is tracked.
 safari/build/
 dist-visual/
+
+# The Google OAuth client for the Chrome Web Store, and the local script that re-mints its
+# refresh token (see .release-keys/README.md, which lives in there too). The whole directory
+# is ignored rather than just the *.json: a credential and the tooling that reads it stay
+# together, so nothing in the repo ever implies a checked-in path to a secret. The token
+# expires every 7 days while the consent screen is in Testing, so this gets used often.
+.release-keys/

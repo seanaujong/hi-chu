@@ -116,9 +116,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "::notice::$RELEASE_TAG already published — refreshing its assets and body"
+            # Assets only. The BODY is deliberately left alone on a re-run: by then it may
+            # carry a summary a human refined, and this job would overwrite it with freshly
+            # composed notes that are frequently worse — `release-notes.mjs` runs from the
+            # TAG's tree, so any improvement to it made after the tag was cut simply isn't
+            # there, and for a tag predating that script it composes nothing at all. A
+            # recovery re-run exists to reach a failed later step, not to re-author the body;
+            # v0.22.0 had its notes silently replaced with boilerplate by exactly this.
+            echo "::notice::$RELEASE_TAG already published — refreshing assets, leaving the body as-is"
             gh release upload "$RELEASE_TAG" hi-chu-*.zip SHA256SUMS --clobber
-            gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file RELEASE_BODY.md
           else
             gh release create "$RELEASE_TAG" hi-chu-*.zip SHA256SUMS \
               --title "$RELEASE_TAG" \

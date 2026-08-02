@@ -157,13 +157,14 @@ actually happened on GitHub:
    the **Chrome Web Store** via `chrome-webstore-upload-cli` — the one piece that used to
    stay manual (a dashboard upload at chrome.google.com/webstore/devconsole) no matter how
    automated the GitHub side got. Needs four repo secrets — `CHROME_CLIENT_ID`,
-   `CHROME_CLIENT_SECRET`, `CHROME_REFRESH_TOKEN`, `CHROME_PUBLISHER_ID` — from a one-time
-   Google OAuth setup only the store account owner can do interactively; follow
-   [chrome-webstore-upload-keys](https://github.com/fregante/chrome-webstore-upload-keys)
-   (its `npx chrome-webstore-upload-keys` generates the refresh token) rather than
-   duplicating the click-by-click steps here, since Google's own console UI drifts. The
-   extension id (`kjdnmonplcbfldefppjoohlleelfcmik`) is public — it's in the store URL — so
-   it's a plain env var in the workflow, not a secret.
+   `CHROME_CLIENT_SECRET`, `CHROME_REFRESH_TOKEN`, `CHROME_PUBLISHER_ID`. Only the store
+   account owner can create them, and how to do that (and to renew them, which is routine)
+   is operator work rather than repo mechanics: it lives in `.release-keys/README.md`, which
+   is local and gitignored because it sits beside a live credential. **Either those secrets
+   are configured and this step publishes, or it fails and you upload the GitHub Release's
+   zip by hand** — that is the whole contract, and no other part of this pipeline depends on
+   which. The extension id (`kjdnmonplcbfldefppjoohlleelfcmik`) is public — it's in the store
+   URL — so it's a plain env var in the workflow, not a secret.
 
 **Knowing a release is DUE is its own problem, and nothing above solves it.** Every workflow
 here acts only once a bump has landed, so "main has moved and nobody bumped" produces no
@@ -200,9 +201,22 @@ starts at — a commit that doesn't contain the last release sits on a line of h
 that release never happened, so the range would silently omit whatever the two lines don't
 share. That refusal is an error, not a warning, because a warning here gets read past.
 
-**A TAG IS NOT A SHIPMENT**, and that gap has bitten once: v0.20.1 tagged, published its
+**The store publish needs credentials this repo deliberately knows nothing about.** With the
+four `CHROME_*` secrets present and valid, `release.yml` pushes the zip live and there is
+nothing to do. Without them — absent, or expired, which is the common case — that step fails
+and *everything else still succeeds*: the tag, the attestation and the GitHub Release with its
+zip all exist, so the fallback is to upload that same zip by hand at
+[the dashboard](https://chrome.google.com/webstore/devconsole). A failure there is never a
+build failure and never needs a code change. Obtaining and renewing those credentials is
+operator work for whoever holds the store account, and its runbook lives with them in
+`.release-keys/README.md` — local and gitignored, since it sits next to a live credential.
+Nothing in this file requires reading it: if you have no store access, the sentence above is
+the whole contract.
+
+**A TAG IS NOT A SHIPMENT**, and that gap has bitten twice: v0.20.1 tagged, published its
 GitHub Release, then failed the Chrome Web Store upload — Google refuses to publish while the
-previous version is still in review, and v0.20.0 had gone out 26 minutes earlier. Tags were
+previous version is still in review, and v0.20.0 had gone out 26 minutes earlier. v0.22.0
+failed the same step for an unrelated credential reason. Tags were
 all `release-status` read, so it reported `in-sync` while the store sat a version behind.
 **`--check-publish`** closes that: it matches the newest tag's commit to its `auto-tag.yml`
 run by SHA and fails if that run did not succeed. `release-drift.yml` passes it on every run.
@@ -228,22 +242,11 @@ than whatever is already there, and v0.22.0 had a hand-written body silently rep
 boilerplate before that was understood. Refine a body with `gh release edit` and a re-run will
 now leave it alone.
 
-**The store upload's own credentials expire, which looks like a code failure and isn't.**
-v0.22.0 tagged, published its GitHub release, then died on `Invalid grant: The authentication
-keys are probably invalid or expired`. Nothing about the build was wrong, and re-running
-anything is useless until the secret is valid: Google expires an OAuth refresh token after
-**seven days** while its consent screen is in *Testing*, and v0.21.0 had gone out seven days
-earlier. Only `CHROME_REFRESH_TOKEN` goes stale — the other three secrets keep working — so the
-repair is the same `npx chrome-webstore-upload-keys` run that minted it (see the secrets
-paragraph above), feeding it the existing client id and secret, then updating that one secret
-and dispatching `release.yml` with the tag.
-
-Moving the consent screen off *Testing* is the only durable fix, and it is a real decision
-rather than a toggle: this project sits on *External* + *Testing* because a personal Gmail
-account cannot use *Internal* at all — that was tried during the original setup and returns
-`Error 403: access_denied` — so going *In production* means accepting whatever verification
-Google asks of an External app. Until then a release cut more than seven days after the last
-one will fail this step every time, which is most of them.
+**A credential failure there reads exactly like a code failure and is not one** — `Invalid
+grant`, `invalid_client`, a refused upload. Nothing in the build is wrong, re-running changes
+nothing until the secret is valid, and the recovery is a secret update followed by the dispatch
+below. Why those secrets expire and how to renew them is in `.release-keys/README.md`; it is
+deliberately not repeated here, because it is true of an account rather than of this codebase.
 
 A manual escape hatch still works if the automation is ever down: `git tag vX.Y.Z
 <merged-sha> && git push origin vX.Y.Z` triggers `release.yml` the same way, standalone.

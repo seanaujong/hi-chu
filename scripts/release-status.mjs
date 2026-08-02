@@ -30,14 +30,11 @@
 
 import {execFileSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
-import {currentBranch, differsFromCheckout, latestReleaseTag, resolveReleaseRef} from './lib/release-range.mjs';
+import {currentBranch, differsFromCheckout, latestReleaseTag, resolveReleaseRef, showAtRef} from './lib/release-range.mjs';
 
 const git = (...args) => execFileSync('git', args, {encoding: 'utf8'}).trim();
-const read = (p) => JSON.parse(readFileSync(new URL(`../${p}`, import.meta.url), 'utf8'));
 const flag = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=')[1];
 
-const pkg = read('package.json').version;
-const manifest = read('public/manifest.json').version;
 const tag = latestReleaseTag();
 const released = tag ? tag.replace(/^v/, '') : null;
 
@@ -51,6 +48,23 @@ if (problem) {
   console.error(`✗ ${problem}`);
   process.exit(1);
 }
+
+// The declared version is read at the SAME commit the commits are counted on. Reading it off
+// disk instead described two states at once: a bump sitting uncommitted in a working tree
+// made this announce "Release PENDING — auto-tag.yml is either mid-flight or its verify job
+// failed", advice for a release that had not started, because the version came from the disk
+// while the commits came from main. To inspect your own bump, point the whole report at it
+// with `--ref=HEAD`. The working-tree fallback covers a ref that carries no such file at all,
+// and says so rather than quietly mixing sources again.
+const fellBack = [];
+const versionAt = (path) => {
+  const blob = showAtRef(ref, path);
+  if (blob !== null) return JSON.parse(blob).version;
+  fellBack.push(path);
+  return JSON.parse(readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')).version;
+};
+const pkg = versionAt('package.json');
+const manifest = versionAt('public/manifest.json');
 const range = tag ? `${tag}..${ref}` : ref;
 const commits = git('log', '--oneline', '--no-merges', range).split('\n').filter(Boolean);
 const totalCommits = Number(git('rev-list', '--count', ref));
@@ -161,6 +175,9 @@ if (process.argv.includes('--json')) {
   console.log(`  measured on ${ref} @ ${sha}${requested ? ' (--ref)' : ''}`);
   if (differsFromCheckout(ref)) {
     console.log(`  your checkout ${currentBranch()} is a different commit and was NOT read`);
+  }
+  if (fellBack.length) {
+    console.log(`  (${fellBack.join(', ')} absent at ${ref}; read from the working tree instead)`);
   }
   if (publish && publish !== 'ok') {
     console.log(bar);

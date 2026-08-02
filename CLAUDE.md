@@ -186,6 +186,13 @@ HIDES unreleased work. Both tools print the resolved SHA (`measured on origin/ma
 because on a busy repo a branch name alone doesn't say which tip you got, and they say so
 explicitly when your checkout is a different commit.
 
+**The declared version is read at that same commit**, not off disk, so the whole report
+describes one state. Mixing the two made a bump sitting uncommitted in a working tree announce
+`Release PENDING — auto-tag.yml is either mid-flight or its verify job failed`, advice for a
+release that had not started, because the version came from the disk while the commits came
+from main. Point the whole report at your own branch with `--ref=HEAD` to inspect a bump before
+it lands.
+
 Defaulting to main is not the same as requiring its tip, and **`--ref=<commitish>`** is the
 difference: main moves while you bump, open the PR, run `visual-check` and merge, so name the
 commit you actually mean to ship. It is refused unless it descends from the tag the range
@@ -201,13 +208,38 @@ all `release-status` read, so it reported `in-sync` while the store sat a versio
 run by SHA and fails if that run did not succeed. `release-drift.yml` passes it on every run.
 Note the recovery is NOT a re-run of `auto-tag.yml` — the tag exists by then, so `detect`
 no-ops and the whole thing goes green having published nothing. Re-run the failed `release`
-job, or upload the release's zip by hand once review clears.
+job, whose steps are idempotent for exactly this reason: it publishes the GitHub release only
+if one isn't there and refreshes its assets and body otherwise, so a retry reaches the store
+step instead of aborting on "release already exists" before it. That recovery was documented
+long before it was ever exercised, and v0.22.0 is the release that exercised it.
+
+**Re-run it as a `workflow_dispatch`, not as a re-run of the failed job.** Both the failed run
+and a re-pushed tag replay the workflow file *as it was at that commit*, so any repair that
+landed on main afterwards isn't in either — a dispatch runs the definition on the default
+branch, which is the only way a fixed workflow reaches a tag cut before the fix:
+`gh workflow run release.yml -f tag=vX.Y.Z`.
+
+**The store upload's own credentials expire, which looks like a code failure and isn't.**
+v0.22.0 tagged, published its GitHub release, then died on `Invalid grant: The authentication
+keys are probably invalid or expired`. Nothing about the build was wrong, and re-running
+anything is useless until the secret is valid: Google expires an OAuth refresh token after
+**seven days** while its consent screen is in *Testing*, and v0.21.0 had gone out seven days
+earlier. Only `CHROME_REFRESH_TOKEN` goes stale — the other three secrets keep working — so the
+repair is the same `npx chrome-webstore-upload-keys` run that minted it (see the secrets
+paragraph above), feeding it the existing client id and secret, then updating that one secret
+and dispatching `release.yml` with the tag.
+
+Moving the consent screen off *Testing* is the only durable fix, and it is a real decision
+rather than a toggle: this project sits on *External* + *Testing* because a personal Gmail
+account cannot use *Internal* at all — that was tried during the original setup and returns
+`Error 403: access_denied` — so going *In production* means accepting whatever verification
+Google asks of an External app. Until then a release cut more than seven days after the last
+one will fail this step every time, which is most of them.
 
 A manual escape hatch still works if the automation is ever down: `git tag vX.Y.Z
 <merged-sha> && git push origin vX.Y.Z` triggers `release.yml` the same way, standalone.
-Afterward, `gh release edit vX.Y.Z --notes '...'` to prepend a human-readable summary of
-what's new before the provenance-verification boilerplate `release.yml` already writes —
-see any past release for the shape.
+The human-readable summary needs no manual step — `release.yml` composes it itself, below —
+though `gh release edit vX.Y.Z --notes-file -` is still how you refine one afterwards.
 
 **`npm run release-notes` drafts that summary instead of writing it from scratch**, and it
 gathers nothing new to do it. Three existing things join: squash-merge puts `(#NN)` on every
@@ -230,8 +262,19 @@ picture of a product we do not ship. The `-before` half of a pair is dropped out
 same reason taken one step further — it depicts the state its own PR replaced, so it is not
 merely stale but usually a photograph of the bug. A PR that uploaded ONLY a before shot counts
 as un-illustrated and falls to the plain list, which is the honest outcome: there is no picture
-of what shipped. Read the draft before publishing it — this is a starting
-point for a human summary, not a replacement for one.
+of what shipped.
+
+**`release.yml` runs it and publishes the result**, so the release body carries this summary
+above the provenance boilerplate without anyone doing anything. That is a deliberate trade: a
+body nobody wrote is the state this replaced, and "somebody remembers to run `gh release edit`"
+is the same forgettable manual step the rest of this pipeline exists to delete. It composes with
+`--ref=<the tag>`, which is why naming a release tag starts the range at the tag BEFORE it —
+by then `auto-tag` has already created the tag, so the obvious default would ask for
+`vX.Y.Z..vX.Y.Z` and publish empty notes for a full release. The step cannot sink a release
+either: notes are cosmetic next to a published zip, so a failure downgrades to boilerplate and
+annotates the run. The draft is still a starting point rather than a finished summary — read
+the published body and refine it with `gh release edit` when it deserves more than its commit
+subjects.
 
 ## Agentic access to the `hi-chu` GCP project
 The same `hi-chu` GCP project that holds the Chrome Web Store OAuth client above also

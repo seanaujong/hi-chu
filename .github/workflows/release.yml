@@ -26,6 +26,19 @@ on:
         description: The v* tag to release (defaults to the triggering ref's tag name)
         required: false
         type: string
+  # The recovery button, and the only one that can exist. When the store upload fails on its
+  # own — expired Chrome OAuth keys, or Google still reviewing the previous version — the tag
+  # and the GitHub release are already there, and neither other trigger can re-reach the store
+  # step: re-running the failed run replays the workflow file as it was at that commit, and
+  # `push: tags` would too, so a fix that landed on main afterwards is not in either. A
+  # dispatch runs the definition on the DEFAULT BRANCH, which is the only way a repaired
+  # workflow ever gets applied to a tag that was cut before the repair.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The v* tag to (re-)release, e.g. v0.22.0
+        required: true
+        type: string
 
 permissions:
   contents: write # create the GitHub Release
@@ -41,6 +54,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.RELEASE_TAG }} # explicit: workflow_call's default ref is the CALLER's (main), not this tag
+          # The release body is derived from the commits since the PREVIOUS tag, so this job
+          # needs the whole history and every tag — a shallow checkout of one tag can see
+          # neither, and would compose notes for a range it cannot walk.
+          fetch-depth: 0
+          fetch-tags: true
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
@@ -61,13 +79,51 @@ jobs:
             hi-chu-*.zip
             dist/content.js
 
+      # The human-readable half of the release body, derived from the commits in this tag's
+      # range and the screenshot each of their PRs already uploaded (scripts/release-notes.mjs).
+      # Composing it here is what stops it being forgotten: the body used to carry provenance
+      # boilerplate alone unless somebody remembered to run `gh release edit` afterwards, and
+      # "somebody remembers" is the exact failure the rest of this pipeline was built to end.
+      # `--ref` is the tag, so the range starts at the tag before it rather than at the tag
+      # being released, which would be empty.
+      #
+      # It must not be able to sink a release. Notes are cosmetic next to a published zip, so a
+      # failure here downgrades to boilerplate and annotates the run instead of aborting it —
+      # loud enough to notice, never load-bearing.
+      - name: Compose the release body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! node scripts/release-notes.mjs --ref="$RELEASE_TAG" > RELEASE_BODY.md; then
+            echo "::warning::release-notes failed — publishing provenance boilerplate only"
+            : > RELEASE_BODY.md
+          fi
+          {
+            echo
+            echo "---"
+            echo
+            echo "Signed build provenance is attached. Verify the download with \`gh attestation verify hi-chu-*.zip --repo $GITHUB_REPOSITORY\`, then see the README's \"Verifying a release\" section for the full check."
+          } >> RELEASE_BODY.md
+
+      # Idempotent, because RE-RUNNING THIS JOB IS THE DOCUMENTED RECOVERY. The store upload
+      # below is the step that fails on its own — expired Chrome OAuth keys, or Google
+      # refusing to publish while the previous version is still in review — and by then the
+      # GitHub release exists, so a plain `gh release create` would abort on "already exists"
+      # before execution ever reached the step that actually needed retrying. The recovery
+      # was documented but untested; v0.22.0 is the release that found that out.
       - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$RELEASE_TAG" hi-chu-*.zip SHA256SUMS \
-            --title "$RELEASE_TAG" \
-            --notes "Signed build provenance is attached. Verify the download with \`gh attestation verify hi-chu-*.zip --repo $GITHUB_REPOSITORY\`, then see the README's \"Verifying a release\" section for the full check."
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::notice::$RELEASE_TAG already published — refreshing its assets and body"
+            gh release upload "$RELEASE_TAG" hi-chu-*.zip SHA256SUMS --clobber
+            gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file RELEASE_BODY.md
+          else
+            gh release create "$RELEASE_TAG" hi-chu-*.zip SHA256SUMS \
+              --title "$RELEASE_TAG" \
+              --notes-file RELEASE_BODY.md
+          fi
 
       # Uploads + publishes the same zip live on the store. Needs CHROME_CLIENT_ID /
       # CHROME_CLIENT_SECRET / CHROME_REFRESH_TOKEN / CHROME_PUBLISHER_ID as repo

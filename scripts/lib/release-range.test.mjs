@@ -4,7 +4,7 @@
 // rather than staged as a repository.
 
 import {describe, it, expect} from 'vitest';
-import {RELEASE_REFS, pickReleaseRef, releaseRefProblem} from './release-range.mjs';
+import {RELEASE_REFS, defaultSince, pickReleaseRef, releaseRefProblem, tagBefore} from './release-range.mjs';
 
 /** A `resolves` probe that knows about exactly these refs. */
 const knows = (...refs) => (ref) => refs.includes(ref);
@@ -87,5 +87,48 @@ describe('the tag label', () => {
     const args = {ref: 'old', requested: true, exists: true, tag: 'v0.20.0', containsTag: false};
     expect(releaseRefProblem({...args, tagLabel: 'the range start'})).toContain('not ahead of the range start v0.20.0');
     expect(releaseRefProblem(args)).toContain('not ahead of the last release v0.20.0');
+  });
+});
+
+describe('tagBefore', () => {
+  const tags = ['v0.22.0', 'v0.21.0', 'v0.20.1', 'v0.20.0'];
+
+  it('is the release immediately below the one named', () => {
+    expect(tagBefore(tags, 'v0.22.0')).toBe('v0.21.0');
+    expect(tagBefore(tags, 'v0.20.1')).toBe('v0.20.0');
+  });
+
+  it('is null at the very first release — nothing came before it', () => {
+    expect(tagBefore(tags, 'v0.20.0')).toBeNull();
+    expect(tagBefore([], 'v0.1.0')).toBeNull();
+  });
+
+  it('falls back to the highest tag for something that is not a release tag', () => {
+    expect(tagBefore(tags, 'abc1234')).toBe('v0.22.0');
+  });
+});
+
+describe('defaultSince', () => {
+  const tags = ['v0.22.0', 'v0.21.0', 'v0.20.1'];
+
+  // The trap this exists for. `release.yml` runs AFTER auto-tag has created v0.22.0, so the
+  // highest tag is the release being described — defaulting to it would ask for the range
+  // v0.22.0..v0.22.0 and publish empty notes for a release full of changes, with nothing
+  // anywhere looking broken.
+  it('starts at the PREVIOUS tag when the range ends at a release tag', () => {
+    expect(defaultSince('v0.22.0', tags)).toBe('v0.21.0');
+  });
+
+  it('starts at the latest tag when the range ends somewhere that is not a release', () => {
+    expect(defaultSince('origin/main', tags)).toBe('v0.22.0');
+    expect(defaultSince('abc1234', tags)).toBe('v0.22.0');
+  });
+
+  it('starts at the latest tag when no end was named at all', () => {
+    expect(defaultSince(undefined, tags)).toBe('v0.22.0');
+  });
+
+  it('is null before the first release, so the range runs from the first commit', () => {
+    expect(defaultSince(undefined, [])).toBeNull();
   });
 });

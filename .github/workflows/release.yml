@@ -26,6 +26,19 @@ on:
         description: The v* tag to release (defaults to the triggering ref's tag name)
         required: false
         type: string
+  # The recovery button, and the only one that can exist. When the store upload fails on its
+  # own — expired Chrome OAuth keys, or Google still reviewing the previous version — the tag
+  # and the GitHub release are already there, and neither other trigger can re-reach the store
+  # step: re-running the failed run replays the workflow file as it was at that commit, and
+  # `push: tags` would too, so a fix that landed on main afterwards is not in either. A
+  # dispatch runs the definition on the DEFAULT BRANCH, which is the only way a repaired
+  # workflow ever gets applied to a tag that was cut before the repair.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The v* tag to (re-)release, e.g. v0.22.0
+        required: true
+        type: string
 
 permissions:
   contents: write # create the GitHub Release

@@ -213,13 +213,28 @@ if one isn't there and refreshes its assets and body otherwise, so a retry reach
 step instead of aborting on "release already exists" before it. That recovery was documented
 long before it was ever exercised, and v0.22.0 is the release that exercised it.
 
+**Re-run it as a `workflow_dispatch`, not as a re-run of the failed job.** Both the failed run
+and a re-pushed tag replay the workflow file *as it was at that commit*, so any repair that
+landed on main afterwards isn't in either — a dispatch runs the definition on the default
+branch, which is the only way a fixed workflow reaches a tag cut before the fix:
+`gh workflow run release.yml -f tag=vX.Y.Z`.
+
 **The store upload's own credentials expire, which looks like a code failure and isn't.**
 v0.22.0 tagged, published its GitHub release, then died on `Invalid grant: The authentication
-keys are probably invalid or expired`. Google expires an OAuth refresh token after **seven
-days** while its consent screen is still in *Testing*, and v0.21.0 had gone out seven days
-earlier — so the useful fix is to set that consent screen to *In production* once, rather than
-regenerating `CHROME_REFRESH_TOKEN` before every release. Re-running the `release` job cannot
-help until the secret is valid; nothing about the build was wrong.
+keys are probably invalid or expired`. Nothing about the build was wrong, and re-running
+anything is useless until the secret is valid: Google expires an OAuth refresh token after
+**seven days** while its consent screen is in *Testing*, and v0.21.0 had gone out seven days
+earlier. Only `CHROME_REFRESH_TOKEN` goes stale — the other three secrets keep working — so the
+repair is the same `npx chrome-webstore-upload-keys` run that minted it (see the secrets
+paragraph above), feeding it the existing client id and secret, then updating that one secret
+and dispatching `release.yml` with the tag.
+
+Moving the consent screen off *Testing* is the only durable fix, and it is a real decision
+rather than a toggle: this project sits on *External* + *Testing* because a personal Gmail
+account cannot use *Internal* at all — that was tried during the original setup and returns
+`Error 403: access_denied` — so going *In production* means accepting whatever verification
+Google asks of an External app. Until then a release cut more than seven days after the last
+one will fail this step every time, which is most of them.
 
 A manual escape hatch still works if the automation is ever down: `git tag vX.Y.Z
 <merged-sha> && git push origin vX.Y.Z` triggers `release.yml` the same way, standalone.

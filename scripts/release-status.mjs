@@ -18,35 +18,42 @@
 // sat a version behind — the same class of silence it was written to end. `--check-publish`
 // closes that hole (see `publishOutcome`); it is the one flag that needs `gh` and the network.
 //
+// Measured on main, never on your checkout — see lib/release-range.mjs — so it answers the
+// same way from any branch, and `--ref=` names a different commit when main's tip is not the
+// one you mean to ship.
+//
 //   node scripts/release-status.mjs                  report, always exit 0
+//   node scripts/release-status.mjs --ref=<commitish> measure a specific commit instead of main
 //   node scripts/release-status.mjs --check-publish  also verify the last tag actually shipped
 //   node scripts/release-status.mjs --fail-after=14  exit 1 once drift is 14+ days stale
 //   node scripts/release-status.mjs --json           machine-readable, for CI summaries
 
 import {execFileSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
+import {currentBranch, differsFromCheckout, latestReleaseTag, resolveReleaseRef} from './lib/release-range.mjs';
 
 const git = (...args) => execFileSync('git', args, {encoding: 'utf8'}).trim();
 const read = (p) => JSON.parse(readFileSync(new URL(`../${p}`, import.meta.url), 'utf8'));
-
-/** The highest released version tag, by semver order — NOT by date, so an out-of-order
- *  hotfix tag can't be mistaken for the latest release. */
-function latestReleaseTag() {
-  const tags = git('tag', '--list', 'v*', '--sort=-v:refname').split('\n').filter(Boolean);
-  return tags[0] ?? null;
-}
+const flag = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=')[1];
 
 const pkg = read('package.json').version;
 const manifest = read('public/manifest.json').version;
 const tag = latestReleaseTag();
 const released = tag ? tag.replace(/^v/, '') : null;
 
-// Commits on this branch since the last release tag. Squash-merges keep main linear, so
-// this count doubles as a stable index into history (commit N is `rev-list --reverse`'s
-// Nth entry) — which is why the count alone identifies a build.
-const range = tag ? `${tag}..HEAD` : 'HEAD';
+// Commits on the RELEASE ref since the last release tag — main by default, not this
+// checkout, because a release only ever ships what main has; `--ref=` overrides it when the
+// commit you mean to ship is not main's current tip (see lib/release-range.mjs). Squash-
+// merges keep main linear, so this count doubles as a stable index into history (commit N is
+// `rev-list --reverse`'s Nth entry) — which is why the count alone identifies a build.
+const {ref, sha, requested, problem} = resolveReleaseRef(flag('ref'), tag);
+if (problem) {
+  console.error(`✗ ${problem}`);
+  process.exit(1);
+}
+const range = tag ? `${tag}..${ref}` : ref;
 const commits = git('log', '--oneline', '--no-merges', range).split('\n').filter(Boolean);
-const totalCommits = Number(git('rev-list', '--count', 'HEAD'));
+const totalCommits = Number(git('rev-list', '--count', ref));
 const lastReleaseISO = tag ? git('log', '-1', '--format=%cI', tag) : null;
 const daysStale = lastReleaseISO
   ? Math.floor((Date.now() - Date.parse(lastReleaseISO)) / 86_400_000)
@@ -108,6 +115,9 @@ const report = {
   declaredVersion: pkg,
   manifestVersion: manifest,
   lastReleaseTag: tag,
+  measuredOn: ref,
+  measuredSha: sha,
+  measuredByRequest: requested,
   unreleasedCommits: commits.length,
   daysSinceLastRelease: daysStale,
   totalCommits,
@@ -138,9 +148,19 @@ if (process.argv.includes('--json')) {
     console.log(`… Release PENDING: version is ${pkg} but ${'v' + pkg} is not tagged yet.`);
     console.log('  auto-tag.yml is either mid-flight or its verify job failed — re-run that job.');
   } else {
-    console.log(`⚠ ${commits.length} commit(s) on main are NOT released.`);
+    console.log(`⚠ ${commits.length} commit(s) on ${ref} are NOT released.`);
     console.log(`  last release ${tag}${daysStale !== null ? ` — ${daysStale} day(s) ago` : ''}`);
     console.log(`  declared version is still ${pkg}, so nothing will publish.`);
+  }
+  // Which commit these numbers describe, always — on a busy repository the release ref moves
+  // between runs, and a bare branch name doesn't say which tip you got. The second line only
+  // appears when the checkout is elsewhere: standing on the release ref is the normal case
+  // and needs no announcement, but standing somewhere else means none of this is about the
+  // code under your cursor, and silence there is how a branch's own commits get read as
+  // pending release work.
+  console.log(`  measured on ${ref} @ ${sha}${requested ? ' (--ref)' : ''}`);
+  if (differsFromCheckout(ref)) {
+    console.log(`  your checkout ${currentBranch()} is a different commit and was NOT read`);
   }
   if (publish && publish !== 'ok') {
     console.log(bar);

@@ -176,6 +176,23 @@ patch/minor. `.github/workflows/release-drift.yml` runs it on every push to `mai
 summary and weekly with `--fail-after=14`, so ordinary between-release drift stays quiet and
 a genuinely forgotten release goes red. It creates no tags and publishes nothing.
 
+**It measures `main`, never your checkout** (`scripts/lib/release-range.mjs`, shared with
+`release-notes` so the two can't describe different releases). A release only ships what main
+has — `auto-tag.yml` tags a commit pushed to main — so the range is a fact about main, and
+reading `HEAD` instead once had it count an unmerged branch's own commits while still printing
+"commit(s) on main are NOT released". It resolves `origin/main` first and local `main` only as
+a fallback: a local `main` nobody has pulled lags the remote, and it lags in the direction that
+HIDES unreleased work. Both tools print the resolved SHA (`measured on origin/main @ 1592e0c`),
+because on a busy repo a branch name alone doesn't say which tip you got, and they say so
+explicitly when your checkout is a different commit.
+
+Defaulting to main is not the same as requiring its tip, and **`--ref=<commitish>`** is the
+difference: main moves while you bump, open the PR, run `visual-check` and merge, so name the
+commit you actually mean to ship. It is refused unless it descends from the tag the range
+starts at — a commit that doesn't contain the last release sits on a line of history where
+that release never happened, so the range would silently omit whatever the two lines don't
+share. That refusal is an error, not a warning, because a warning here gets read past.
+
 **A TAG IS NOT A SHIPMENT**, and that gap has bitten once: v0.20.1 tagged, published its
 GitHub Release, then failed the Chrome Web Store upload — Google refuses to publish while the
 previous version is still in review, and v0.20.0 had gone out 26 minutes earlier. Tags were
@@ -202,6 +219,7 @@ writes nothing:
 ```sh
 npm run release-notes                              # the unreleased range
 node scripts/release-notes.mjs --since=v0.20.0     # an explicit starting tag
+node scripts/release-notes.mjs --ref=<commitish>   # end the range somewhere other than main
 node scripts/release-notes.mjs | gh release edit vX.Y.Z --notes-file -
 ```
 Each image stays under its own `#NN` heading, and that framing is load-bearing rather than

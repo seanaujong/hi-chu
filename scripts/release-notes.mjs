@@ -25,6 +25,7 @@
 //
 //   node scripts/release-notes.mjs                    the unreleased range (default)
 //   node scripts/release-notes.mjs --since=v0.20.0    an explicit starting tag
+//   node scripts/release-notes.mjs --ref=<commitish>  end the range somewhere other than main
 //   node scripts/release-notes.mjs --no-assets        offline; text only, no `gh` call
 //   node scripts/release-notes.mjs | gh release edit v0.22.0 --notes-file -
 //
@@ -33,19 +34,11 @@
 
 import {execFileSync} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
+import {latestReleaseTag, resolveReleaseRef} from './lib/release-range.mjs';
 
 const ASSET_RELEASE = 'pr-assets'; // the storage-bucket pre-release, not a version
 
 const git = (...args) => execFileSync('git', args, {encoding: 'utf8'}).trim();
-
-/** The highest released version tag, by semver order — NOT by date, so an out-of-order
- *  hotfix tag can't be mistaken for the latest release. Deliberately identical to
- *  `release-status.mjs`: if these two disagreed about where the range starts, the notes
- *  would describe a different release than the status report claims is pending. */
-function latestReleaseTag() {
-  const tags = git('tag', '--list', 'v*', '--sort=-v:refname').split('\n').filter(Boolean);
-  return tags[0] ?? null;
-}
 
 /** `Rule out a Choice item … (#65)` → `{number: 65, title: 'Rule out a Choice item …'}`.
  *  A subject with no trailing PR number is kept, untitled-by-number — squash-merge means
@@ -134,7 +127,19 @@ function fetchAssets(release) {
 function main() {
   const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=')[1];
   const since = arg('since') ?? latestReleaseTag();
-  const range = since ? `${since}..HEAD` : 'HEAD';
+  // `--since` picks where the range STARTS, `--ref` where it ends; together they describe
+  // any release, not only "everything on main right now".
+  const {ref, sha, requested, problem} = resolveReleaseRef(
+    arg('ref'),
+    since,
+    arg('since') ? 'the range start' : 'the last release',
+  );
+  if (problem) {
+    console.error(`✗ ${problem}`);
+    process.exitCode = 1;
+    return;
+  }
+  const range = since ? `${since}..${ref}` : ref;
 
   const subjects = git('log', '--format=%s', '--no-merges', range).split('\n').filter(Boolean);
   if (!subjects.length) {
@@ -150,7 +155,10 @@ function main() {
 
   // Progress goes to stderr so stdout stays a clean pipe into `gh release edit --notes-file -`.
   const illustrated = subjects.map(parseSubject).filter((c) => c.number !== null && byPr.has(c.number)).length;
-  console.error(`\n${illustrated}/${subjects.length} change(s) illustrated, from ${since ?? 'the first commit'}.`);
+  console.error(
+    `\n${illustrated}/${subjects.length} change(s) illustrated, ` +
+      `${since ?? 'the first commit'}..${ref} @ ${sha}${requested ? ' (--ref)' : ''}.`,
+  );
   if (assets === null) {
     console.error(`Could not read the ${assetRelease} release (no gh / auth / network) — text only.`);
   }

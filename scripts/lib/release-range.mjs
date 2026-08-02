@@ -94,11 +94,51 @@ export function isAncestor(ancestor, descendant) {
   }
 }
 
-/** The highest released version tag, by semver order — NOT by date, so an out-of-order
+/** Every release tag, highest first, by semver order — NOT by date, so an out-of-order
  *  hotfix tag can't be mistaken for the latest release. */
+export function releaseTags() {
+  return git('tag', '--list', 'v*', '--sort=-v:refname').split('\n').filter(Boolean);
+}
+
+/** The highest released version tag. */
 export function latestReleaseTag() {
-  const tags = git('tag', '--list', 'v*', '--sort=-v:refname').split('\n').filter(Boolean);
-  return tags[0] ?? null;
+  return releaseTags()[0] ?? null;
+}
+
+/**
+ * The release tag immediately before `tag` — what the previous release actually was, seen
+ * from the one being cut. Pure over an already-ordered list.
+ *
+ * A tag that isn't in the list falls back to the highest, which is the honest answer for a
+ * ref that names no release at all: the range then runs from the last release, as it would
+ * have anyway.
+ */
+export function tagBefore(tagsDescending, tag) {
+  const i = tagsDescending.indexOf(tag);
+  if (i === -1) return tagsDescending[0] ?? null;
+  return tagsDescending[i + 1] ?? null;
+}
+
+/**
+ * Where a range should START, given whatever the caller named as its END.
+ *
+ * Naming a release tag as the end means describing THAT release, so the range has to start
+ * at the one before it. Defaulting to the highest tag instead is an outright trap once the
+ * tag exists: `release.yml` runs after `auto-tag` has already created `v0.22.0`, so the
+ * highest tag IS the release being described and the range collapses to `v0.22.0..v0.22.0`
+ * — empty notes for a release full of changes, and nothing would look broken.
+ */
+export function defaultSince(ref, tags = releaseTags()) {
+  return ref && tags.includes(ref) ? tagBefore(tags, ref) : (tags[0] ?? null);
+}
+
+/** A file's contents as of `ref`, or null when the ref has no such file. */
+export function showAtRef(ref, path) {
+  try {
+    return git('show', `${ref}:${path}`);
+  } catch {
+    return null;
+  }
 }
 
 /**

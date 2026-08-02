@@ -34,7 +34,7 @@
 
 import {execFileSync} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
-import {latestReleaseTag, resolveReleaseRef} from './lib/release-range.mjs';
+import {defaultSince, resolveReleaseRef} from './lib/release-range.mjs';
 
 const ASSET_RELEASE = 'pr-assets'; // the storage-bucket pre-release, not a version
 
@@ -126,9 +126,11 @@ function fetchAssets(release) {
 
 function main() {
   const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=')[1];
-  const since = arg('since') ?? latestReleaseTag();
   // `--since` picks where the range STARTS, `--ref` where it ends; together they describe
-  // any release, not only "everything on main right now".
+  // any release, not only "everything on main right now". Naming a release TAG as the end
+  // starts the range at the tag before it, which is what makes `--ref=v0.22.0` describe
+  // v0.22.0 rather than collapsing to the empty `v0.22.0..v0.22.0` (see `defaultSince`).
+  const since = arg('since') ?? defaultSince(arg('ref'));
   const {ref, sha, requested, problem} = resolveReleaseRef(
     arg('ref'),
     since,

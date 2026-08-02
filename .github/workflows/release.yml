@@ -17,6 +17,12 @@
 # extra check.
 name: Release
 
+# The run's own title, and the ONLY thing that ties a dispatched run to the tag it released.
+# A dispatch runs against the default branch with the tag as an input, so its head commit is
+# main's and says nothing about which release it was for — `release-status --check-publish`
+# reads this title to tell a successful recovery from a still-broken release.
+run-name: Release ${{ inputs.tag || github.ref_name }}
+
 on:
   push:
     tags: ['v*']

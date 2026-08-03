@@ -277,7 +277,7 @@ function hitsToBreakText(sub: {hits: {min: number; max: number}; dented: boolean
   // A dented doll can only break SOONER, so the fresh figure is an upper bound and says so
   // in one word rather than a second range to reason about — the client tracks that a sub
   // exists but never how much of it is left.
-  return `${sub.dented ? 'at most ' : ''}${count} hit${max === 1 && !sub.dented ? '' : 's'} to break`;
+  return `${sub.dented ? 'at most ' : ''}${count} hit${max === 1 ? '' : 's'} to break`;
 }
 
 function substituteLine(sub: DamageReport['substitute']): string {

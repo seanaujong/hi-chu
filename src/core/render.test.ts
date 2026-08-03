@@ -569,6 +569,9 @@ describe('a Substitute on the move tooltip', () => {
   it('caps a DENTED doll rather than bracketing it — a chipped sub only breaks sooner', () => {
     const html = renderMoveSection(model({report: report({move: 'Waterfall', substitute: absorbs({min: 2, max: 2}, true)})}));
     expect(html).toContain('at most 2 hits to break');
+    // …and stays grammatical at the one-hit end, where the cap still reads.
+    expect(renderMoveSection(model({report: report({move: 'Waterfall', substitute: absorbs({min: 1, max: 1}, true)})})))
+      .toContain('at most 1 hit to break');
   });
 
   it('says a bypassing move ignores it, and gives no count for a doll it never meets', () => {

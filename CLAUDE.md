@@ -523,6 +523,13 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
     - `illusion.ts` — Zoroark detection: `illusionSuspects` flags when a revealed move fits
       a Zoroark set but not the shown species (the Illusion tell), so `section.ts` can add
       that Zoroark as an extra defender variant (move view) and candidate block (sets view).
+  - `substitute.ts` — the Substitute law: a shield with its own HP bar. Sizes the doll (a
+    quarter of its MAKER's max HP — Shed Tail makes that a different Pokémon), counts the
+    hits that break it CUMULATIVELY per hit rather than by division (Triple Axel's hits
+    escalate), and owns which moves walk through it (`sound`, which the calc does expose,
+    plus the three non-sound bypassers and Infiltrator, which it doesn't). The calc models
+    none of this, so the whole mechanic is ours — including the rule that no KO may be
+    claimed through a standing doll, which `render.ts` enforces.
   - `transform.ts` — the Transform law (Ditto's Imposter): a Pokémon that has copied another
     one WHOLE. `transformCopy` builds the copy (the target's body and final numbers, wearing
     the copier's HP — the one stat Transform never takes); `applyTransform` overlays it on the

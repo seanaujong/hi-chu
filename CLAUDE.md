@@ -42,6 +42,7 @@ In-browser check: `npm run build`, then `chrome://extensions` → Developer mode
 unpacked** → pick `dist/`; open a Random Battle on play.pokemonshowdown.com and hover a
 Pokémon. (The logic is covered end-to-end by tests; only this hover needs a human.)
 ```sh
+npm run previews      # LOCAL, no browser: render every declared tooltip state to a page
 npm run drift-check   # LOCAL, needs Chrome: runs readState against a live replay (see below)
 npm run drift-check gen9randombattle-2659404198   # …or against ONE named replay
 npm run icons         # LOCAL, needs Chrome: redraw EVERY icon from scripts/lib/logo.mjs
@@ -61,6 +62,25 @@ light and a dark variant: the name is set in the wrapper's red, which clears the
 contrast bar on white (3.7:1) and on a near-black page (5.1:1) alike, and one file cannot be
 paired with the wrong background. `node scripts/make-icons.mjs --proof` renders a sheet to
 `.icon-proof/` — the thresholds were chosen by looking, so looking is how to re-check them.
+**Previews are not a check — they are somewhere to LOOK.** `npm run previews` renders every
+state named in `src/previews.ts` to `previews/index.html` and needs nothing at all: no
+browser, no server, no extension, no network. It exists because a state that takes a real
+two-account battle to roll — a Substitute, a Transform, hazards on one specific side, a
+dented doll — could otherwise only be seen by playing until it happened, which is how the
+Substitute work reached review with no picture of itself. The closest analog is a Jetpack
+Compose `@Preview`, and the same caveat applies twice over: nothing here is a preview-only
+render path (each entry calls the builder a live hover calls, over a battle `section.test.ts`
+also asserts against), but the CHROME around each panel is an approximation, since `render.ts`
+is deliberately almost CSS-free and inherits Showdown's own fonts and colours. Trust a preview
+for what a section says and how it is structured, not for its last pixel.
+
+**Scenarios mutate a captured battle; they are never authored from scratch.** `src/scenario.ts`
+owns the one builder both the previews and `section.test.ts` use, and the direction is the
+point: the client ships no types, so a hand-built `ClientBattle` would be OUR idea of what it
+produces. A test or preview resting on one can pass beautifully while the live hover is broken.
+Adding a knob there serves both consumers at once — which is why a preview that renders nothing
+is reported loudly by the run rather than shown as a blank card.
+
 **Shape of the suite, base to top.** Unit + integration tests (`npm run check`) are the
 base and middle — colocated `*.test.ts` beside each module, two tests driven by real
 captured data (`integration.test.ts`, `section.test.ts`), and one architecture-fitness

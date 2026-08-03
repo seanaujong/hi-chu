@@ -26,7 +26,7 @@ const data = fixture.randbats as unknown as RandbatsData;
  * The client's classes are untyped and cyclic, so the reconstruction casts through
  * `unknown` — the shapes match readState's structural interfaces.
  */
-function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; farStealthRock?: boolean; farSpikes?: number; tentacruelHpPercent?: number; foeDitto?: 'transformed' | 'plain'} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
+function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernAbility?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; farStealthRock?: boolean; farSpikes?: number; tentacruelHpPercent?: number; foeDitto?: 'transformed' | 'plain'; tentacruelSubstitute?: 'fresh' | 'dented'} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
   const sides: ClientSide[] = fixture.battle.sides.map((s, i) => {
     // Tailwind blows on OUR side (index 0) only — the asymmetry is the point: it must
     // double our speed and leave the foe's alone, whichever side a caller orients on.
@@ -67,6 +67,10 @@ function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: strin
         ...(p.speciesForme === 'Tentacruel' && over.tentacruelHpPercent !== undefined
           ? {hp: Math.round(p.maxhp * over.tentacruelHpPercent)}
           : {}),
+        // A Substitute is a plain presence volatile; the log is what says how battered it is.
+        ...(p.speciesForme === 'Tentacruel' && over.tentacruelSubstitute
+          ? {volatiles: {substitute: ['substitute']}}
+          : {}),
       } as unknown as ClientPokemon;
     });
     return side as unknown as ClientSide;
@@ -98,14 +102,21 @@ function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: strin
     weather: fixture.battle.weather,
     pseudoWeather: fixture.battle.pseudoWeather,
     sides,
+    ...(over.tentacruelSubstitute
+      ? {stepQueue: [
+          '|-start|p2a: Tentacruel|Substitute',
+          ...(over.tentacruelSubstitute === 'dented' ? ['|-activate|p2a: Tentacruel|move: Substitute|[damage]'] : []),
+        ]}
+      : {}),
     // Our private team view — the item, Tera type, and moveset the opponent can't see. Only
     // Noivern, unless `myPokemon` supplies the whole array (the Illusion case, where the
     // Pokémon in our active slot is NOT the one the battle view shows).
     ...(over.myPokemon !== undefined ? {myPokemon: over.myPokemon} : {}),
-    ...(over.myPokemon === undefined && (over.myNoivernItem !== undefined || over.myNoivernTera !== undefined || over.myNoivernMoves !== undefined)
+    ...(over.myPokemon === undefined && (over.myNoivernItem !== undefined || over.myNoivernAbility !== undefined || over.myNoivernTera !== undefined || over.myNoivernMoves !== undefined)
       ? {myPokemon: [{
           ident: 'p1: Noivern',
           ...(over.myNoivernItem !== undefined ? {item: over.myNoivernItem} : {}),
+          ...(over.myNoivernAbility !== undefined ? {ability: over.myNoivernAbility} : {}),
           ...(over.myNoivernTera !== undefined ? {teraType: over.myNoivernTera} : {}),
           ...(over.myNoivernMoves !== undefined ? {moves: over.myNoivernMoves} : {}),
         }]}
@@ -1440,5 +1451,53 @@ describe("the move tooltip's own-HP swing (drain, recoil, Life Orb, Liquid Ooze)
     const html = buildPokemonSection(b.battle, benched(b.active('Noivern')), data);
     expect(html).toContain('Double-Edge'); // the move is listed there...
     expect(html).not.toContain('Recoil:'); // ...but without the swing line
+  });
+});
+
+describe('a Substitute on the real captured battle', () => {
+  // Which direction each case is tested from is decided by the feed, not by convenience:
+  // gen9 randbats gives Noivern exactly one ability, INFILTRATOR, so our own attacker in this
+  // battle walks through a doll no matter what. That makes this fixture the natural home for
+  // the bypass arm, and sends the absorbing arm to the other direction — Tentacruel's own
+  // moves into a Noivern standing behind one.
+  const subbedFoe = loadBattle({tentacruelSubstitute: 'fresh'});
+
+  /** Our Noivern, wearing a Substitute of its own. */
+  function ourSubbedNoivern(over: Parameters<typeof loadBattle>[0] = {}) {
+    const loaded = loadBattle(over);
+    (loaded.active('Noivern') as {volatiles?: unknown}).volatiles = {substitute: ['substitute']};
+    return loaded;
+  }
+
+  it('lets Noivern\u2019s INFILTRATOR through a foe\u2019s doll — every randbats Noivern has it', () => {
+    const html = buildMoveSection(subbedFoe.battle, subbedFoe.active('Noivern'), 'Draco Meteor', data);
+    expect(html).toContain('<small>Sub:</small> ignored');
+    expect(html).not.toContain('to break');
+  });
+
+  it('says nothing about a sub when there is none — the ordinary hover is untouched', () => {
+    const plain = loadBattle();
+    expect(buildMoveSection(plain.battle, plain.active('Noivern'), 'Draco Meteor', data)).not.toContain('Sub:');
+  });
+
+  it('keeps the foe hover\u2019s threat numbers but strips their danger colour', () => {
+    // The sets view grades each move by how close to a KO it is. Behind our doll none of them
+    // is close to anything, so the numbers stay (they are true about the Pok\u00e9mon) and the
+    // grading goes. Suppression alone keeps it honest; the count lives on the surfaces that
+    // have room for it.
+    const ours = ourSubbedNoivern();
+    const html = buildPokemonSection(ours.battle, ours.active('Tentacruel'), data);
+    expect(html).toContain('Surf'); //  the threat lines are all still there…
+    expect(html).toMatch(/Surf \([\d.]+\u2013[\d.]+%\)/); // …damage and all
+    expect(html).not.toContain('hichu-ko');
+  });
+
+  it('withdraws every KO claim their moves make while our doll stands', () => {
+    // Without the sub these same lines carry the sets view's red danger tier; with it,
+    // nothing they throw reaches the Pok\u00e9mon at all, so none of them may claim one.
+    const exposed = loadBattle({myNoivernHpPercent: 0.2});
+    const hidden = ourSubbedNoivern({myNoivernHpPercent: 0.2});
+    expect(buildPokemonSection(exposed.battle, exposed.active('Tentacruel'), data)).toContain('hichu-ko');
+    expect(buildPokemonSection(hidden.battle, hidden.active('Tentacruel'), data)).not.toContain('hichu-ko');
   });
 });

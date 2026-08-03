@@ -778,3 +778,77 @@ describe('a damage-callback move — no base power, so no damage formula (a calc
     }
   });
 });
+
+describe('a defender behind a Substitute', () => {
+  const subbed = (over: Partial<ResolvedMon> = {}) =>
+    mon({speciesForme: 'Keldeo', substitute: {dented: false}, ...over});
+  const bare = mon({speciesForme: 'Keldeo'});
+
+  it('says nothing at all when there is no sub — the overwhelming majority of hovers', () => {
+    expect(calcDamage(mon({speciesForme: 'Barraskewda'}), bare, 'Waterfall').substitute).toBeUndefined();
+  });
+
+  it('reports how many hits break it, sized at a quarter of the defender’s max HP', () => {
+    const attacker = mon({speciesForme: 'Barraskewda'});
+    const r = calcDamage(attacker, subbed(), 'Waterfall');
+    // Keldeo's max HP is 344 here, so the doll holds 86. Waterfall takes 15.7-18.9% of that
+    // max per hit — under a quarter at either end — so it always takes two.
+    expect(r.substitute).toEqual({kind: 'absorbs', hits: {min: 2, max: 2}, dented: false});
+    // The damage figures themselves are untouched — the sub delays them, it doesn't change
+    // them — so the numbers a caller renders are the same as with no sub in the way.
+    expect(r.percent).toEqual(calcDamage(attacker, bare, 'Waterfall').percent);
+  });
+
+  it('needs several hits when one is worth less than the doll', () => {
+    // Tachyon Cutter hits twice per use for ~10-12% of Keldeo's max HP each, against a sub
+    // worth 25% — so a single use cannot break it, however the rolls fall.
+    const r = calcDamage(mon({speciesForme: 'Iron Bundle', item: 'Choice Specs'}), subbed(), 'Tachyon Cutter');
+    expect(r.substitute?.kind).toBe('absorbs');
+    expect(r.substitute).toMatchObject({hits: {min: 3, max: 3}});
+    expect(r.multiHit?.hits.expected).toBe(2); // two hits a use: three hits is two uses
+  });
+
+  it('lets a SOUND move straight through', () => {
+    const r = calcDamage(mon({speciesForme: 'Noivern'}), subbed(), 'Boomburst');
+    expect(r.substitute).toEqual({kind: 'bypassed'});
+  });
+
+  it('lets INFILTRATOR carry an ordinary move through', () => {
+    const r = calcDamage(mon({speciesForme: 'Noivern', ability: 'Infiltrator'}), subbed(), 'Air Slash');
+    expect(r.substitute).toEqual({kind: 'bypassed'});
+    // …and the same attacker without it is stopped by the same doll.
+    expect(calcDamage(mon({speciesForme: 'Noivern', ability: 'Frisk'}), subbed(), 'Air Slash').substitute?.kind).toBe('absorbs');
+  });
+
+  it('says nothing when the move cannot dent the sub at all', () => {
+    // Nothing to report about a doll a move was never going to touch: the 0% damage line
+    // already carries the whole story, and a hit count would be a fiction on top of it.
+    const r = calcDamage(mon({speciesForme: 'Garchomp'}), mon({speciesForme: 'Corviknight', substitute: {dented: false}}), 'Earthquake');
+    expect(r.total.max).toBe(0);
+    expect(r.substitute).toBeUndefined();
+  });
+
+  it('carries the dent forward, since a chipped doll only ever breaks sooner', () => {
+    const r = calcDamage(mon({speciesForme: 'Iron Bundle', item: 'Choice Specs'}), subbed({substitute: {dented: true}}), 'Tachyon Cutter');
+    expect(r.substitute).toEqual({kind: 'absorbs', hits: {min: 3, max: 3}, dented: true});
+  });
+
+  it('sizes a SHED TAIL sub on the Pokémon that made it, not the one wearing it', () => {
+    // Cyclizar's doll goes on ahead of it. Sized on a bulkier maker it takes more hits than
+    // the same move would need against a sub the wearer had cut from its own HP.
+    const attacker = mon({speciesForme: 'Iron Bundle', item: 'Choice Specs'});
+    const own = calcDamage(attacker, subbed(), 'Tachyon Cutter').substitute;
+    const inherited = calcDamage(attacker, subbed({substitute: {dented: false, sizedOnMaxHP: 600}}), 'Tachyon Cutter').substitute;
+    // A doll cut from Keldeo's own 344 HP holds 86 and falls in three; one cut from a
+    // 600 HP maker holds 150 and takes four or five of the very same hits.
+    expect(own).toMatchObject({hits: {min: 3, max: 3}});
+    expect(inherited).toMatchObject({hits: {min: 4, max: 5}});
+  });
+
+  it('applies to a damage-callback move, whose bite into a doll never shrinks', () => {
+    // Super Fang halves the POKÉMON's HP, and a sub is what stops that HP moving — so each
+    // hit into the doll is worth exactly what the first was.
+    const r = calcDamage(mon({speciesForme: 'Chansey'}), subbed(), 'Super Fang');
+    expect(r.substitute).toMatchObject({kind: 'absorbs', hits: {min: 1, max: 1}});
+  });
+});

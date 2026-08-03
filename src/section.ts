@@ -58,6 +58,8 @@ import {
   readOwnHazards,
   readMegaForme,
   readSpeciesData,
+  readSubstitute,
+  findByIdent,
   serverPokemonFacts,
   serverStats,
   activesOpposing,
@@ -216,12 +218,44 @@ function exactResolver(data: RandbatsData | null): ExactResolver {
 function factsReader(battle: ClientBattle, gen: number, data: RandbatsData | null): FactsReader {
   const resolve = exactResolver(data);
   return (mon) => {
-    const facts = factsFor(battle, mon);
+    const base = factsFor(battle, mon);
+    const inherited = shedTailMakerMaxHP(battle, gen, mon, resolve);
+    const facts: LiveFacts = inherited !== undefined && base.substitute
+      ? {...base, substitute: {...base.substitute, sizedOnMaxHP: inherited}}
+      : base;
     const target = readTransformTarget(mon);
     if (!target) return facts;
     const copy = transformCopyFor(battle, gen, facts, target, resolve);
     return copy ? {...facts, transformedInto: copy} : facts;
   };
+}
+
+/**
+ * The max HP a Shed Tail sub was actually cut from — its MAKER's, not the Pokémon now
+ * standing behind it. Undefined for every ordinary sub, which the damage layer then sizes on
+ * the defender it was already measuring.
+ *
+ * A seam for the same reason Transform is one: naming the maker takes only the log, but
+ * turning that name into a number takes the feed, so it can only happen here. A maker we
+ * can't resolve — an open format's foe, whose spread is bracketed rather than known — leaves
+ * this undefined and the sub falls back to the wearer's own quarter. That is a guess we would
+ * rather not make, but it is the SAME guess every surface made before this existed, and the
+ * alternative is withholding the hit count from a mechanic that is usually a few HP either
+ * way. (Its worst case is a bulky maker handing a doll to a frail teammate — Orthworm to a
+ * Flutter Mane — where the count reads low.)
+ */
+function shedTailMakerMaxHP(
+  battle: ClientBattle,
+  gen: number,
+  mon: ClientPokemon,
+  resolve: ExactResolver,
+): number | undefined {
+  const maker = readSubstitute(battle, mon)?.shedTailMaker;
+  if (maker === undefined) return undefined;
+  const makerMon = findByIdent(battle, maker);
+  if (!makerMon) return undefined;
+  const resolved = resolve(factsFor(battle, makerMon));
+  return resolved ? finalStatsOf(gen, resolved)?.hp : undefined;
 }
 
 /**

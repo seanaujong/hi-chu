@@ -51,6 +51,10 @@ export interface ClientPokemon {
 
 export interface ClientSide {
   readonly active: ReadonlyArray<ClientPokemon | null>;
+  /** The side's whole ROSTER — filled from the `|poke|` team-preview lines and kept as each
+   *  Pokémon is revealed, so unlike `active` it still holds one that has switched out. That
+   *  is the only reason it is read: a Shed Tail sub outlives the Pokémon that cut it. */
+  readonly pokemon?: ReadonlyArray<ClientPokemon>;
   /** True for the side rendered at the top of the screen — the opponent, from the viewer's seat. */
   readonly isFar?: boolean;
   /** Active side conditions keyed by id ("reflect", "lightscreen", "auroraveil", …). */
@@ -160,6 +164,16 @@ export interface BehaviorSignals {
   readonly usedDifferentMovesSinceSwitchIn?: boolean;
   readonly switchedInWithoutAnnouncingBalloon?: boolean;
   readonly timesAttacked?: number;
+  readonly substitute?: SubstituteReading;
+}
+
+/** What the log says about the Substitute a Pokémon is currently standing behind — the
+ *  raw reading, before the shell resolves `shedTailMaker` into an actual max HP. */
+export interface SubstituteReading {
+  readonly dented: boolean;
+  /** The ident of the Pokémon whose Shed Tail built this sub, when one did — it is that
+   *  Pokémon's max HP the doll was cut from, not this one's. */
+  readonly shedTailMaker?: string;
 }
 
 /**
@@ -234,6 +248,79 @@ export function readTransformTarget(p: ClientPokemon): ClientPokemon | undefined
     : undefined;
 }
 
+/**
+ * The Substitute this Pokémon is standing behind, or undefined.
+ *
+ * PRESENCE comes from the volatile, which is the authority: the client adds `substitute` on
+ * the `|-start|` line and removes it on `|-end|`, so a bare `['substitute']` tuple is a fact
+ * about right now rather than a replay of the log. What it does NOT carry is the doll's HP —
+ * the client never tracks it — so everything else here is read from the log instead.
+ *
+ * The log is walked once, keeping only the state of the sub CURRENTLY standing: a `-start`
+ * (or a Shed Tail hand-off) begins a fresh one and discards whatever was known about the
+ * last, an `-activate … [damage]` dents it, and an `-end` or an ordinary switch ends it.
+ * Reading `dented` off the whole log without that reset would carry a long-dead sub's damage
+ * onto a doll made this turn.
+ *
+ * `shedTailMaker` is the one case where the sub's size belongs to somebody else. The sim
+ * builds it on the Shed Tail user and hands it over on the way out, which the protocol shows
+ * as two lines — `|-start|<user>|Substitute|[from] move: Shed Tail`, then the incoming mon's
+ * `|switch|…|[from] Shed Tail` — so the maker is whoever the most recent such `-start` named.
+ * (Captured from the sim directly rather than inferred from its source.)
+ */
+export function readSubstitute(battle: ClientBattle, mon: ClientPokemon): SubstituteReading | undefined {
+  if (mon.volatiles?.['substitute'] === undefined) return undefined;
+  const me = identKey(mon.ident);
+  if (!me) return {dented: false}; // no ident to follow: report the sub, claim nothing about it
+
+  let current: {dented: boolean; shedTailMaker?: string} | undefined;
+  let lastShedTailMaker: string | undefined;
+  for (const line of battle.stepQueue ?? []) {
+    const parts = line.split('|'); // ['', TAG, 'p2a: Foo', …]
+    const tag = parts[1];
+    const who = identKey(parts[2]);
+    const isSub = parts.some((p) => p === 'Substitute' || p === 'move: Substitute');
+    const fromShedTail = parts.some((p) => p === '[from] Shed Tail' || p === '[from] move: Shed Tail');
+
+    if (tag === '-start' && isSub) {
+      // The RAW ident, not the comparison key: this one is handed on to `findByIdent`, which
+      // does its own normalising. Keeping the key here made the hand-off silently find nobody.
+      if (fromShedTail && parts[2]) lastShedTailMaker = parts[2];
+      if (who === me) current = {dented: false};
+    } else if (who !== me) {
+      continue;
+    } else if (tag === '-activate' && isSub && parts.includes('[damage]')) {
+      if (current) current = {...current, dented: true};
+    } else if (tag === '-end' && isSub) {
+      current = undefined;
+    } else if (tag === 'switch' || tag === 'drag') {
+      // Volatiles clear on the way in — except a Shed Tail hand-off, which is the only way
+      // a Pokémon arrives already wearing one, and it arrives wearing the MAKER's.
+      current = fromShedTail && lastShedTailMaker ? {dented: false, shedTailMaker: lastShedTailMaker} : undefined;
+    }
+  }
+  // The volatile already proved there IS one; an empty log (or a client whose lines we no
+  // longer recognise) costs us its history, not the sub itself.
+  return current ?? {dented: false};
+}
+
+/**
+ * The Pokémon a protocol ident names, anywhere in the battle — bench included, which is the
+ * point: the only caller wants the mon that used Shed Tail, and using it is exactly what took
+ * it off the field. Matched on the same slot-independent key the log readers use, so "p1a:
+ * Cyclizar" from a log line finds the roster's "p1: Cyclizar".
+ */
+export function findByIdent(battle: ClientBattle, ident: string): ClientPokemon | undefined {
+  const want = identKey(ident);
+  if (!want) return undefined;
+  for (const side of battle.sides ?? []) {
+    for (const mon of side.pokemon ?? side.active) {
+      if (mon && identKey(mon.ident) === want) return mon;
+    }
+  }
+  return undefined;
+}
+
 export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, speciesData?: SpeciesData): LiveFacts {
   // moveTrack entries are [name, pp]. A "*" marks a move held only by TRANSFORM: it is the
   // COPIED Pokémon's move, and reading it as this one's would narrow its set by evidence
@@ -286,6 +373,11 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, spe
     ...(speciesData ? {speciesData} : {}),
     ...(live['accuracy'] ? {accuracyBoost: live['accuracy']} : {}),
     ...(live['evasion'] ? {evasionBoost: live['evasion']} : {}),
+    // `shedTailMaker` deliberately does not come along: LiveFacts names no other Pokémon by
+    // ident, and turning that ident into the max HP it stands for takes the feed. The shell
+    // (`section.factsReader`) resolves it and overlays `sizedOnMaxHP`, exactly as it does for
+    // a Transform target. Everything reachable without the feed is already correct here.
+    ...(signals.substitute ? {substitute: {dented: signals.substitute.dented}} : {}),
   };
   return facts;
 }
@@ -695,6 +787,7 @@ export function mostRecentCleanHit(
 
 /** Bundle the log-derived behaviours for one Pokémon, ready to hand to `toLiveFacts`. */
 export function readBehaviors(battle: ClientBattle, mon: ClientPokemon): BehaviorSignals {
+  const substitute = readSubstitute(battle, mon);
   return {
     landedDamagingHit: hasLandedDamagingHit(battle, mon),
     tookEntryHazardDamage: tookEntryHazardDamage(battle, mon),
@@ -702,6 +795,7 @@ export function readBehaviors(battle: ClientBattle, mon: ClientPokemon): Behavio
     usedDifferentMovesSinceSwitchIn: usedDifferentMovesSinceSwitchIn(battle, mon),
     switchedInWithoutAnnouncingBalloon: switchedInWithoutAnnouncingBalloon(battle, mon),
     timesAttacked: timesAttacked(battle, mon),
+    ...(substitute ? {substitute} : {}),
   };
 }
 

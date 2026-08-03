@@ -26,6 +26,7 @@
 import {calculate, calcStat, Generations, Pokemon, Move, Field, toID, type GenerationNum, type State} from '@smogon/calc';
 import type {FieldFacts, FullStats, ResolvedMon, SpeciesData, StatID} from './types.js';
 import {damageCallback, multiHitProfile} from './moves.js';
+import {type HitDamage, type HitsToBreak, bypassesSubstitute, hitsToBreak, substituteHP} from './substitute.js';
 import {
   type HitCountMods,
   type Pmf,
@@ -62,6 +63,16 @@ export interface SelfHpEffect {
   readonly max: number;
 }
 
+/**
+ * The Substitute standing between this move and the defender, when one is — and when the
+ * move can actually do something about it. Absent covers three situations that all render
+ * the same way (nothing): no sub, a status move, and a move the defender is immune to,
+ * whose "0%" damage line already says everything there is to say.
+ */
+export type SubstituteStanding =
+  | {readonly kind: 'bypassed'} //                    a sound move / Infiltrator: it goes straight through
+  | {readonly kind: 'absorbs'; readonly hits: HitsToBreak; readonly dented: boolean};
+
 export interface DamageReport {
   readonly move: string;
   readonly category: 'Physical' | 'Special' | 'Status';
@@ -88,6 +99,13 @@ export interface DamageReport {
    * damage buckets keyed exactly as before (see `variants.resultKey`).
    */
   readonly selfHp?: readonly SelfHpEffect[];
+  /**
+   * The Substitute in the way, when there is one. Everything else on this report describes
+   * the move's effect on the POKÉMON and is unchanged by it — a sub delays those numbers, it
+   * does not alter them — which is why this rides alongside rather than rewriting them. The
+   * render layer is what must not go on claiming a KO the sub makes unreachable.
+   */
+  readonly substitute?: SubstituteStanding;
   readonly defenderMaxHP: number;
   readonly defenderRemainingHP: number;
   /** @smogon/calc's own one-line description, kept for comparison/debugging. */
@@ -364,6 +382,44 @@ function firstHitRolls(damage: number | readonly number[] | readonly number[][])
   return rollsOf(damage);
 }
 
+/**
+ * The Substitute in this move's way, if any — the one place the two halves of the law meet:
+ * whether the move goes round the doll at all, and if not, how many hits it takes to knock it
+ * down. Undefined whenever there is nothing worth saying (no sub, or a move that cannot dent
+ * one, whose 0% damage line already tells the whole story).
+ *
+ * The ability read is the calc-resolved `atk.ability`, not the raw `ResolvedMon` field, for
+ * the same reason the multi-hit modifiers below use it: an own-side read hands abilities over
+ * in id form ("infiltrator"), which would never match a display-name comparison.
+ *
+ * The sub's size is derived here rather than carried on the facts — a quarter of the max HP
+ * this function was already handed. `sizedOnMaxHP` overrides it only for the one case where
+ * that arithmetic is about the wrong Pokémon: a sub passed along by Shed Tail.
+ */
+function substituteStanding(
+  defender: ResolvedMon,
+  atk: Pokemon,
+  dexMove: Move,
+  perHit: readonly HitDamage[],
+  defenderMaxHP: number,
+): SubstituteStanding | undefined {
+  const sub = defender.substitute;
+  if (!sub) return undefined;
+  if (bypassesSubstitute({name: dexMove.name, isSound: dexMove.flags.sound === 1}, atk.ability)) {
+    return {kind: 'bypassed'};
+  }
+  const hits = hitsToBreak(perHit, substituteHP(sub.sizedOnMaxHP ?? defenderMaxHP));
+  return hits ? {kind: 'absorbs', hits, dented: sub.dented} : undefined;
+}
+
+/** The per-hit damage range of a list of already-computed per-hit distributions. */
+function hitDamages(perHitPmfs: readonly Pmf[]): HitDamage[] {
+  return perHitPmfs.map((pmf) => {
+    const {min, max} = summarize(pmf);
+    return {min, max};
+  });
+}
+
 function summarizeReport(
   moveName: string,
   category: DamageReport['category'],
@@ -376,6 +432,7 @@ function summarizeReport(
     multiHit?: DamageReport['multiHit'];
     nhkoTurns?: number;
     selfHp?: readonly SelfHpEffect[];
+    substitute?: SubstituteStanding;
   },
 ): DamageReport {
   const t = summarize(total);
@@ -396,6 +453,7 @@ function summarizeReport(
     koChance: probabilityAtLeast(total, remainingHP),
     ...(nhko ? {nhko} : {}),
     ...(extras.selfHp && extras.selfHp.length > 0 ? {selfHp: extras.selfHp} : {}),
+    ...(extras.substitute ? {substitute: extras.substitute} : {}),
     defenderMaxHP: maxHP,
     defenderRemainingHP: remainingHP,
     calcDesc,
@@ -459,6 +517,10 @@ export function calcDamage(
   const dexMove = new Move(gen, moveName);
   const category = dexMove.category;
   const field = options.field ? buildField(options.field, options.doubles ?? false) : undefined;
+  // Every path below reaches the same defender through the same move; only the per-hit
+  // damage differs, so that is all each one supplies.
+  const standingSub = (perHit: readonly HitDamage[]): SubstituteStanding | undefined =>
+    substituteStanding(defender, atk, dexMove, perHit, maxHP);
 
   // --- A move whose damage is a callback, not a formula ----------------------
   // Looked up by the DEX's display name, so an id-form move name ("superfang", the shape
@@ -477,7 +539,14 @@ export function calcDamage(
     // either way (Super Fang really does KO a target sitting on 1 HP), and the sets view's
     // `koTier` reads the absent ladder and correctly declines to flag a 2HKO.
     const total = pmfFromSamples([dealt]);
-    return summarizeReport(dexMove.name, category, total, remainingHP, maxHP, callbackDesc(dexMove.name, dealt), {notes});
+    // A callback move hits a Substitute like any other, and it is the one kind whose damage
+    // does NOT decay as it chips away: Super Fang halves the Pokémon's HP, which a sub keeps
+    // from changing, so every hit into the doll is worth the same as the first.
+    const blocked = standingSub([{min: dealt, max: dealt}]);
+    return summarizeReport(dexMove.name, category, total, remainingHP, maxHP, callbackDesc(dexMove.name, dealt), {
+      notes,
+      ...(blocked ? {substitute: blocked} : {}),
+    });
   }
 
   // Rage Fist's actual power, not the dex's flat 50 — see `rageFistPower`.
@@ -491,8 +560,11 @@ export function calcDamage(
   if (!profile) {
     const result = run();
     const total = pmfFromSamples(rollsOf(result.damage));
+    // One hit per use, so the move's whole damage range IS its per-hit range.
+    const blocked = standingSub(hitDamages([total]));
     return summarizeReport(dexMove.name, category, total, remainingHP, maxHP, safeDesc(result), {
       notes,
+      ...(blocked ? {substitute: blocked} : {}),
       ...(options.nhkoTurns ? {nhkoTurns: options.nhkoTurns} : {}),
       // Single-hit only, on purpose: below, the total damage is OUR convolved PMF rather
       // than the calc's own `result.damage`, so `recovery()`/`recoil()` would describe one
@@ -559,9 +631,13 @@ export function calcDamage(
   const allRolls = perHitPmfs.flatMap((pmf) => [...pmf.keys()]);
   const perHit = {min: Math.min(...allRolls), max: Math.max(...allRolls)};
 
+  // The sub is re-checked per HIT, not per use, so it reads the per-hit list — which for a
+  // variable-power move is genuinely one entry per hit, in the order they land.
+  const blocked = standingSub(hitDamages(perHitPmfs));
   return summarizeReport(dexMove.name, category, total, remainingHP, maxHP, safeDesc(run()), {
     notes,
     multiHit: {hits, perHit},
+    ...(blocked ? {substitute: blocked} : {}),
     ...(options.nhkoTurns ? {nhkoTurns: options.nhkoTurns} : {}),
   });
 }

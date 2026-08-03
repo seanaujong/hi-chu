@@ -208,6 +208,11 @@ export interface LiveFacts {
    */
   readonly transformedInto?: TransformCopy;
   /**
+   * The Substitute standing in front of this Pokémon, when one is. Absent for nearly every
+   * Pokémon, and absent is the ordinary case rather than a fallback.
+   */
+  readonly substitute?: SubstituteFacts;
+  /**
    * This Pokémon's own accuracy/evasion stat stage, in [-6, 6] — absent means unboosted
    * (0). Read ONLY by the multi-hit per-hit-accuracy law (`core/multihit.ts`): the
    * attacker's `accuracyBoost` and the defender's `evasionBoost` combine there. Neither
@@ -216,6 +221,31 @@ export interface LiveFacts {
    */
   readonly accuracyBoost?: number;
   readonly evasionBoost?: number;
+}
+
+/**
+ * A Substitute standing in front of a Pokémon: an HP pool that absorbs every hit in its
+ * place until it breaks. Presence is the whole of what the client tells us directly — its
+ * volatile is a bare `['substitute']` with no HP on it — so both fields below exist to say
+ * how far the SIZE of that pool can be trusted. The size itself is derived where it is used
+ * (`core/substitute.ts`), never stored.
+ */
+export interface SubstituteFacts {
+  /**
+   * Max HP of the Pokémon whose HP SIZED this sub, when that isn't the one standing behind
+   * it. Only Shed Tail separates the two: it builds a sub on its user and hands it to a
+   * teammate on the way out, so the doll keeps a size the mon now wearing it had no part in.
+   * Absent in the ordinary case, where the damage layer sizes it on the defender it already
+   * had to measure anyway.
+   */
+  readonly sizedOnMaxHP?: number;
+  /**
+   * True once the log shows this sub ABSORBING a hit. The client tracks that a sub exists
+   * but never how much of it is left (`-activate … move: Substitute|[damage]` says a hit
+   * landed on it, not how hard), so from that moment a full sub's hit count is an UPPER
+   * bound — a weakened sub can only break sooner, never later.
+   */
+  readonly dented: boolean;
 }
 
 /**
@@ -367,4 +397,8 @@ export interface ResolvedMon {
    *  per-hit-accuracy law only; never passed to the damage calc itself. */
   readonly accuracyBoost?: number;
   readonly evasionBoost?: number;
+  /** See `LiveFacts.substitute` — carried through so the damage layer can put the shield
+   *  in front of this mon. Identical across every variant of one Pokémon (it is live state,
+   *  not a set dimension), so it is deliberately absent from `variantSignature`. */
+  readonly substitute?: SubstituteFacts;
 }

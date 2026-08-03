@@ -43,6 +43,7 @@ unpacked** → pick `dist/`; open a Random Battle on play.pokemonshowdown.com an
 Pokémon. (The logic is covered end-to-end by tests; only this hover needs a human.)
 ```sh
 npm run drift-check   # LOCAL, needs Chrome: runs readState against a live replay (see below)
+npm run drift-check gen9randombattle-2659404198   # …or against ONE named replay
 npm run icons         # LOCAL, needs Chrome: redraw EVERY icon from scripts/lib/logo.mjs
 ```
 **The icons are generated, never hand-edited.** `scripts/lib/logo.mjs` holds the mark as pure
@@ -409,6 +410,10 @@ arguments the client passes them.
 - **Sets / mirror** (`renderSetsSection`) — the information game. On a foe hover: still-
   possible sets with each move's damage into our active. On our own: the mirror, what the
   opponent can deduce about us — deliberately carrying NO damage at all.
+- **Sub** (`substituteLine`, `substituteAside`) — one count, "2-3 hits to break", when a
+  Substitute stands in front of the defender. A line of its own on the move tooltip, an
+  inline aside on the matchup view's compact rows, and nothing at all on the sets view,
+  which has no room for it. A bypassing move (sound, Infiltrator) says "ignored" instead.
 - **Notes** (`renderNotes`) — ⚠ caveats, attached once per tooltip after the per-foe
   sections so doubles can't repeat them.
 
@@ -613,7 +618,8 @@ test you haven't seen fail isn't protecting anything yet.
 **Where we correct `@smogon/calc`.** Keep the line clear. A calc *gap* — something it
 should arguably handle and doesn't — is ours to own, and each one is a row below: the
 multi-hit hit-count model, the item id→name quirk, the nHKO ladder, Pain Split, Rage Fist,
-variable-power multi-hit, damage-callback moves, and unknown species/items. A third kind hides between those two and
+variable-power multi-hit, damage-callback moves, Substitute (its move table has one as a 0-BP
+status move and stops there), and unknown species/items. A third kind hides between those two and
 is the easiest to ship by accident: the calc answering EXACTLY what we asked, where the asking
 itself was wrong. Requesting one hit of a multi-hit move is that — the calc then reads it as a
 single-hit move and applies the Tera 60 BP floor. Our *product* is not a calc gap: the
@@ -671,6 +677,9 @@ them until someone adds it.
 | One hit of a multi-hit move is asked for as TWO — a single hit takes gen 9's Tera 60 BP floor, which no multi-hit move ever takes | ✅ | `core/damage.ts` (`TERA_FLOOR_SAFE_HITS`) | `damage.test.ts` |
 | Rage Fist's power scales with the ATTACKER's own hits taken | ✅ | `core/damage.ts` (`rageFistPower`), `battle/readState.ts` (`timesAttacked`) | `damage.test.ts`, `readState.test.ts`, `transform.test.ts` |
 | A move with NO base power takes its damage from a callback over current HP — one exact amount, no nHKO ladder, but still stopped by an immunity | ✅ | `core/moves.ts` (`damageCallback`), `core/damage.ts` (`connects`) | `damage.test.ts`, `section.test.ts` |
+| A Substitute is a shield, and the tooltip says ONE thing about it: how many hits break the doll — cumulative per HIT, never spilled over | ✅ | `core/substitute.ts`, `core/damage.ts` (`substituteStanding`) | `substitute.test.ts`, `damage.test.ts`, `section.test.ts` |
+| NO KO may be claimed while a Substitute stands — the KO text, the nHKO ladder, the Sash aside and the sets view's danger tiers go together | ✅ | `core/render.ts` (`blockedBySubstitute`, `koTier`) | `render.test.ts`, `section.test.ts` |
+| A Shed Tail sub is sized on its MAKER's max HP, not the Pokémon wearing it; a dented one caps the count rather than bracketing it | ✅ | `core/substitute.ts` (`substituteHP`), `battle/readState.ts` (`readSubstitute`), `section.ts` (`shedTailMakerMaxHP`) | `substitute.test.ts`, `readState.test.ts`, `damage.test.ts` |
 | Speed order: arithmetic delegated, ORDER owned, a fact about the PAIR | ✅ | `core/speed.ts`, `section.ts` (`speedSection`, `ownMovesSection`) | `speed.test.ts`, `render.test.ts`, `section.test.ts` |
 | Unburden's ×2 Speed is armed via an explicit `abilityOn` flag, not inferred from `item` | ✅ | `core/resolve.ts` (`buildResolved`), `core/damage.ts` (`buildPokemon`) | `resolve.test.ts`, `speed.test.ts` |
 | The fetch/reason/render split is a checked import graph, not just a description | ✅ | `src/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |
@@ -715,7 +724,13 @@ rather than in our code. Run the named check by hand after a Showdown client upd
   reads that line's ABSENCE as evidence, so a client that stopped emitting it would make
   every balloon holder look like it had none, and call a Ground move safe into a Pokémon
   immune to it. Both probes report whether they actually fired — a `[from]` move and an Air
-  Balloon announcement are each rare enough that a random replay often has neither.
+  Balloon announcement are each rare enough that a random replay often has neither. And
+  `volatiles.substitute` (presence only — the client never tracks the doll's HP, which is why
+  we derive its size), `side.pokemon` (the roster, the only place a Shed Tail's maker can
+  still be found once using it took them off the field), and the `|-start|…|Substitute` and
+  `|-activate|…|move: Substitute|[damage]` layouts — the first tells a fresh doll from a
+  battered one, the second's `[damage]` tag is all that separates an absorbed hit from a
+  status move the sub merely blocked.
 - **`npm run player-check`** (a real two-account battle on a self-hosted server) — anything
   behind `battle.myPokemon`, which a replay has no access to at all: the
   `ClientServerPokemon` contract incl. `stats`, the switch-menu hover and its ⚡ bench

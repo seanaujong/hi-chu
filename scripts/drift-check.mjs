@@ -12,6 +12,13 @@
 //   npm run drift-check                 # uses installed Chrome (channel: 'chrome')
 //   CHROME_PATH=/path/to/chrome npm run drift-check
 //   npm run drift-check gen9randomdoublesbattle   # a different format
+//   npm run drift-check gen9randombattle-2659404198   # one NAMED replay
+//
+// That last form is how the rare-mechanic probes get exercised at all. Several checks here
+// can only fire when the replay happens to contain the thing they guard — a Transform, an
+// Air Balloon, a Substitute, a Shed Tail hand-off — and a random battle usually contains
+// none of them, which the run reports as "absent (not exercised)". Searching the replay
+// archive for one that already has the mechanic beats replaying battles hoping to roll it.
 //
 // How it stays honest: the readState probe is esbuild-bundled from src on each run,
 // so it always tests the code the extension actually ships — never a stale copy.
@@ -19,11 +26,19 @@
 import * as esbuild from 'esbuild';
 import puppeteer from 'puppeteer-core';
 
-const FORMAT = process.argv[2] || 'gen9randombattle';
+// One argument, read as whichever of the two it looks like: a replay id carries the battle
+// number after the format ("gen9randombattle-2659404198"), a bare format does not.
+const ARG = process.argv[2] || 'gen9randombattle';
+const NAMED_REPLAY = /-\d{4,}$/.test(ARG) ? ARG : undefined;
+const FORMAT = NAMED_REPLAY ? NAMED_REPLAY.replace(/-\d+$/, '') : ARG;
 const MIN_TURNS = 6; // enough that mid-battle reliably has an active on both sides
 
 /** A recent replay of this format with enough turns to be worth probing. */
 async function pickReplay() {
+  if (NAMED_REPLAY) {
+    const data = await (await fetch(`https://replay.pokemonshowdown.com/${NAMED_REPLAY}.json`)).json();
+    return {id: NAMED_REPLAY, turns: (data.log.match(/\n\|turn\|/g) || []).length};
+  }
   const res = await fetch(`https://replay.pokemonshowdown.com/search.json?format=${FORMAT}`);
   const list = await res.json();
   for (const r of list.slice(0, 15)) {
@@ -63,7 +78,7 @@ function probeLiveClient() {
   // Which of the rarer client shapes this replay actually exercised — a random replay
   // usually has no transformed or forme-changed Pokémon, and a probe that never fired is
   // not a probe that passed. Reported, not failed on.
-  const seen = {formeChange: false, transform: false, calledMove: false, balloonAnnounce: false};
+  const seen = {formeChange: false, transform: false, calledMove: false, balloonAnnounce: false, substitute: false, shedTail: false};
 
   const format = R.detectFormat(b);
   if (!format || format.kind !== 'randbats' || !/^gen\d+random/.test(format.formatId)) {
@@ -112,6 +127,52 @@ function probeLiveClient() {
       break;
     }
     if (parts[3].replace(/[^a-z0-9]+/gi, '').toLowerCase() === 'airballoon') seen.balloonAnnounce = true;
+  }
+
+  // A side's whole ROSTER, not just what is on the field. Only the Shed Tail sub reads it,
+  // and it reads it for exactly the reason `active` won't do: using Shed Tail is what takes
+  // the maker off the field, so the Pokémon whose HP sized the doll is never an active one.
+  for (const side of b.sides || []) {
+    if (side.pokemon !== undefined && !Array.isArray(side.pokemon)) {
+      problems.push(`side.pokemon is ${typeof side.pokemon}, expected an array (the roster)`);
+    }
+  }
+  if (!(b.sides || []).some((s) => Array.isArray(s.pokemon) && s.pokemon.length > 0)) {
+    problems.push('no side.pokemon roster on either side — a Shed Tail sub could not be sized');
+  }
+  // …and the lookup that walks it must actually find someone, or the sizing silently falls
+  // back to the wearer's own HP with no signal that it did.
+  const anyActive = b.sides.flatMap((s) => (s.active || []).filter(Boolean))[0];
+  if (anyActive && R.findByIdent(b, anyActive.ident) !== anyActive) {
+    problems.push(`findByIdent(${JSON.stringify(anyActive.ident)}) did not find the Pokémon that ident names`);
+  }
+
+  // The Substitute reads lean on TWO protocol lines, and each in a direction that costs
+  // something if it drifts. `|-start|<ident>|Substitute` is what tells a fresh doll from a
+  // battered one — lose it and a chipped sub reports a full hit count, overstating what it
+  // takes to break through. Its `[from] move: Shed Tail` variant names the Pokémon the doll
+  // was cut from; lose that and we size it on the wrong mon. Both layouts are asserted over
+  // the whole replay, and whether either actually appeared is reported rather than assumed.
+  for (const line of (b.stepQueue || []).filter((l) => typeof l === 'string' && l.startsWith('|-start|'))) {
+    const parts = line.split('|');
+    if (typeof parts[2] !== 'string' || !parts[2].includes(':') || !parts[3]) {
+      problems.push(`|-start| line not in "|-start|<ident>|<effect>" shape: ${JSON.stringify(line)}`);
+      break;
+    }
+    if (parts[3] === 'Substitute') {
+      seen.substitute = true;
+      if (parts.some((p) => p === '[from] move: Shed Tail')) seen.shedTail = true;
+    }
+  }
+  // `|-activate|<ident>|move: Substitute|[damage]` is the other half: the `[damage]` tag is
+  // the ONLY thing separating a hit the doll absorbed from a status move it merely blocked.
+  for (const line of (b.stepQueue || []).filter((l) => typeof l === 'string' && l.startsWith('|-activate|'))) {
+    const parts = line.split('|');
+    if (typeof parts[2] !== 'string' || !parts[2].includes(':') || !parts[3]) {
+      problems.push(`|-activate| line not in "|-activate|<ident>|<effect>" shape: ${JSON.stringify(line)}`);
+      break;
+    }
+    if (parts[3] === 'move: Substitute') seen.substitute = true;
   }
 
   // The Mega preview turns a held stone into a forme via `battle.dex.items.get(id).megaStone`
@@ -175,6 +236,22 @@ function probeLiveClient() {
         problems.push(`readLiveForme(${f.speciesForme || '?'}) missed the formechange volatile ${JSON.stringify(formechange[1])}`);
       }
       seen.formeChange = true;
+    }
+    // A Substitute is PRESENCE only — the client adds a bare `['substitute']` tuple and never
+    // tracks the doll's HP. That is why the size is derived rather than read, and why this
+    // asserts nothing about a second element: if one ever appeared, the reading would still
+    // be correct, but it would be worth knowing the client had started telling us more.
+    const substitute = mon.volatiles?.substitute;
+    if (substitute !== undefined) {
+      if (!Array.isArray(substitute) || substitute[0] !== 'substitute') {
+        problems.push(`${f.speciesForme || '?'}.volatiles.substitute = ${JSON.stringify(substitute)} (expected ['substitute'])`);
+      }
+      if (!R.readSubstitute(b, mon)) {
+        problems.push(`readSubstitute(${f.speciesForme || '?'}) missed a sub the volatile plainly shows`);
+      }
+      seen.substitute = true;
+    } else if (R.readSubstitute(b, mon) !== undefined) {
+      problems.push(`readSubstitute(${f.speciesForme || '?'}) invented a sub with no volatile to justify it`);
     }
     // The transform volatile holds the TARGET's own Pokemon object — that is what makes a
     // copy resolvable at all (we go and read the Pokémon it copied).
@@ -254,6 +331,11 @@ async function main() {
     // exercise it, pick a replay with a Glimmora, Heatran or Iron Thorns in it.
     console.log(`  |-item| lines: layout checked, Air Balloon announcement ` +
       `${seen.balloonAnnounce ? 'SEEN — checked' : 'absent (not exercised)'}`);
+    // And for the Substitute, whose hit count depends on both the volatile and the log lines.
+    // Shed Tail is the rarer half by far — to exercise it, pick a replay with a Cyclizar or
+    // an Orthworm in it.
+    console.log(`  Substitute: ${seen.substitute ? 'SEEN — checked' : 'absent (not exercised)'}, ` +
+      `Shed Tail hand-off ${seen.shedTail ? 'SEEN — checked' : 'absent (not exercised)'}`);
 
     if (problems.length) {
       console.error('\n✗ DRIFT DETECTED — readState.ts no longer matches the live client:');

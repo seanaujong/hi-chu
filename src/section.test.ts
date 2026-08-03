@@ -11,121 +11,10 @@
 // 256/272 HP ≈ 94.1%).
 
 import {describe, it, expect} from 'vitest';
-import fixture from './__fixtures__/replay-gen9randombattle-2640322654-turn5.json';
 import {buildMoveSection, buildPokemonSection, buildSwitchSection} from './section.js';
 import type {ClientBattle, ClientPokemon, ClientSide} from './battle/readState.js';
+import {loadBattle, scenarioData as data, scenarioDataWithDitto} from './scenario.js';
 import type {RandbatsData} from './core/types.js';
-
-const data = fixture.randbats as unknown as RandbatsData;
-
-/**
- * Rebuild the client's object graph from the captured JSON, wiring the
- * `pokemon.side` back-references the live client maintains (and that
- * findOpposingActive / readFieldFacts depend on). Side 0 is the near side (ours),
- * side 1 the far side (theirs) — the client's seating for the recorded player.
- * The client's classes are untyped and cyclic, so the reconstruction casts through
- * `unknown` — the shapes match readState's structural interfaces.
- */
-function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernAbility?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; farStealthRock?: boolean; farSpikes?: number; tentacruelHpPercent?: number; foeDitto?: 'transformed' | 'plain'; tentacruelSubstitute?: 'fresh' | 'dented'} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
-  const sides: ClientSide[] = fixture.battle.sides.map((s, i) => {
-    // Tailwind blows on OUR side (index 0) only — the asymmetry is the point: it must
-    // double our speed and leave the foe's alone, whichever side a caller orients on.
-    const sideConditions = {
-      ...s.sideConditions,
-      ...(i === 0 && over.nearTailwind ? {tailwind: ['tailwind', 1]} : {}),
-      ...(i === 0 && over.nearStealthRock ? {stealthrock: ['Stealth Rock', 1]} : {}),
-      ...(i === 0 && over.nearSpikes !== undefined ? {spikes: ['Spikes', over.nearSpikes]} : {}),
-      ...(i === 1 && over.farStealthRock ? {stealthrock: ['Stealth Rock', 1]} : {}),
-      ...(i === 1 && over.farSpikes !== undefined ? {spikes: ['Spikes', over.farSpikes]} : {}),
-    };
-    const side = {isFar: i === 1, sideConditions, active: [] as (ClientPokemon | null)[]};
-    side.active = s.active.map((p) => {
-      const terastallized = p.speciesForme === 'Noivern' && over.noivernTerastallized !== undefined
-        ? over.noivernTerastallized
-        : p.terastallized;
-      // Un-reveal Tentacruel's item to exercise the still-unknown-item split (its
-      // Bulky Support set can run Assault Vest OR Leftovers).
-      const item = p.speciesForme === 'Tentacruel' && over.tentacruelItem !== undefined ? over.tentacruelItem : p.item;
-      // Side 0 is ours (p1), side 1 theirs (p2); the client tags actors this way.
-      const ident = `p${i + 1}: ${p.speciesForme}`;
-      return {
-        ...p,
-        terastallized,
-        item,
-        side,
-        ident,
-        // A knocked-off item: nothing held, prevItem names what was lost.
-        ...(p.speciesForme === 'Tentacruel' && over.tentacruelPrevItem !== undefined ? {prevItem: over.tentacruelPrevItem} : {}),
-        ...(p.speciesForme === 'Tentacruel' && over.tentacruelBoosts !== undefined ? {boosts: over.tentacruelBoosts} : {}),
-        ...(p.speciesForme === 'Tentacruel' && over.tentacruelMoveTrack !== undefined
-          ? {moveTrack: over.tentacruelMoveTrack.map((m) => [m, 0])}
-          : {}),
-        ...(over.fullHp ? {hp: p.maxhp} : {}),
-        ...(p.speciesForme === 'Noivern' && over.myNoivernHpPercent !== undefined
-          ? {hp: Math.round(p.maxhp * over.myNoivernHpPercent)}
-          : {}),
-        ...(p.speciesForme === 'Tentacruel' && over.tentacruelHpPercent !== undefined
-          ? {hp: Math.round(p.maxhp * over.tentacruelHpPercent)}
-          : {}),
-        // A Substitute is a plain presence volatile; the log is what says how battered it is.
-        ...(p.speciesForme === 'Tentacruel' && over.tentacruelSubstitute
-          ? {volatiles: {substitute: ['substitute']}}
-          : {}),
-      } as unknown as ClientPokemon;
-    });
-    return side as unknown as ClientSide;
-  });
-  // Swap the foe active for a Ditto — plain, or Transformed into our Noivern. The client
-  // records a transform as TWO volatiles: the target's own Pokemon object, and the same
-  // `formechange` an ordinary forme change uses. It also copies the target's tracked moves
-  // onto the Ditto, each STARRED: `*Flamethrower` is Noivern's move, not Ditto's.
-  if (over.foeDitto) {
-    const ourNoivern = sides[0]!.active[0];
-    const ditto = {
-      speciesForme: 'Ditto', level: 87, hp: 225, maxhp: 225, status: '', boosts: {},
-      terastallized: '', ident: 'p2: Ditto', side: sides[1],
-      ...(over.foeDitto === 'transformed'
-        ? {
-            moveTrack: [['*Flamethrower', 0]],
-            volatiles: {
-              transform: ['transform', ourNoivern, false, 'M', 82],
-              formechange: ['formechange', 'Noivern'],
-            },
-          }
-        : {}),
-    };
-    (sides[1]!.active as (ClientPokemon | null)[])[0] = ditto as unknown as ClientPokemon;
-  }
-  const battle = {
-    gen: fixture.battle.gen,
-    tier: fixture.battle.tier,
-    weather: fixture.battle.weather,
-    pseudoWeather: fixture.battle.pseudoWeather,
-    sides,
-    ...(over.tentacruelSubstitute
-      ? {stepQueue: [
-          '|-start|p2a: Tentacruel|Substitute',
-          ...(over.tentacruelSubstitute === 'dented' ? ['|-activate|p2a: Tentacruel|move: Substitute|[damage]'] : []),
-        ]}
-      : {}),
-    // Our private team view — the item, Tera type, and moveset the opponent can't see. Only
-    // Noivern, unless `myPokemon` supplies the whole array (the Illusion case, where the
-    // Pokémon in our active slot is NOT the one the battle view shows).
-    ...(over.myPokemon !== undefined ? {myPokemon: over.myPokemon} : {}),
-    ...(over.myPokemon === undefined && (over.myNoivernItem !== undefined || over.myNoivernAbility !== undefined || over.myNoivernTera !== undefined || over.myNoivernMoves !== undefined)
-      ? {myPokemon: [{
-          ident: 'p1: Noivern',
-          ...(over.myNoivernItem !== undefined ? {item: over.myNoivernItem} : {}),
-          ...(over.myNoivernAbility !== undefined ? {ability: over.myNoivernAbility} : {}),
-          ...(over.myNoivernTera !== undefined ? {teraType: over.myNoivernTera} : {}),
-          ...(over.myNoivernMoves !== undefined ? {moves: over.myNoivernMoves} : {}),
-        }]}
-      : {}),
-  } as unknown as ClientBattle;
-  const active = (name: string): ClientPokemon =>
-    sides.flatMap((s) => s.active).find((p): p is ClientPokemon => p?.speciesForme === name)!;
-  return {battle, active};
-}
 
 /** The max-damage percentage the "Damage: X% - Y%" line prints. */
 function maxPercent(html: string): number {
@@ -399,7 +288,7 @@ describe('foe-level item facts qualifying the KO/nHKO lines', () => {
   it('a possible Focus Sash caveats the KO claim against a full-HP defender', () => {
     // Give Noivern's one surviving role (Fast Support — its active Tera Fire pins it) a
     // Focus Sash option, and make Tentacruel's Surf a genuine OHKO with +2 SpA.
-    const clone = JSON.parse(JSON.stringify(fixture.randbats)) as {Noivern: {roles: {'Fast Support': {items: string[]}}}};
+    const clone = JSON.parse(JSON.stringify(data)) as {Noivern: {roles: {'Fast Support': {items: string[]}}}};
     clone.Noivern.roles['Fast Support'].items.push('Focus Sash');
     const sashData = clone as unknown as RandbatsData;
     const {battle, active} = loadBattle({fullHp: true, tentacruelBoosts: {spa: 2}});
@@ -1360,15 +1249,10 @@ describe('the sets view lists a possible Mega set while the foe’s item is unre
 });
 
 describe('a Transformed Ditto — the copy, not the copier', () => {
-  // Ditto's real randbats set: one move, Transform, and a Choice Scarf. Everything it can
-  // actually DO comes from the Pokémon it copied — here our Noivern (L82, 249 Speed).
-  const DITTO_ENTRY = {
-    level: 87,
-    abilities: ['Imposter'],
-    items: ['Choice Scarf'],
-    roles: {'Fast Support': {abilities: ['Imposter'], items: ['Choice Scarf'], teraTypes: ['Ghost', 'Steel'], moves: ['Transform']}},
-  };
-  const dittoData = {...(data as object), Ditto: DITTO_ENTRY} as unknown as RandbatsData;
+  // Ditto's real randbats set (one move, Transform, and a Choice Scarf) rides on the shared
+  // scenario feed. Everything it can actually DO comes from the Pokémon it copied — here our
+  // Noivern (L82, 249 Speed).
+  const dittoData = scenarioDataWithDitto;
 
   const transformed = loadBattle({foeDitto: 'transformed'});
   const plain = loadBattle({foeDitto: 'plain'});
@@ -1463,11 +1347,8 @@ describe('a Substitute on the real captured battle', () => {
   const subbedFoe = loadBattle({tentacruelSubstitute: 'fresh'});
 
   /** Our Noivern, wearing a Substitute of its own. */
-  function ourSubbedNoivern(over: Parameters<typeof loadBattle>[0] = {}) {
-    const loaded = loadBattle(over);
-    (loaded.active('Noivern') as {volatiles?: unknown}).volatiles = {substitute: ['substitute']};
-    return loaded;
-  }
+  const ourSubbedNoivern = (over: Parameters<typeof loadBattle>[0] = {}) =>
+    loadBattle({...over, noivernSubstitute: 'fresh'});
 
   it('lets Noivern\u2019s INFILTRATOR through a foe\u2019s doll — every randbats Noivern has it', () => {
     const html = buildMoveSection(subbedFoe.battle, subbedFoe.active('Noivern'), 'Draco Meteor', data);

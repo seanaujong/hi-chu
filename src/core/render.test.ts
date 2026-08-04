@@ -332,6 +332,36 @@ describe('renderSpeedSection', () => {
     expect(html).toContain('<small>if Choice Scarf:</small> <span class="hichu-note">they do</span> (319)');
   });
 
+  it('drops an aside that reaches the same verdict — "faster unless X, still faster" says nothing', () => {
+    const html = renderSpeedSection([
+      {order: order(231, [{speed: 213, first: 'ours'}, {speed: 150, label: 'Iron Ball', first: 'ours'}])},
+    ]);
+    expect(html).toContain('⚡ you move first — 231 vs 213');
+    expect(html).not.toContain('Iron Ball');
+    expect(html).not.toContain('·'); // no aside at all, so no separator either
+  });
+
+  it('keeps a tie aside — a 50/50 is a different answer from "you move first", not a restatement', () => {
+    const html = renderSpeedSection([
+      {order: order(231, [{speed: 213, first: 'ours'}, {speed: 231, label: 'Choice Scarf', first: 'tie'}])},
+    ]);
+    expect(html).toContain('<small>if Choice Scarf:</small> speed tie (231)');
+  });
+
+  it('keeps only the contradicting aside when the foe has both a slower and a faster possibility', () => {
+    const html = renderSpeedSection([
+      {
+        order: order(231, [
+          {speed: 213, first: 'ours'},
+          {speed: 150, label: 'Iron Ball', first: 'ours'},
+          {speed: 319, label: 'Choice Scarf', first: 'theirs'},
+        ]),
+      },
+    ]);
+    expect(html).toContain('<small>if Choice Scarf:</small> <span class="hichu-note">they do</span> (319)');
+    expect(html).not.toContain('Iron Ball');
+  });
+
   it('labels a Trick Room verdict (already flipped upstream) so the slower-wins read explains itself', () => {
     const html = renderSpeedSection([{order: order(166, [{speed: 213, first: 'ours'}], true)}]);
     expect(html).toContain('<small>Trick Room:</small> you move first — 166 vs 213');

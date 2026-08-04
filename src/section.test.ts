@@ -13,7 +13,7 @@
 import {describe, it, expect} from 'vitest';
 import {buildMoveSection, buildPokemonSection, buildSwitchSection} from './section.js';
 import type {ClientBattle, ClientPokemon, ClientSide} from './battle/readState.js';
-import {loadBattle, scenarioData as data, scenarioDataWithDitto, scenarioDataTwinRoles} from './scenario.js';
+import {loadBattle, scenarioData as data, scenarioDataWithDitto, scenarioDataWithEmboar as dataWithEmboar, scenarioDataTwinRoles} from './scenario.js';
 import type {RandbatsData} from './core/types.js';
 
 /** The max-damage percentage the "Damage: X% - Y%" line prints. */
@@ -534,6 +534,20 @@ describe('buildPokemonSection speed order (the ⚡ line on a foe hover)', () => 
     const html = buildPokemonSection(b, a('Tentacruel'), data);
     expect(html).toContain('⚡ you move first — 249 vs 216');
     expect(html).not.toContain('<small>if '); // no speed asides — both items are speed-inert
+  });
+
+  it('drops a speed aside that reaches the same verdict, through the whole live pipeline', () => {
+    // Emboar with Head Smash shown: only its "Fast Attacker" role survives, and that role
+    // runs a Choice Band (157 Spe) or a Choice Scarf (235). Two real, distinct speeds — and
+    // our Noivern at 249 moves first against both, so neither is worth a clause. This is the
+    // seam test for the render-layer filter: a rule that trims the model but never reaches a
+    // hover would be a silent no-op, and the speeds here come from the real narrowing, not
+    // from a hand-built SpeedOrder.
+    const {battle: b, active: a} = loadBattle({foeEmboar: true});
+    const html = buildPokemonSection(b, a('Emboar'), dataWithEmboar);
+    expect(html).toContain('⚡ you move first — 249 vs 235'); // the faster bucket leads
+    expect(html).not.toContain('157'); // the slower one says the same thing, so it is gone
+    expect(html).not.toContain('<small>if ');
   });
 });
 

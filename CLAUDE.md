@@ -15,7 +15,8 @@ own moves would do INTO that mon, so a switch decision reads both "can it threat
 **Pokémon** shows which randbats sets are still possible given every public reveal (moves
 used, item incl. consumed/knocked-off, ability), with damage vs our active attached on
 the opponent's tooltip and the mirror ("their read on you") on our own; a **⚡ speed-order
-verdict** (exact randbats speeds, a surviving Scarf set as an "if …" aside, Trick Room
+verdict** (exact randbats speeds, a surviving Scarf set as an "if …" aside where it FLIPS
+the verdict — a set that reaches the same answer earns no clause, Trick Room
 flipping the verdict) leads a foe hover and heads each "vs \<foe\>" block of the matchup
 view — including the **switch menu**, so a benched mon answers "do I outspeed if I send
 this in?" before you commit. Hovering one of the **foe's roster icons** answers the
@@ -723,6 +724,7 @@ them until someone adds it.
 | NO KO may be claimed while a Substitute stands — the KO text, the nHKO ladder, the Sash aside and the sets view's danger tiers go together | ✅ | `core/render.ts` (`blockedBySubstitute`, `koTier`) | `render.test.ts`, `section.test.ts` |
 | A Shed Tail sub is sized on its MAKER's max HP, not the Pokémon wearing it; a dented one caps the count rather than bracketing it | ✅ | `core/substitute.ts` (`substituteHP`), `battle/readState.ts` (`readSubstitute`), `section.ts` (`shedTailMakerMaxHP`) | `substitute.test.ts`, `readState.test.ts`, `damage.test.ts` |
 | Speed order: arithmetic delegated, ORDER owned, a fact about the PAIR | ✅ | `core/speed.ts`, `section.ts` (`speedSection`, `ownMovesSection`) | `speed.test.ts`, `render.test.ts`, `section.test.ts` |
+| An "if …" aside exists to CONTRADICT the ⚡ verdict — a set reaching the same answer is dropped, so no asides means the verdict holds under EVERY still-possible set | ✅ | `core/render.ts` (`speedLine`) | `render.test.ts` |
 | Unburden's ×2 Speed is armed via an explicit `abilityOn` flag, not inferred from `item` | ✅ | `core/resolve.ts` (`buildResolved`), `core/damage.ts` (`buildPokemon`) | `resolve.test.ts`, `speed.test.ts` |
 | The fetch/reason/render split is a checked import graph, not just a description | ✅ | `src/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |
 | "No DOM, no network" is typechecked everywhere but the two files whose job it is | ✅ | `src/tsconfig.pure.json` | `npm run typecheck` |

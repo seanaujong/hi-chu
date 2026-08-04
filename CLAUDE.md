@@ -508,9 +508,13 @@ replacement for them.
   the rule is stated as a preference: a rule-out is suppressed whenever an ability could
   explain the evidence away (Sheer Force / Magic Guard / Klutz), and anything genuinely
   ambiguous — an unknown ident, an empty log — resolves to "no signal". Prefer MISSING a
-  rule-out to making a false one. See the Life Orb, Heavy-Duty Boots, Choice and Air Balloon
-  rows — the last inverts the others (it is the one item that ANNOUNCES itself, so its
-  silence is the evidence), but obeys the same preference.
+  rule-out to making a false one. See the Life Orb, Heavy-Duty Boots, Choice, Air Balloon
+  and status-orb rows — the last two invert the others (they are the items that ANNOUNCE
+  themselves, so their silence is the evidence), but obey the same preference. Its strongest
+  form is that **a deduction may NARROW the candidate roles but never empty them**: a
+  rule-out is an inference from something that did not happen, so one that kills every role
+  is likelier to be the inference failing than the species being impossible. See *A
+  deduction narrows the candidate roles but never empties them*.
 
 ## Architecture — where to make a change
 A **pure core + thin browser shell**. Dependencies point one way: the shell uses the
@@ -530,9 +534,11 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
     - `deductions.ts` — the behavioural deduction layer: items deduced ABSENT from public
       behaviour — a rule-out can empty a role's whole item pool, which is how `narrow` drops
       the ROLE, not just the item line. Most are SILENT items read through a side effect
-      (Life Orb, Heavy-Duty Boots, the three Choice items); Air Balloon is the inversion, the
-      only item that announces itself on the way in, so a switch-in it stayed quiet through
-      rules it out. `ruledOutItems`/`survivingItems`; adding
+      (Life Orb, Heavy-Duty Boots, the three Choice items); Air Balloon and the two status
+      orbs are the inversion, the items that announce themselves — the balloon on the way in,
+      so a switch-in it stayed quiet through rules it out, and an orb at every end of turn,
+      so a turn that ended with its holder un-statused rules both out.
+      `ruledOutItems`/`survivingItems`; adding
       a deduction = one predicate + one line in `ruledOutItems`, its unit test in the
       colocated `deductions.test.ts` (hand-built facts via `sets.testfixtures.ts`'s
       `liveFacts()`), plus a seam test in `resolve.test.ts` proving it actually reaches
@@ -544,7 +550,9 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
     - `narrow.ts` — the evidence law: `roleMatches` + `selectRoles` narrow roles by ALL
       public evidence (moves, item incl. `prevItem`, innate ability, active Tera) plus the
       deduction rule-outs. The one place the "which roles survive" rule lives —
-      `buildableAbilities` is the guard that an ability no SET could carry narrows nothing.
+      `buildableAbilities` is the guard that an ability no SET could carry narrows nothing,
+      and `consistentRoles` the guard that a deduction may narrow the field but never empty
+      it (`resolve.calcItemPool` is its item-level twin — see the invariant).
     - `resolve.ts` — the resolution law: `resolveMon` merges live facts over randbats into
       the one set we calculate with; `resolveVariants` enumerates EVERY still-possible set
       (hidden item/ability) for uncertainty-aware damage — grouped by role name
@@ -702,6 +710,8 @@ them until someone adds it.
 | Taking entry-hazard damage rules Heavy-Duty Boots out; switching in unharmed confirms it | ✅ | `core/deductions.ts`, `battle/readState.ts` | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts` |
 | Two freely-chosen moves in ONE stint rule out all three Choice items — scoped per stint, since the lock dies on switch-out | ✅ | `core/deductions.ts`, `battle/readState.ts` (`usedDifferentMovesSinceSwitchIn`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts` |
 | A switch-in that announced nothing rules Air Balloon out — the one item that always reveals itself, so SILENCE is the evidence | ✅ | `core/deductions.ts`, `battle/readState.ts` (`switchedInWithoutAnnouncingBalloon`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts`, `section.test.ts` |
+| A turn that ended with its holder un-statused rules out Flame Orb AND Toxic Orb — the same silence, at a moment that comes round every turn | ✅ | `core/deductions.ts`, `battle/readState.ts` (`endedTurnUnstatused`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts`, `section.test.ts` |
+| A deduction narrows the candidate roles but never empties them — nor the item pool a chosen role calcs with | ✅ | `core/narrow.ts` (`consistentRoles`), `core/resolve.ts` (`calcItemPool`) | `resolve.test.ts` |
 | The forme a Pokémon IS and the one it is WEARING differ — only the calc reads the second | ✅ | `battle/readState.ts` (`readLiveForme`), `core/resolve.ts` (`buildResolved`) | `readState.test.ts`, `resolve.test.ts` |
 | A Transformed Pokémon is calculated as the one it COPIED, keeping only its own HP | ✅ | `core/transform.ts`, `section.ts` (`factsReader`) | `transform.test.ts`, `readState.test.ts`, `section.test.ts` |
 | An ability narrows a role only if a SET could have been built with it | ✅ | `core/narrow.ts` (`buildableAbilities`) | `resolve.test.ts` |
@@ -766,7 +776,12 @@ rather than in our code. Run the named check by hand after a Showdown client upd
   reads that line's ABSENCE as evidence, so a client that stopped emitting it would make
   every balloon holder look like it had none, and call a Ground move safe into a Pokémon
   immune to it. Both probes report whether they actually fired — a `[from]` move and an Air
-  Balloon announcement are each rare enough that a random replay often has neither. And
+  Balloon announcement are each rare enough that a random replay often has neither. The
+  status-orb rule-out adds a pair with the same asymmetry: `|upkeep|` is its end-of-turn
+  marker, and losing it would only take the deduction permanently (and silently) quiet, but
+  the `|-status|` line's layout is read in the DANGEROUS direction — the rule turns on there
+  being no status at that moment, so an ident or status id that moved would leave a visibly
+  burned Pokémon looking clean and rule out the very orb that had just fired. And
   `volatiles.substitute` (presence only — the client never tracks the doll's HP, which is why
   we derive its size), `side.pokemon` (the roster, the only place a Shed Tail's maker can
   still be found once using it took them off the field), and the `|-start|…|Substitute` and

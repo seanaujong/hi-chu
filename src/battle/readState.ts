@@ -163,6 +163,7 @@ export interface BehaviorSignals {
   readonly switchedIntoStealthRockUnharmed?: boolean;
   readonly usedDifferentMovesSinceSwitchIn?: boolean;
   readonly switchedInWithoutAnnouncingBalloon?: boolean;
+  readonly endedTurnUnstatused?: boolean;
   readonly timesAttacked?: number;
   readonly substitute?: SubstituteReading;
 }
@@ -362,6 +363,7 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, spe
     switchedIntoStealthRockUnharmed: signals.switchedIntoStealthRockUnharmed ?? false,
     usedDifferentMovesSinceSwitchIn: signals.usedDifferentMovesSinceSwitchIn ?? false,
     switchedInWithoutAnnouncingBalloon: signals.switchedInWithoutAnnouncingBalloon ?? false,
+    endedTurnUnstatused: signals.endedTurnUnstatused ?? false,
     timesAttacked: signals.timesAttacked ?? 0,
     ...(asStatus(p.status) ? {status: asStatus(p.status)!} : {}),
     ...(p.terastallized ? {teraType: p.terastallized} : {}),
@@ -631,6 +633,98 @@ export function switchedInWithoutAnnouncingBalloon(battle: ClientBattle, mon: {r
   return false;
 }
 
+/** A `-fieldstart`/`-fieldend` line naming Misty Terrain, which blocks status outright. */
+function isMistyTerrain(parts: readonly string[]): boolean {
+  return parts.some((p) => p === 'move: Misty Terrain' || p === 'Misty Terrain');
+}
+
+/** The SLOT half of a protocol ident — "p1a: Gliscor" → "p1a". Kept whole, unlike
+ *  `identKey`, because who is standing where is exactly a per-slot fact in doubles. */
+function slotKey(ident: string | undefined): string | undefined {
+  const colon = (ident ?? '').indexOf(':');
+  const slot = colon > 0 ? ident!.slice(0, colon).trim() : '';
+  return slot || undefined;
+}
+
+/** The status riding along in a `switch`/`drag` line's HP token — "239/239 tox" → "tox". */
+function switchLineStatus(parts: readonly string[]): string {
+  return (parts[4] ?? '').split(' ')[1] ?? '';
+}
+
+/**
+ * Did `mon` finish a turn on the field carrying no status? Flame Orb and Toxic Orb inflict
+ * one on their OWN holder at the end of every turn (`onResidualOrder: 28`, the sim's
+ * `pokemon.trySetStatus(status, pokemon)`) and announce themselves doing it
+ * (`|-status|<mon>|brn|[from] item: Flame Orb`), so a turn that ended with the holder clean
+ * rules both orbs out — see deductions.ts. Like Air Balloon, this reads an item's SILENCE.
+ *
+ * `|upkeep|` is the marker, and it is the right one where `|turn|` is not: the sim emits it
+ * only once the residuals have run. The opening `|switch|`es are followed straight by
+ * `|turn|1` with no residual between them, and a fainted mon's replacement comes in AFTER
+ * `|upkeep|` — keying on turn lines would credit both with a residual they never sat through.
+ *
+ * Every suppressor below leaves NO trace in the log — each was checked against the sim,
+ * which reports them only as `|debug|` lines the client does not carry — so silence has to
+ * be earned by tracking the conditions rather than by looking for a failure message:
+ *   - a status ALREADY on the holder: `setStatus` returns early, and the `-fail` it can emit
+ *     is gated on a MOVE's own `status` field, which an item has not got. Tracked along the
+ *     log rather than read off the snapshot, because a status inflicted then cured leaves
+ *     the snapshot clean while those turns proved nothing.
+ *   - Misty Terrain, which blocks the status outright. Time-scoped, so it is tracked here
+ *     alongside Magic Room and Embargo, the item-suspending pair
+ *     `usedDifferentMovesSinceSwitchIn` already tracks. Applied as a blanket skip even
+ *     though the sim blocks only GROUNDED targets: over-cautious costs a rule-out,
+ *     under-cautious invents one.
+ *   - the holder's own TYPE once Terastallized — Tera Fire cannot be burned, Tera Poison or
+ *     Steel cannot be poisoned. Rather than model which orb a given Tera type defuses, the
+ *     scan simply STOPS at the `|-terastallize|` line, keeping every quiet turn before it.
+ * Klutz, the last `ignoringItem()` case, is an ABILITY and so is judged downstream against
+ * the role's pool, the way Sheer Force guards the Life Orb rule. Safeguard is deliberately
+ * NOT tracked: its `onSetStatus` interrupts only when `target !== source`, and an orb
+ * statuses its own holder.
+ *
+ * ONE quiet turn is enough and the rule never expires, exactly as for the balloon: an orb
+ * fires at the end of EVERY turn, so a holder that was ever quiet was holding something else.
+ */
+export function endedTurnUnstatused(battle: ClientBattle, mon: {readonly ident?: string}): boolean {
+  const me = identKey(mon.ident);
+  if (!me) return false;
+  const standing = new Map<string, string>(); // slot → who is in it
+  let status = '';
+  let mistyTerrain = false;
+  let magicRoom = false;
+  let embargo = false;
+  for (const line of battle.stepQueue ?? []) {
+    const parts = line.split('|');
+    const tag = parts[1] ?? '';
+    const who = identKey(parts[2]);
+    if (tag === '-terastallize' && who === me) break; // its types are no longer the set's
+    else if (tag === '-fieldstart' || tag === '-fieldend') {
+      const on = tag === '-fieldstart';
+      if (isMistyTerrain(parts)) mistyTerrain = on;
+      else if (isMagicRoom(parts)) magicRoom = on;
+    } else if (tag === '-start' && isEmbargoOn(parts, me)) embargo = true;
+    else if (tag === '-end' && isEmbargoOn(parts, me)) embargo = false;
+    else if (tag === 'switch' || tag === 'drag') {
+      const slot = slotKey(parts[2]);
+      if (slot && who) standing.set(slot, who);
+      if (who === me) {
+        status = switchLineStatus(parts); // a returning mon can bring one back with it
+        embargo = false; // volatiles clear on the way out, so a fresh stint starts clean
+      }
+    } else if (tag === 'faint') {
+      const slot = slotKey(parts[2]);
+      if (slot) standing.delete(slot);
+    } else if (tag === '-status' && who === me) status = parts[3] ?? '';
+    else if (tag === '-curestatus' && who === me) status = '';
+    else if (tag === 'upkeep') {
+      const onField = [...standing.values()].includes(me);
+      if (onField && !status && !mistyTerrain && !magicRoom && !embargo) return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Did `mon` freely select two DIFFERENT moves during a single stint on the field? A Choice
  * item locks its holder into the first move it picks until it switches out, so a "yes"
@@ -794,6 +888,7 @@ export function readBehaviors(battle: ClientBattle, mon: ClientPokemon): Behavio
     switchedIntoStealthRockUnharmed: switchedIntoStealthRockUnharmed(battle, mon),
     usedDifferentMovesSinceSwitchIn: usedDifferentMovesSinceSwitchIn(battle, mon),
     switchedInWithoutAnnouncingBalloon: switchedInWithoutAnnouncingBalloon(battle, mon),
+    endedTurnUnstatused: endedTurnUnstatused(battle, mon),
     timesAttacked: timesAttacked(battle, mon),
     ...(substitute ? {substitute} : {}),
   };
@@ -971,6 +1066,7 @@ export function serverPokemonFacts(p: ClientServerPokemon, battle?: ClientBattle
     // Our own item comes straight off the private entry below, so no behavioural deduction
     // about it could ever speak — the same reason the Boots signals are hard-coded here.
     switchedInWithoutAnnouncingBalloon: false,
+    endedTurnUnstatused: false,
     timesAttacked: battle ? timesAttacked(battle, {ident: p.ident}) : 0,
     ...(status ? {status} : {}),
     ...(p.terastallized ? {teraType: p.terastallized} : {}),

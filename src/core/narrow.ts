@@ -41,8 +41,14 @@ export function buildableAbilities(entry: RandbatsEntry): ReadonlySet<string> {
   return new Set(pool.map(toId));
 }
 
-/** True when every piece of revealed evidence is consistent with this role. */
-function roleMatches(role: RandbatsRole, facts: LiveFacts, buildable: ReadonlySet<string>): boolean {
+/** True when every piece of revealed evidence is consistent with this role. `deductions`
+ *  says whether the behavioural rule-outs get a vote — see `consistentRoles`. */
+function roleMatches(
+  role: RandbatsRole,
+  facts: LiveFacts,
+  buildable: ReadonlySet<string>,
+  deductions: 'apply' | 'ignore' = 'apply',
+): boolean {
   const have = new Set(role.moves.map(toId));
   for (const m of facts.revealedMoves) if (!have.has(toId(m))) return false;
   // An item revealed mid-battle (held, consumed, or knocked off) pins the set the
@@ -53,7 +59,10 @@ function roleMatches(role: RandbatsRole, facts: LiveFacts, buildable: ReadonlySe
   }
   // A role whose only items are ones the mon has behaviourally shown it ISN'T holding
   // (see deductions.ts) can no longer be that role.
-  if (role.items.length > 0 && survivingItems(role.abilities, role.items, facts).length === 0) return false;
+  if (deductions === 'apply' && role.items.length > 0 &&
+      survivingItems(role.abilities, role.items, facts).length === 0) {
+    return false;
+  }
   // The ability narrows this role only if a set could have been BUILT with it (see
   // `buildableAbilities`) — otherwise it says nothing about which set we are looking at.
   const ability = innateAbility(facts);
@@ -73,6 +82,33 @@ function anyEvidence(facts: LiveFacts): boolean {
 }
 
 /**
+ * The roles consistent with `facts` — letting the behavioural deductions NARROW the field
+ * but never EMPTY it.
+ *
+ * The two kinds of evidence deserve different treatment when they leave nothing standing.
+ * A positive reveal that fits no role is a genuine contradiction worth surfacing: we SAW
+ * that move, and no set has it. A behavioural rule-out is an inference from something that
+ * did not happen, so a rule-out that kills every role is far likelier to be the inference
+ * failing than the whole species being impossible — and "prefer missing a rule-out to making
+ * a false one" says to drop it.
+ *
+ * The orbs are what make this load-bearing rather than theoretical: six of the ten species
+ * that can hold one hold it on EVERY role (Gliscor, Ursaluna, Conkeldurr, Zangoose, Flareon,
+ * Squawkabilly), so a single missed suppressor would take a common Pokémon from "two
+ * candidate sets" to "matched no known set" — a message that would also be lying about
+ * which evidence did it.
+ */
+function consistentRoles(
+  named: ReadonlyArray<readonly [string, RandbatsRole]>,
+  facts: LiveFacts,
+  buildable: ReadonlySet<string>,
+): ReadonlyArray<readonly [string, RandbatsRole]> {
+  const narrowed = named.filter(([, r]) => roleMatches(r, facts, buildable));
+  if (narrowed.length > 0) return narrowed;
+  return named.filter(([, r]) => roleMatches(r, facts, buildable, 'ignore'));
+}
+
+/**
  * Pick the role(s) consistent with everything the battle has revealed (moves used,
  * item, ability), and the single role we'll calculate with. If nothing is
  * consistent (or nothing has been revealed yet) we keep all roles and flag the
@@ -88,7 +124,7 @@ export function selectRoles(entry: RandbatsEntry, facts: LiveFacts): {
   if (named.length === 0) return {chosen: undefined, candidates: [], names: [], uncertain: undefined};
 
   const buildable = buildableAbilities(entry);
-  const consistent = named.filter(([, r]) => roleMatches(r, facts, buildable));
+  const consistent = consistentRoles(named, facts, buildable);
 
   if (anyEvidence(facts) && consistent.length === 0) {
     // Revealed evidence matched no role (form change, transform, data drift) — don't

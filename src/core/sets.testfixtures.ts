@@ -19,6 +19,7 @@ export function liveFacts(over: Partial<LiveFacts> = {}): LiveFacts {
     switchedIntoStealthRockUnharmed: false,
     usedDifferentMovesSinceSwitchIn: false,
     switchedInWithoutAnnouncingBalloon: false,
+    endedTurnUnstatused: false,
     timesAttacked: 0,
     ...over,
   };

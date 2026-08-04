@@ -122,3 +122,52 @@ describe('Air Balloon rule-out (came in silently ⇒ not holding one)', () => {
       .toEqual(['Life Orb', 'Choice Band']);
   });
 });
+
+describe('status-orb rule-out (a turn ended un-statused ⇒ holding neither orb)', () => {
+  // The balloon's rule read silence at one moment; this reads it at one that comes round
+  // every turn. Ursaring's real randbats pool is this pair, one role per item, so the
+  // rule-out settles which of the two sets is on the field.
+  const pool = ['Toxic Orb', 'Eviolite'];
+  const quiet = (over = {}) => liveFacts({endedTurnUnstatused: true, ...over});
+
+  it('removes both orbs at once — one clean turn is silence from either', () => {
+    expect(survivingItems(['Guts'], ['Flame Orb', 'Toxic Orb', 'Leftovers'], quiet({baseAbility: 'Guts'})))
+      .toEqual(['Leftovers']);
+  });
+
+  it('narrows a two-role species to the role that is not orb-fed', () => {
+    expect(survivingItems(['Quick Feet'], pool, quiet({baseAbility: 'Quick Feet'}))).toEqual(['Eviolite']);
+  });
+
+  it('keeps them when the known ability would have swallowed the status', () => {
+    // One per reason the sim refuses: the item ignored outright, every status refused,
+    // burn refused, poison refused.
+    for (const ability of ['Klutz', 'Purifying Salt', 'Water Veil', 'Pastel Veil']) {
+      expect(survivingItems([ability], pool, quiet({baseAbility: ability}))).toEqual(pool);
+    }
+  });
+
+  it('never lies: keeps them while the ability is hidden and the pool could excuse it', () => {
+    expect(survivingItems(['Guts', 'Comatose'], pool, quiet())).toEqual(pool);
+  });
+
+  it('is not excused by an ability that refuses some OTHER status', () => {
+    // Insomnia, Limber and Vital Spirit block sleep, paralysis and freeze — none of which
+    // an orb inflicts, so they leave the deduction standing.
+    for (const ability of ['Insomnia', 'Limber', 'Vital Spirit']) {
+      expect(survivingItems([ability], pool, quiet({baseAbility: ability}))).toEqual(['Eviolite']);
+    }
+  });
+
+  it('does nothing without the signal, or once an item is revealed', () => {
+    expect(survivingItems(['Guts'], pool, liveFacts())).toEqual(pool);
+    expect(survivingItems(['Guts'], pool, quiet({item: 'Toxic Orb'}))).toEqual(pool);
+    expect(survivingItems(['Guts'], pool, quiet({prevItem: 'Toxic Orb'}))).toEqual(pool);
+  });
+
+  it('is independent of the other rules — a quiet turn touches only the orbs', () => {
+    const facts = quiet({baseAbility: 'Guts'});
+    expect(survivingItems(['Guts'], ['Flame Orb', 'Air Balloon', 'Life Orb'], facts))
+      .toEqual(['Air Balloon', 'Life Orb']);
+  });
+});

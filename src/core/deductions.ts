@@ -1,8 +1,9 @@
 // The behavioural deduction layer: items deduced ABSENT from the public mark their presence
 // would (or wouldn't) have left. Most are SILENT items, ones that never reveal themselves
 // and so can only be read through a side effect (Life Orb's recoil, Heavy-Duty Boots'
-// hazard immunity, a Choice lock). Air Balloon is the opposite and the same rule reversed:
-// it announces itself on every switch-in, so its SILENCE is the mark. Each rule turns a
+// hazard immunity, a Choice lock). Air Balloon and the two status orbs are the opposite and
+// the same rule reversed: they announce themselves — the balloon on every switch-in, an orb
+// at every end of turn — so their SILENCE is the mark. Each rule turns a
 // LiveFacts observation into a "this item can't be here"
 // constraint; the narrowing and resolution layers consume the union through
 // `survivingItems`, so the matcher itself stays general (it filters a pool, it doesn't
@@ -25,6 +26,22 @@ const CHOICE_ITEMS = ['choiceband', 'choicespecs', 'choicescarf'];
 // siblings there, Magic Room and Embargo, are time-scoped field/volatile facts and are
 // handled in the reader; only the ability half can be judged against a role's pool here.
 const ITEM_IGNORING_ABILITIES = new Set(['klutz']);
+
+// The two items that status their own holder at every end of turn, so one quiet turn rules
+// both out together — the same shape as the Choice trio above.
+const STATUS_ORBS = ['flameorb', 'toxicorb'];
+
+// Abilities that would have swallowed an orb's status, leaving a quiet turn that proves
+// nothing: Klutz because the item is ignored outright, and the rest because the sim's own
+// `onSetStatus` refuses a burn or a poison. Enumerated FROM `data/abilities.ts` rather than
+// recalled — Pastel Veil is the one a memory sweep misses, and a missed excuse here is not
+// a missed deduction but a false one.
+const STATUS_ORB_SUPPRESSORS = new Set([
+  'klutz',
+  'comatose', 'purifyingsalt', 'shieldsdown', 'leafguard', // refuse every status
+  'waterveil', 'waterbubble', 'thermalexchange', // refuse burn
+  'immunity', 'pastelveil', // refuse poison
+]);
 
 /** A deduction only speaks while the item is still unknown — a revealed item (held or
  *  `prevItem`) is the stronger, positive evidence and the matcher already uses it. */
@@ -118,6 +135,28 @@ function airBalloonRuledOut(facts: LiveFacts, roleAbilities: readonly string[]):
   return noExcuse(facts, roleAbilities, ITEM_IGNORING_ABILITIES);
 }
 
+/**
+ * Flame Orb and Toxic Orb burn or badly-poison their own holder at the end of every turn and
+ * announce themselves doing it, so a turn that ended with the holder un-statused rules both
+ * out. Air Balloon's rule read silence at ONE moment, the switch-in; this reads it at a
+ * moment that comes round again every turn, so it usually settles on the holder's first.
+ *
+ * The reader owns everything time-scoped that would have muffled the orb (a status already
+ * in place, Misty Terrain, Magic Room, Embargo, an active Tera). Left here is the ability
+ * half — Klutz, and every ability that simply refuses the status — judged against the known
+ * innate ability, else against the role's whole pool ("never lie", exactly as for Life Orb).
+ *
+ * It reaches further than one item line, and further than the Choice rule that shares its
+ * shape: every orb role in the feed carries the orb as its ONLY item, so the rule-out empties
+ * the pool and `narrow.roleMatches` drops the ROLE. That is the point — an orb role's ability
+ * is always a status-fed one (Guts, Quick Feet, Toxic Boost, Poison Heal), so dropping it is
+ * worth a ×1.5 of Attack or Speed on every line we then show.
+ */
+function statusOrbsRuledOut(facts: LiveFacts, roleAbilities: readonly string[]): boolean {
+  if (!facts.endedTurnUnstatused || !itemStillHidden(facts)) return false;
+  return noExcuse(facts, roleAbilities, STATUS_ORB_SUPPRESSORS);
+}
+
 /** The items (id form) a role can no longer be holding, by behavioural deduction. */
 export function ruledOutItems(facts: LiveFacts, roleAbilities: readonly string[]): ReadonlySet<string> {
   const out = new Set<string>();
@@ -125,6 +164,7 @@ export function ruledOutItems(facts: LiveFacts, roleAbilities: readonly string[]
   if (bootsRuledOut(facts)) out.add('heavydutyboots');
   if (choiceItemsRuledOut(facts, roleAbilities)) for (const i of CHOICE_ITEMS) out.add(i);
   if (airBalloonRuledOut(facts, roleAbilities)) out.add('airballoon');
+  if (statusOrbsRuledOut(facts, roleAbilities)) for (const i of STATUS_ORBS) out.add(i);
   return out;
 }
 

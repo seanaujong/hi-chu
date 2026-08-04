@@ -182,6 +182,21 @@ export interface LiveFacts {
    */
   readonly switchedInWithoutAnnouncingBalloon: boolean;
   /**
+   * True once the log shows this Pokémon finishing a turn on the field with no status on it.
+   * Flame Orb and Toxic Orb status their own holder at the end of EVERY turn, revealing
+   * themselves as they do — so one clean end-of-turn rules both out. The second silence-is-
+   * evidence deduction, after the balloon above, and the one that reaches furthest: in the
+   * randbats feed every orb role carries the orb as its ONLY item, so ruling it out drops
+   * the whole role, and with it an ability worth a lot of damage (Guts, Quick Feet, Toxic
+   * Boost, Poison Heal).
+   *
+   * The suppressors that would make the silence meaningless — a status already in place,
+   * Misty Terrain, Magic Room, Embargo, and an active Tera changing what the holder can
+   * even catch — are all judged in the reader, since each is time-scoped. Klutz is applied
+   * downstream against the role's ability pool, so this stays a raw fact.
+   */
+  readonly endedTurnUnstatused: boolean;
+  /**
    * How many times the battle log shows this Pokémon TAKING a direct move hit — RAGE
    * FIST's power scales with it (`min(350, 50 + 50×timesAttacked)`), the sim's own
    * `pokemon.timesAttacked`. Persists across switches (the sim never resets it), so this

@@ -45,6 +45,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }} # gh run list, for --check-publish
         run: |
+          # A pipeline reports the LAST command's status, so `node … | tee` returned tee's 0 and
+          # threw away every exit code this script produces. Both of its failure signals —
+          # --fail-after for a forgotten release, --check-publish for a tag that never shipped —
+          # were unreachable: the predicate existed and could not fail the build, which is the
+          # same unchecked want the script was written to end, one level up.
+          set -o pipefail
           # --check-publish on every run: a tag whose release run failed is not a slow
           # problem to nag about weekly, it is a shipped-nothing problem to see immediately.
           if [ "${{ github.event_name }}" = "schedule" ]; then

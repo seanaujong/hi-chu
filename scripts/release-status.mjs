@@ -31,6 +31,7 @@
 import {execFileSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
 import {currentBranch, differsFromCheckout, latestReleaseTag, resolveReleaseRef, showAtRef} from './lib/release-range.mjs';
+import {publishVerdict} from './lib/publish-verdict.mjs';
 
 const git = (...args) => execFileSync('git', args, {encoding: 'utf8'}).trim();
 const flag = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=')[1];
@@ -94,35 +95,42 @@ const state = !versionsAgree ? 'mismatch'
  * review. Everything this script looks at said `in-sync` while the store sat a version
  * behind: the exact failure it exists to prevent, in the one place it could not see.
  *
- * `auto-tag.yml` runs against the merge commit the tag points at, so the run is matched by
- * SHA rather than by time — a re-run or an unrelated push can't be mistaken for it.
+ * A release can finish by more than one route and each leaves different evidence, so deciding
+ * this is its own law — `lib/publish-verdict.mjs`, which takes all of it as data. This
+ * function only gathers: the tag's commit, and both workflows' recent runs.
  *
  * Opt-in (`--check-publish`) because everything else here is offline and instant; this needs
  * `gh` and the network. `release-drift.yml` always passes it. Any failure to ask (no `gh`, no
  * auth, no network) reports "unknown" rather than a false all-clear.
  */
 function publishOutcome(tag) {
-  if (!tag) return 'unknown';
-  try {
-    const sha = execFileSync('git', ['rev-list', '-n1', tag], {encoding: 'utf8'}).trim();
-    const runs = JSON.parse(
-      execFileSync('gh', ['run', 'list', '--workflow=auto-tag.yml', '--limit', '30', '--json', 'headSha,conclusion,databaseId'], {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-      }),
+  if (!tag) return {state: 'unknown'};
+  const runs = (workflow, fields) => {
+    const out = execFileSync(
+      'gh',
+      ['run', 'list', `--workflow=${workflow}`, '--limit', '30', '--json', fields],
+      {encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore']},
     );
-    const run = runs.find((r) => r.headSha === sha);
-    if (!run) return 'unknown';
-    return run.conclusion === 'success' ? 'ok' : {state: 'failed', id: run.databaseId};
+    return JSON.parse(out);
+  };
+  try {
+    return publishVerdict({
+      tag,
+      tagSha: execFileSync('git', ['rev-list', '-n1', tag], {encoding: 'utf8'}).trim(),
+      autoTagRuns: runs('auto-tag.yml', 'headSha,conclusion,databaseId,createdAt'),
+      releaseRuns: runs('release.yml', 'headSha,conclusion,databaseId,createdAt,displayTitle'),
+    });
   } catch {
-    return 'unknown'; // no gh, no auth, no network — say so rather than imply success
+    return {state: 'unknown'}; // no gh, no auth, no network — say so rather than imply success
   }
 }
 
 const failAfter = Number(process.argv.find((a) => a.startsWith('--fail-after='))?.split('=')[1] ?? NaN);
 const publish = process.argv.includes('--check-publish') ? publishOutcome(tag) : null;
 const stale = state === 'unreleased' && Number.isFinite(failAfter) && (daysStale ?? 0) >= failAfter;
-const publishBroken = publish !== null && publish !== 'ok' && publish !== 'unknown';
+// Only a PROVEN failure breaks the build. 'retried' and 'unknown' are honest uncertainty, and
+// failing on those is how a check that has caught real problems earns a reputation for noise.
+const publishBroken = publish?.state === 'failed';
 
 const report = {
   state,
@@ -179,16 +187,21 @@ if (process.argv.includes('--json')) {
   if (fellBack.length) {
     console.log(`  (${fellBack.join(', ')} absent at ${ref}; read from the working tree instead)`);
   }
-  if (publish && publish !== 'ok') {
+  if (publish && publish.state !== 'ok') {
     console.log(bar);
-    if (publish === 'unknown') {
+    if (publish.state === 'unknown') {
       console.log(`? could not check whether ${tag} finished publishing (no gh / auth / network).`);
+    } else if (publish.state === 'retried') {
+      console.log(`? ${tag}'s first release run failed and a later one succeeded — run ${publish.id}.`);
+      console.log('  That run predates release run naming, so it cannot be tied to this tag.');
+      console.log('  Confirm the store shows this version; releases from here on say so outright.');
     } else {
       console.log(`✗ ${tag} is TAGGED but its release run FAILED — it may not have reached the store.`);
       console.log(`  gh run view ${publish.id} --log-failed`);
       console.log('  Re-running auto-tag.yml does NOT help: the tag exists, so detect no-ops.');
+      console.log(`  Recover with: gh workflow run release.yml -f tag=${tag}`);
     }
-  } else if (publish === 'ok') {
+  } else if (publish?.state === 'ok') {
     console.log(`✓ ${tag}'s release run completed, store publish included.`);
   }
   if (commits.length) {

@@ -519,6 +519,74 @@ describe('a silent switch-in drops the Air Balloon bucket (core/deductions.ts)',
   });
 });
 
+describe('a turn ended un-statused drops the status-orb role (core/deductions.ts)', () => {
+  // Hariyama's real gen9randombattle entry: two roles, one item each, and they are not
+  // equally harmless to guess between — an Assault Vest is ×1.5 SpD, so while both stand the
+  // tooltip must hedge every special move with two labelled numbers. A Flame Orb holder,
+  // though, burns itself at the end of the first turn it is out. One quiet turn is therefore
+  // enough to drop the Wallbreaker role outright and answer with a single number.
+  const feed: RandbatsData = {
+    Hariyama: {
+      level: 87,
+      abilities: ['Thick Fat', 'Guts'],
+      items: [],
+      roles: {
+        'AV Pivot': {abilities: ['Thick Fat'], items: ['Assault Vest'], teraTypes: ['Water'], moves: ['Close Combat']},
+        Wallbreaker: {abilities: ['Guts'], items: ['Flame Orb'], teraTypes: ['Water'], moves: ['Facade']},
+      },
+    },
+    Gholdengo: {level: 76, abilities: ['Good as Gold'], items: ['Leftovers'], moves: ['Make It Rain']},
+  };
+  const near = {isFar: false, sideConditions: {}, active: [] as unknown[]};
+  const far = {isFar: true, sideConditions: {}, active: [] as unknown[]};
+  const ourGholdengo = {
+    speciesForme: 'Gholdengo', level: 76, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p1: Gholdengo', side: near,
+  } as unknown as ClientPokemon;
+  const foeHariyama = {
+    speciesForme: 'Hariyama', level: 87, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p2: Hariyama', side: far,
+  } as unknown as ClientPokemon;
+  near.active = [ourGholdengo];
+  far.active = [foeHariyama];
+
+  const battleWith = (stepQueue: string[]): ClientBattle =>
+    ({gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far], stepQueue} as unknown as ClientBattle);
+  const IN = '|switch|p2a: Hariyama|Hariyama, M|100/100';
+  const OURS_IN = '|switch|p1a: Gholdengo|Gholdengo|100/100';
+  const QUIET_TURN = ['|start', OURS_IN, IN, '|turn|1', '|', '|upkeep', '|turn|2'];
+
+  it('brackets both items until a turn has ended — the honest baseline', () => {
+    const html = buildMoveSection(battleWith(['|start', OURS_IN, IN, '|turn|1']), ourGholdengo, 'Make It Rain', feed);
+    expect(html).toContain('(Assault Vest)');
+    expect(html).toContain('(Flame Orb)');
+  });
+
+  it('collapses to the one real number once a turn ends with Hariyama un-statused', () => {
+    const html = buildMoveSection(battleWith(QUIET_TURN), ourGholdengo, 'Make It Rain', feed);
+    expect(html).not.toContain('(Flame Orb)');
+    expect(html).not.toContain('(Assault Vest)'); // one item left ⇒ no per-item labels at all
+  });
+
+  it('keeps both when the orb actually fired — the status reveals it on the same line', () => {
+    const html = buildMoveSection(battleWith([
+      '|start', OURS_IN, IN, '|turn|1', '|',
+      '|-status|p2a: Hariyama|brn|[from] item: Flame Orb', '|upkeep', '|turn|2',
+    ]), ourGholdengo, 'Make It Rain', feed);
+    expect(html).toContain('(Assault Vest)');
+    expect(html).toContain('(Flame Orb)');
+  });
+
+  it('drops the whole ROLE from the sets view, not just the item line', () => {
+    const before = buildPokemonSection(battleWith(['|start', OURS_IN, IN, '|turn|1']), foeHariyama, feed);
+    expect(before).toContain('Wallbreaker');
+    expect(before).toContain('AV Pivot');
+    const after = buildPokemonSection(battleWith(QUIET_TURN), foeHariyama, feed);
+    expect(after).not.toContain('Wallbreaker');
+    expect(after).toContain('AV Pivot');
+  });
+});
+
 describe('buildPokemonSection speed order (the ⚡ line on a foe hover)', () => {
   const {battle, active} = loadBattle();
 

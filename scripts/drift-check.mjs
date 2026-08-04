@@ -78,7 +78,7 @@ function probeLiveClient() {
   // Which of the rarer client shapes this replay actually exercised — a random replay
   // usually has no transformed or forme-changed Pokémon, and a probe that never fired is
   // not a probe that passed. Reported, not failed on.
-  const seen = {formeChange: false, transform: false, calledMove: false, balloonAnnounce: false, substitute: false, shedTail: false};
+  const seen = {formeChange: false, transform: false, calledMove: false, balloonAnnounce: false, statusLine: false, substitute: false, shedTail: false};
 
   const format = R.detectFormat(b);
   if (!format || format.kind !== 'randbats' || !/^gen\d+random/.test(format.formatId)) {
@@ -127,6 +127,26 @@ function probeLiveClient() {
       break;
     }
     if (parts[3].replace(/[^a-z0-9]+/gi, '').toLowerCase() === 'airballoon') seen.balloonAnnounce = true;
+  }
+
+  // The status-orb rule-out reads TWO shapes, and leans on each in its own dangerous
+  // direction. `|upkeep|` is the end-of-turn marker — the moment a held Flame Orb or Toxic
+  // Orb was obliged to fire — so a client that stopped emitting it would take the deduction
+  // permanently silent (the safe failure, but a silent one worth naming). `|-status|` is the
+  // hazardous half: the rule reads the ABSENCE of a status at that moment, so a line whose
+  // ident or status id moved would leave a visibly burned Pokémon looking clean, and we
+  // would rule out the very orb that had just fired — dropping the Guts role, and with it
+  // ×1.5 of the Attack every damage line then shows.
+  if (!(b.stepQueue || []).some((l) => typeof l === 'string' && l.startsWith('|upkeep'))) {
+    problems.push('no |upkeep| lines in stepQueue — the status-orb rule-out reads these as "a turn ended"');
+  }
+  for (const line of (b.stepQueue || []).filter((l) => typeof l === 'string' && l.startsWith('|-status|'))) {
+    const parts = line.split('|');
+    if (typeof parts[2] !== 'string' || !parts[2].includes(':') || !parts[3]) {
+      problems.push(`|-status| line not in "|-status|<ident>|<status>" shape: ${JSON.stringify(line)}`);
+      break;
+    }
+    seen.statusLine = true;
   }
 
   // A side's whole ROSTER, not just what is on the field. Only the Shed Tail sub reads it,
@@ -331,6 +351,12 @@ async function main() {
     // exercise it, pick a replay with a Glimmora, Heatran or Iron Thorns in it.
     console.log(`  |-item| lines: layout checked, Air Balloon announcement ` +
       `${seen.balloonAnnounce ? 'SEEN — checked' : 'absent (not exercised)'}`);
+    // The status-orb rule-out's pair. |upkeep| is asserted present above (every completed
+    // turn has one), so only the |-status| layout can go unexercised — a replay where nobody
+    // was ever burned, poisoned or paralysed. To exercise it, pick one with a Gliscor or an
+    // Ursaluna in it, which announces the orb on the same line.
+    console.log(`  |upkeep| lines: present, |-status| layout ` +
+      `${seen.statusLine ? 'SEEN — checked' : 'absent (not exercised)'}`);
     // And for the Substitute, whose hit count depends on both the volatile and the log lines.
     // Shed Tail is the rarer half by far — to exercise it, pick a replay with a Cyclizar or
     // an Orthworm in it.

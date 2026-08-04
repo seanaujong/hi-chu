@@ -13,6 +13,7 @@ import {
   switchedIntoStealthRockUnharmed,
   usedDifferentMovesSinceSwitchIn,
   switchedInWithoutAnnouncingBalloon,
+  endedTurnUnstatused,
   readOwnItem,
   readOwnAbility,
   readOwnServerPokemon,
@@ -733,6 +734,110 @@ describe('switchedInWithoutAnnouncingBalloon (rules out Air Balloon)', () => {
   it('is false on an empty log, or for a mon with no ident', () => {
     expect(switchedInWithoutAnnouncingBalloon(withLog([]), heatran)).toBe(false);
     expect(switchedInWithoutAnnouncingBalloon(withLog(lead(false)), clientMon({}))).toBe(false);
+  });
+});
+
+describe('endedTurnUnstatused (rules out Flame Orb / Toxic Orb)', () => {
+  const withLog = (stepQueue: string[]): ClientBattle =>
+    ({gen: 9, tier: '[Gen 9] Random Battle', sides: [], stepQueue} as unknown as ClientBattle);
+  const ursaluna = clientMon({ident: 'p1: Ursaluna'});
+  const IN = '|switch|p1a: Ursaluna|Ursaluna, L79, F|335/335';
+  const FOE_IN = '|switch|p2a: Blissey|Blissey, L80, F|539/539';
+  // The residual phase, line for line out of the sim: a blank separator, then the residuals,
+  // then |upkeep| once they have all run.
+  const RESIDUALS = ['|', '|-heal|p2a: Blissey|149/539|[from] item: Leftovers'];
+  const PROCS = '|-status|p1a: Ursaluna|brn|[from] item: Flame Orb';
+
+  it('is true once a turn ends with the holder still on the field and clean', () => {
+    const log = ['|start', IN, FOE_IN, '|turn|1', '|move|p1a: Ursaluna|Facade|p2a: Blissey',
+      ...RESIDUALS, '|upkeep', '|turn|2'];
+    expect(endedTurnUnstatused(withLog(log), ursaluna)).toBe(true);
+  });
+
+  it('is false when the orb actually fires — the status lands before |upkeep|', () => {
+    const log = ['|start', IN, FOE_IN, '|turn|1', '|move|p1a: Ursaluna|Facade|p2a: Blissey',
+      ...RESIDUALS, PROCS, '|upkeep', '|turn|2'];
+    expect(endedTurnUnstatused(withLog(log), ursaluna)).toBe(false);
+  });
+
+  it('does not count the opening switch-ins, which reach |turn|1 with no residual between', () => {
+    // The reason the marker is |upkeep| and not |turn|: nothing has ended yet at turn 1.
+    expect(endedTurnUnstatused(withLog(['|start', IN, FOE_IN, '|turn|1']), ursaluna)).toBe(false);
+  });
+
+  it('does not credit a faint replacement, which the sim brings in AFTER |upkeep|', () => {
+    const log = ['|start', '|switch|p1a: Magikarp|Magikarp, L5, M|19/19', FOE_IN, '|turn|1',
+      '|move|p2a: Blissey|Seismic Toss|p1a: Magikarp', '|-damage|p1a: Magikarp|0 fnt',
+      '|faint|p1a: Magikarp', '|', '|upkeep', '|', IN, '|turn|2'];
+    expect(endedTurnUnstatused(withLog(log), ursaluna)).toBe(false);
+  });
+
+  it('proves nothing about a turn the holder ended already statused', () => {
+    const log = ['|start', IN, FOE_IN, '|turn|1', '|move|p2a: Blissey|Thunder Wave|p1a: Ursaluna',
+      '|-status|p1a: Ursaluna|par', ...RESIDUALS, '|upkeep', '|turn|2'];
+    expect(endedTurnUnstatused(withLog(log), ursaluna)).toBe(false);
+  });
+
+  it('tracks the status along the LOG, so a later cure does not backdate a clean turn', () => {
+    // The snapshot ends clean either way; only the log says whether the orb ever had its
+    // chance. A turn that ended paralysed stays worthless after the paralysis is cured.
+    const statused = ['|start', IN, FOE_IN, '|turn|1', '|-status|p1a: Ursaluna|par',
+      '|upkeep', '|turn|2', '|-curestatus|p1a: Ursaluna|par|[from] move: Heal Bell'];
+    expect(endedTurnUnstatused(withLog(statused), ursaluna)).toBe(false);
+    expect(endedTurnUnstatused(withLog([...statused, '|upkeep', '|turn|3']), ursaluna)).toBe(true);
+  });
+
+  it('reads the status a returning Pokémon carries in on its switch line', () => {
+    const log = ['|start', IN, FOE_IN, '|turn|1', '|switch|p1a: Skarmory|Skarmory, F|292/292',
+      '|upkeep', '|turn|2', '|switch|p1a: Ursaluna|Ursaluna, L79, F|335/335 tox', '|upkeep', '|turn|3'];
+    expect(endedTurnUnstatused(withLog(log), ursaluna)).toBe(false);
+  });
+
+  it('ignores a turn under Misty Terrain, Magic Room or Embargo — each silences the orb', () => {
+    // Misty Terrain is the trap: the sim refuses the status without emitting anything at all
+    // (only a |debug| line the client never carries), so silence there is not evidence.
+    const suppressors = [
+      '|-fieldstart|move: Misty Terrain',
+      '|-fieldstart|move: Magic Room|[of] p2a: Blissey',
+      '|-start|p1a: Ursaluna|move: Embargo',
+    ];
+    for (const suppressor of suppressors) {
+      const log = ['|start', IN, FOE_IN, suppressor, '|turn|1', ...RESIDUALS, '|upkeep', '|turn|2'];
+      expect(endedTurnUnstatused(withLog(log), ursaluna)).toBe(false);
+    }
+  });
+
+  it('resumes reading once the suppressor ends', () => {
+    const log = ['|start', IN, FOE_IN, '|-fieldstart|move: Misty Terrain', '|turn|1', '|upkeep',
+      '|turn|2', '|-fieldend|move: Misty Terrain', '|upkeep', '|turn|3'];
+    expect(endedTurnUnstatused(withLog(log), ursaluna)).toBe(true);
+  });
+
+  it('stops reading at a Tera, which changes what the holder can even catch', () => {
+    const tera = '|-terastallize|p1a: Ursaluna|Fire';
+    const after = ['|start', IN, FOE_IN, '|turn|1', tera, ...RESIDUALS, '|upkeep', '|turn|2'];
+    expect(endedTurnUnstatused(withLog(after), ursaluna)).toBe(false);
+    // A quiet turn BEFORE the Tera is still evidence, so the scan keeps what it already had.
+    const before = ['|start', IN, FOE_IN, '|turn|1', '|upkeep', '|turn|2', tera, '|upkeep', '|turn|3'];
+    expect(endedTurnUnstatused(withLog(before), ursaluna)).toBe(true);
+    // …and someone ELSE terastallizing is none of our business.
+    const foeTera = ['|start', IN, FOE_IN, '|turn|1', '|-terastallize|p2a: Blissey|Fairy',
+      '|upkeep', '|turn|2'];
+    expect(endedTurnUnstatused(withLog(foeTera), ursaluna)).toBe(true);
+  });
+
+  it('tracks the field per SLOT, so a doubles partner switching does not evict the holder', () => {
+    const log = ['|start', IN, '|switch|p1b: Skarmory|Skarmory, F|292/292', FOE_IN, '|turn|1',
+      '|switch|p1b: Chansey|Chansey, F|100/100', '|upkeep', '|turn|2'];
+    expect(endedTurnUnstatused(withLog(log), ursaluna)).toBe(true);
+  });
+
+  it('is false while the holder is off the field, on an empty log, or with no ident', () => {
+    const benched = ['|start', '|switch|p1a: Skarmory|Skarmory, F|292/292', FOE_IN, '|turn|1',
+      '|upkeep', '|turn|2'];
+    expect(endedTurnUnstatused(withLog(benched), ursaluna)).toBe(false);
+    expect(endedTurnUnstatused(withLog([]), ursaluna)).toBe(false);
+    expect(endedTurnUnstatused(withLog(['|start', IN, '|upkeep']), clientMon({}))).toBe(false);
   });
 });
 

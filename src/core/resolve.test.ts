@@ -250,6 +250,51 @@ describe('resolveVariants — the still-possible sets to calc over', () => {
     expect(resolveVariants(varied, entry).map((v) => v.role)).toEqual(['Bulky Setup']);
   });
 
+  it('drops the orb-fed ROLE once a turn has ended un-statused', () => {
+    // Ursaring's real gen9randombattle entry: two roles, one item each, and the orb role's
+    // ability is the reason it matters — Quick Feet is ×1.5 Speed the moment the orb fires,
+    // so leaving it standing keeps a phantom fast variant on a Pokémon that has visibly sat
+    // through an end-of-turn without poisoning itself.
+    const ursaring: RandbatsEntry = {
+      level: 84,
+      abilities: ['Guts', 'Quick Feet'],
+      items: [],
+      roles: {
+        'Bulky Attacker': {abilities: ['Guts'], items: ['Eviolite'], teraTypes: ['Ghost'], moves: ['Facade']},
+        'Setup Sweeper': {abilities: ['Quick Feet'], items: ['Toxic Orb'], teraTypes: ['Ghost'], moves: ['Facade']},
+      },
+    };
+    const facts = liveFacts({speciesForme: 'Ursaring', revealedMoves: ['Facade']});
+    expect(resolveVariants(facts, ursaring).map((v) => v.role).sort())
+      .toEqual(['Bulky Attacker', 'Setup Sweeper']);
+    const quiet = resolveVariants({...facts, endedTurnUnstatused: true}, ursaring);
+    expect(quiet.map((v) => v.role)).toEqual(['Bulky Attacker']);
+    expect(items(quiet)).toEqual(['Eviolite']);
+  });
+
+  it('lets a deduction NARROW the roles but never empty them', () => {
+    // Gliscor's real entry: both roles are Toxic Orb, so the rule-out has nothing left to
+    // leave standing. A deduction is an inference from something that did NOT happen, so
+    // one that kills every role is likelier to be the inference failing than the species
+    // being impossible — and it must not be reported as revealed evidence contradicting
+    // the feed, which is what `assumptionsUncertainReason` says.
+    const gliscor: RandbatsEntry = {
+      level: 76,
+      abilities: ['Poison Heal'],
+      items: [],
+      roles: {
+        'Fast Support': {abilities: ['Poison Heal'], items: ['Toxic Orb'], teraTypes: ['Water'], moves: ['Protect']},
+        'Bulky Support': {abilities: ['Poison Heal'], items: ['Toxic Orb'], teraTypes: ['Water'], moves: ['Earthquake']},
+      },
+    };
+    const facts = liveFacts({speciesForme: 'Gliscor', revealedMoves: ['Protect'], endedTurnUnstatused: true});
+    const r = resolveMon(facts, gliscor);
+    expect(r.assumptionsUncertainReason).toBeUndefined();
+    expect(r.item).toBe('Toxic Orb');
+    // A revealed move still eliminates: that is positive evidence, and it keeps working.
+    expect(resolveVariants(facts, gliscor).map((v) => v.role)).toEqual(['Fast Support']);
+  });
+
   it('keeps roles that resolve to the SAME Pokémon as separate variants', () => {
     // Two roles the calc cannot tell apart are still two SETS, and the sets view indexes
     // this fan-out by role name to fill each candidate block. Collapsing them by their

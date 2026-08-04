@@ -117,6 +117,28 @@ export function buildResolved(
   return facts.transformedInto ? applyTransform(resolved, facts.transformedInto) : resolved;
 }
 
+/**
+ * The item pool to CALCULATE over — the behavioural deductions allowed to narrow it, but
+ * never to empty it. The item-level twin of `narrow.consistentRoles`, and the same reading
+ * of the same principle.
+ *
+ * An empty `survivingItems` is real signal for `narrow.roleMatches`, which reads it as "this
+ * can no longer be that role" and drops the role. By the time a role has been chosen, that
+ * reading has already been made and rejected: the only way a chosen role's pool comes back
+ * empty is that EVERY role's did, and `narrow.consistentRoles` treats that as the inference
+ * failing rather than the species being impossible. Believing the rule-out here anyway would
+ * resolve a Gliscor — whose every randbats role is Toxic Orb — as holding nothing at all,
+ * which is a worse answer than the set's own item, and one no evidence ever supported.
+ */
+function calcItemPool(
+  abilities: readonly string[],
+  items: readonly string[],
+  facts: LiveFacts,
+): readonly string[] {
+  const surviving = survivingItems(abilities, items, facts);
+  return surviving.length > 0 ? surviving : items;
+}
+
 export function resolveMon(facts: LiveFacts, entry: RandbatsEntry): ResolvedMon {
   const {chosen, candidates, uncertain} = selectRoles(entry, facts);
   const possibleMoves = possibleMovesFor(facts, candidates, entry);
@@ -125,8 +147,8 @@ export function resolveMon(facts: LiveFacts, entry: RandbatsEntry): ResolvedMon 
   const item = facts.item ?? (itemGone(facts)
     ? undefined
     : firstDefined(
-        chosen ? survivingItems(chosen.abilities, chosen.items, facts)[0] : undefined,
-        survivingItems(entry.abilities, entry.items, facts)[0],
+        chosen ? calcItemPool(chosen.abilities, chosen.items, facts)[0] : undefined,
+        calcItemPool(entry.abilities, entry.items, facts)[0],
       ));
   const ability = firstDefined(facts.ability, chosen?.abilities[0], entry.abilities[0]);
   return buildResolved(facts, chosen, entry, item, ability, possibleMoves, uncertain);
@@ -158,7 +180,7 @@ export function resolveVariants(facts: LiveFacts, entry: RandbatsEntry): SetVari
     const abilityPool = role?.abilities?.length ? role.abilities : entry.abilities;
     // Drop any item the deductions ruled out, so a landed-hit mon never gets a phantom
     // Life Orb damage bucket alongside the item it's actually still allowed.
-    const itemPool = survivingItems(abilityPool, role?.items?.length ? role.items : entry.items, facts);
+    const itemPool = calcItemPool(abilityPool, role?.items?.length ? role.items : entry.items, facts);
     const items: (string | undefined)[] =
       facts.item !== undefined ? [facts.item] : itemGone(facts) ? [undefined] : itemPool.length ? [...itemPool] : [undefined];
     const abilities: (string | undefined)[] =
@@ -184,8 +206,8 @@ export function resolveByRole(facts: LiveFacts, entry: RandbatsEntry): SetVarian
     const item = facts.item ?? (itemGone(facts)
       ? undefined
       : firstDefined(
-          role ? survivingItems(role.abilities, role.items, facts)[0] : undefined,
-          survivingItems(entry.abilities, entry.items, facts)[0],
+          role ? calcItemPool(role.abilities, role.items, facts)[0] : undefined,
+          calcItemPool(entry.abilities, entry.items, facts)[0],
         ));
     const ability = firstDefined(facts.ability, role?.abilities[0], entry.abilities[0]);
     return {mon: buildResolved(facts, role, entry, item, ability, possibleMoves, uncertain), role: name};

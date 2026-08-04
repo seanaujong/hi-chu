@@ -218,7 +218,7 @@ function teraTag(attackerTera: string | undefined, defenderTera: string | undefi
  *  53% - 63% · no KO", compact on one line so several buckets stay in one block. */
 function variantLine(bucket: DamageBucket, model: MoveRenderModel, tera: string): string {
   const r = bucket.report;
-  const ko = koText(r.koChance);
+  const ko = blockedBySubstitute(r) ? '' : koText(r.koChance);
   const koCtx = ko && model.defenderHpPercent < 0.995 ? ` at ${pct1(model.defenderHpPercent)} HP` : '';
   const koPart = ko ? ` · <span class="hichu-ko">${ko}</span>${koCtx}` : ''; // omit entirely when there's no KO
   const multi = multiHitDetail(r);
@@ -226,6 +226,86 @@ function variantLine(bucket: DamageBucket, model: MoveRenderModel, tera: string)
   // WITHOUT moving the damage numbers, so without it two lines would read identically.
   const self = selfHpText(r);
   return `<small>Damage (${esc(bucket.label)}):</small> ${moveDamageText(r)}${tera}${koPart}${multi ? ` · ${esc(multi)}` : ''}${self ? ` · ${self}` : ''}`;
+}
+
+/**
+ * The Substitute line: how many hits it takes to break the doll, and nothing else.
+ *
+ * One count is the whole of what this surface says about a mechanic we model in far more
+ * detail than that, and the restraint is the design. It is the question a player actually
+ * asks mid-turn ("do I get through this turn, or am I feeding it?"), it arrives in a shape
+ * the tooltip already speaks — a small range, exactly like the damage line above it — and it
+ * reads identically for a one-hit move and a five-hit one, because the move's own hit count
+ * is already on the "Hits:" line. Splitting the display by move kind, or spending it on the
+ * exact distribution of hits that get through, buys precision at a price nobody reading a
+ * tooltip mid-turn can pay.
+ *
+ * A bypassing move says so instead and stops: for a sound move or an Infiltrator holder the
+ * doll is simply not part of the story, and the damage line above is already the whole truth.
+ *
+ * Amber, not red — see `TOOLTIP_STYLE`. Red is reserved for a Pokémon actually fainting, and
+ * a shield in the way is the opposite of that.
+ */
+/**
+ * One Substitute standing behind SEVERAL still-possible defending sets, folded into a single
+ * reading — the widest hit count any of them could need.
+ *
+ * The buckets can genuinely disagree: an Assault Vest that halves the hit halves the damage
+ * reaching the doll too, so it takes longer to knock down. A range spanning them is the same
+ * honest answer the damage line above already gives ("it is somewhere in here"), and it keeps
+ * the sub to one line instead of repeating a count on every variant. Bypassing needs no fold
+ * — it turns on the move and the attacker, which no defending set can vary.
+ */
+function substituteAcross(buckets: readonly DamageBucket[]): DamageReport['substitute'] {
+  const standings = buckets.map((b) => b.report.substitute).filter((s) => s !== undefined);
+  if (standings.length === 0) return undefined;
+  if (standings.some((s) => s.kind === 'bypassed')) return {kind: 'bypassed'};
+  const absorbing = standings.filter((s) => s.kind === 'absorbs');
+  return {
+    kind: 'absorbs',
+    hits: {
+      min: Math.min(...absorbing.map((s) => s.hits.min)),
+      max: Math.max(...absorbing.map((s) => s.hits.max)),
+    },
+    dented: absorbing.some((s) => s.dented),
+  };
+}
+
+function hitsToBreakText(sub: {hits: {min: number; max: number}; dented: boolean}): string {
+  const {min, max} = sub.hits;
+  const count = min === max ? `${min}` : `${min}-${max}`;
+  // A dented doll can only break SOONER, so the fresh figure is an upper bound and says so
+  // in one word rather than a second range to reason about — the client tracks that a sub
+  // exists but never how much of it is left.
+  return `${sub.dented ? 'at most ' : ''}${count} hit${max === 1 ? '' : 's'} to break`;
+}
+
+function substituteLine(sub: DamageReport['substitute']): string {
+  if (!sub) return '';
+  if (sub.kind === 'bypassed') return '<small>Sub:</small> ignored';
+  return `<span class="hichu-note"><small>Sub:</small> ${hitsToBreakText(sub)}</span>`;
+}
+
+/** The same fact on a compact one-line surface (the matchup view's move rows), where a line
+ *  of its own would cost more than it says. A bypassing move gets nothing here rather than
+ *  an "ignored" that adds no number: its damage line is already the plain truth. */
+function substituteAside(sub: DamageReport['substitute']): string {
+  if (sub?.kind !== 'absorbs') return '';
+  return ` · <span class="hichu-note"><small>sub:</small> ${hitsToBreakText(sub)}</span>`;
+}
+
+/**
+ * Does a Substitute stand between this move and the Pokémon? Then no KO claim may be made
+ * about it. The tooltip's red is defined as "a Pokémon faints" (`TOOLTIP_STYLE`), and behind
+ * a doll none does however far the damage figure exceeds the HP bar: a foe on 40% HP takes
+ * nothing at all from a 45% Waterfall it is hiding behind. The KO text, the nHKO ladder and
+ * the Focus Sash aside all rest on the hit landing, so all three go together.
+ *
+ * The damage RANGE itself stays, and stays exactly as computed. It is a true statement about
+ * what the move does to that Pokémon; the Sub line beside it is what says when.
+ */
+function blockedBySubstitute(r: DamageReport): boolean {
+  return r.substitute?.kind === 'absorbs';
 }
 
 /**
@@ -246,7 +326,8 @@ export function renderMoveSection(model: MoveRenderModel): string {
 
   if (model.buckets.length === 1) {
     const r = model.buckets[0]!.report;
-    const ko = koText(r.koChance);
+    const blocked = blockedBySubstitute(r);
+    const ko = blocked ? '' : koText(r.koChance);
     const koCtx = model.defenderHpPercent < 0.995 ? ` at ${pct1(model.defenderHpPercent)} HP` : '';
     const multi = multiHitDetail(r);
     return (
@@ -254,7 +335,8 @@ export function renderMoveSection(model: MoveRenderModel): string {
         targetHeader(model.targetLabel),
         `<small>Damage:</small> ${moveDamageText(r)}${tera}`,
         ko ? `<span class="hichu-ko">${ko}</span>${koCtx}${sashAside(r, model)}` : '', // "12% to KO" reads for itself
-        nhkoLine(r.nhko, model.leftovers),
+        blocked ? '' : nhkoLine(r.nhko, model.leftovers),
+        substituteLine(r.substitute),
         multi ? `<small>Hits:</small> ${esc(multi)}` : '',
         selfHpText(r),
       ]) + notesBlock(model.extraNotes)
@@ -262,7 +344,10 @@ export function renderMoveSection(model: MoveRenderModel): string {
   }
 
   const lines = model.buckets.map((b, i) => variantLine(b, model, i === 0 ? tera : ''));
-  return block([targetHeader(model.targetLabel), ...lines]) + notesBlock(model.extraNotes);
+  return (
+    block([targetHeader(model.targetLabel), ...lines, substituteLine(substituteAcross(model.buckets))]) +
+    notesBlock(model.extraNotes)
+  );
 }
 
 /** One side's HP swing: "28% → 61% (+33%)", the delta signed (negative when it loses). */
@@ -376,11 +461,11 @@ export interface OwnMovesModel {
 function ownMoveLine(row: OwnMoveLineModel, hpPercent: number): string {
   const outcomes = row.buckets.map((b) => {
     const r = b.report;
-    const ko = koText(r.koChance);
+    const ko = blockedBySubstitute(r) ? '' : koText(r.koChance);
     const koCtx = ko && hpPercent < 0.995 ? ` at ${pct1(hpPercent)} HP` : '';
     const koPart = ko ? ` · <span class="hichu-ko">${ko}</span>${koCtx}` : '';
     const label = b.label ? `<small>(${esc(b.label)})</small> ` : '';
-    return `${label}${moveDamageText(r)}${koPart}`;
+    return `${label}${moveDamageText(r)}${koPart}${substituteAside(r.substitute)}`;
   });
   const name = row.known ? `<b>✓ ${esc(row.name)}</b>` : esc(row.name);
   return `${name}: ${outcomes.join(' · ')}`;
@@ -478,6 +563,9 @@ function optionLine(label: string, options: readonly KnownOption[]): string {
 type KoTier = 'ohko' | '2hko' | null;
 
 function koTier(r: DamageReport): KoTier {
+  // A doll in the way makes both tiers unclaimable at once, and this is the single place
+  // the sets view decides either — see `blockedBySubstitute`.
+  if (blockedBySubstitute(r)) return null;
   if (r.koChance > 0) return 'ohko';
   if ((r.nhko?.base[1] ?? 0) >= 0.005) return '2hko';
   return null;

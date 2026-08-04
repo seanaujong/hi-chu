@@ -545,3 +545,152 @@ describe('renderNotes (tooltip-wide caveats)', () => {
     expect(renderNotes([])).toBe('');
   });
 });
+
+describe('a Substitute on the move tooltip', () => {
+  const model = (over: Partial<MoveRenderModel> & {report: DamageReport}): MoveRenderModel => {
+    const {report, ...rest} = over;
+    return {defenderHpPercent: 1, extraNotes: [], buckets: [{label: '', report}], ...rest};
+  };
+  const absorbs = (hits: {min: number; max: number}, dented = false) =>
+    ({kind: 'absorbs', hits, dented}) as const;
+
+  it('says how many hits break it, in the same shape as the damage range above', () => {
+    const html = renderMoveSection(model({report: report({move: 'Waterfall', substitute: absorbs({min: 2, max: 2})})}));
+    expect(html).toContain('<small>Sub:</small> 2 hits to break');
+  });
+
+  it('gives a range when the rolls decide it, and singular when it is one hit', () => {
+    expect(renderMoveSection(model({report: report({move: 'Bullet Seed', substitute: absorbs({min: 2, max: 3})})})))
+      .toContain('<small>Sub:</small> 2-3 hits to break');
+    expect(renderMoveSection(model({report: report({move: 'Boomburst', substitute: absorbs({min: 1, max: 1})})})))
+      .toContain('<small>Sub:</small> 1 hit to break');
+  });
+
+  it('caps a DENTED doll rather than bracketing it — a chipped sub only breaks sooner', () => {
+    const html = renderMoveSection(model({report: report({move: 'Waterfall', substitute: absorbs({min: 2, max: 2}, true)})}));
+    expect(html).toContain('at most 2 hits to break');
+    // …and stays grammatical at the one-hit end, where the cap still reads.
+    expect(renderMoveSection(model({report: report({move: 'Waterfall', substitute: absorbs({min: 1, max: 1}, true)})})))
+      .toContain('at most 1 hit to break');
+  });
+
+  it('says a bypassing move ignores it, and gives no count for a doll it never meets', () => {
+    const html = renderMoveSection(model({report: report({move: 'Boomburst', substitute: {kind: 'bypassed'}})}));
+    expect(html).toContain('<small>Sub:</small> ignored');
+    expect(html).not.toContain('to break');
+  });
+
+  it('adds nothing at all when there is no sub', () => {
+    expect(renderMoveSection(model({report: report({move: 'Waterfall'})}))).not.toContain('Sub:');
+  });
+
+  it('makes NO KO claim while a sub stands, however lethal the damage', () => {
+    // The whole point: a foe on 40% HP behind a doll takes nothing from a 45% hit, so red —
+    // which this stylesheet defines as "a Pokémon faints" — would be claiming a KO that
+    // cannot happen this turn. The damage range itself is untouched and still shown.
+    const lethal = report({
+      move: 'Waterfall',
+      percent: {min: 42, max: 50, mean: 46},
+      koChance: 1,
+      nhko: {base: [1, 1, 1], withLeftovers: [1, 1, 1]},
+      substitute: absorbs({min: 1, max: 1}),
+    });
+    const html = renderMoveSection(model({report: lethal, defenderHpPercent: 0.4}));
+    expect(html).not.toContain('hichu-ko');
+    expect(html).not.toContain('guaranteed KO');
+    expect(html).not.toContain('HKO');
+    expect(html).toContain('<small>Damage:</small> 42% - 50%');
+  });
+
+  it('keeps the KO claim when the move goes straight through the doll', () => {
+    const html = renderMoveSection(model({
+      report: report({move: 'Boomburst', koChance: 1, substitute: {kind: 'bypassed'}}),
+    }));
+    expect(html).toContain('hichu-ko');
+    expect(html).toContain('guaranteed KO');
+  });
+
+  it('withholds the Focus Sash aside too — it also rests on the hit landing', () => {
+    const html = renderMoveSection(model({
+      report: report({move: 'Waterfall', koChance: 1, substitute: absorbs({min: 1, max: 1})}),
+      focusSash: 'certain',
+    }));
+    expect(html).not.toContain('Focus Sash');
+  });
+
+  it('folds several possible defending sets into ONE count spanning them', () => {
+    // An Assault Vest halves the hit, so the doll in front of it stands for longer. One
+    // range covering both is the same honest shape the damage lines above already use.
+    const html = renderMoveSection({
+      defenderHpPercent: 1,
+      extraNotes: [],
+      buckets: [
+        {label: 'Assault Vest', report: report({move: 'Surf', substitute: absorbs({min: 4, max: 5})})},
+        {label: 'no Assault Vest', report: report({move: 'Surf', percent: {min: 60, max: 71, mean: 65}, substitute: absorbs({min: 2, max: 2})})},
+      ],
+    });
+    expect(html).toContain('<small>Sub:</small> 2-5 hits to break');
+  });
+});
+
+describe('a Substitute on the matchup view’s compact lines', () => {
+  const section = (over: Partial<OwnMovesModel> = {}): OwnMovesModel => ({
+    foeName: 'Tentacruel',
+    defenderHpPercent: 1,
+    moves: [{name: 'Draco Meteor', buckets: [{label: '', report: report({move: 'Draco Meteor'})}]}],
+    ...over,
+  });
+  const absorbs = (hits: {min: number; max: number}, dented = false) =>
+    ({kind: 'absorbs', hits, dented}) as const;
+
+  it('carries the same hit count inline, where a line of its own would cost more than it says', () => {
+    const html = renderOwnMovesSection([section({
+      moves: [{name: 'Surf', buckets: [{label: '', report: report({move: 'Surf', substitute: absorbs({min: 2, max: 3})})}]}],
+    })]);
+    expect(html).toContain('<small>sub:</small> 2-3 hits to break');
+  });
+
+  it('drops the KO claim on those lines too, in either direction', () => {
+    const outgoing = renderOwnMovesSection([section({
+      moves: [{name: 'Surf', buckets: [{label: '', report: report({move: 'Surf', koChance: 1, substitute: absorbs({min: 2, max: 2})})}]}],
+    })]);
+    expect(outgoing).not.toContain('hichu-ko');
+    const incoming = renderOwnMovesSection([section({
+      moves: [],
+      incoming: {
+        attackerHpPercent: 0.3,
+        moves: [{name: 'Sludge Bomb', buckets: [{label: '', report: report({move: 'Sludge Bomb', koChance: 1, substitute: absorbs({min: 2, max: 2})})}]}],
+      },
+    })]);
+    expect(incoming).not.toContain('hichu-ko');
+  });
+
+  it('stays silent about a move that goes straight through — its damage line is the whole truth', () => {
+    const html = renderOwnMovesSection([section({
+      moves: [{name: 'Boomburst', buckets: [{label: '', report: report({move: 'Boomburst', koChance: 1, substitute: {kind: 'bypassed'}})}]}],
+    })]);
+    expect(html).not.toContain('sub:');
+    expect(html).toContain('hichu-ko'); // …and it still claims its KO
+  });
+});
+
+describe('the sets view behind a Substitute', () => {
+  it('keeps every damage number but strips the danger tiers', () => {
+    // koTier is the single place the sets view decides red-or-amber, so one guard covers
+    // both: nothing a doll is absorbing is close to a KO, of any tier.
+    const model = (substitute?: DamageReport['substitute']): SetsRenderModel => ({
+      candidates: [{
+        name: 'Bulky Support',
+        abilities: [],
+        items: [],
+        gimmicks: [],
+        moves: [{name: 'Surf', known: true, buckets: [{label: '', report: report({move: 'Surf', koChance: 1, ...(substitute ? {substitute} : {})})}]}],
+      }],
+      extraNotes: [],
+    });
+    expect(renderSetsSection(model())).toContain('hichu-ko');
+    const blocked = renderSetsSection(model({kind: 'absorbs', hits: {min: 2, max: 2}, dented: false}));
+    expect(blocked).not.toContain('hichu-ko');
+    expect(blocked).toContain('(30\u201336%)'); // the number itself is true and stays
+  });
+});

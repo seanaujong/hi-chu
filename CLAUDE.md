@@ -42,7 +42,9 @@ In-browser check: `npm run build`, then `chrome://extensions` → Developer mode
 unpacked** → pick `dist/`; open a Random Battle on play.pokemonshowdown.com and hover a
 Pokémon. (The logic is covered end-to-end by tests; only this hover needs a human.)
 ```sh
+npm run previews      # LOCAL, no browser: render every declared tooltip state to a page
 npm run drift-check   # LOCAL, needs Chrome: runs readState against a live replay (see below)
+npm run drift-check gen9randombattle-2659404198   # …or against ONE named replay
 npm run icons         # LOCAL, needs Chrome: redraw EVERY icon from scripts/lib/logo.mjs
 ```
 **The icons are generated, never hand-edited.** `scripts/lib/logo.mjs` holds the mark as pure
@@ -60,6 +62,25 @@ light and a dark variant: the name is set in the wrapper's red, which clears the
 contrast bar on white (3.7:1) and on a near-black page (5.1:1) alike, and one file cannot be
 paired with the wrong background. `node scripts/make-icons.mjs --proof` renders a sheet to
 `.icon-proof/` — the thresholds were chosen by looking, so looking is how to re-check them.
+**Previews are not a check — they are somewhere to LOOK.** `npm run previews` renders every
+state named in `src/previews.ts` to `previews/index.html` and needs nothing at all: no
+browser, no server, no extension, no network. It exists because a state that takes a real
+two-account battle to roll — a Substitute, a Transform, hazards on one specific side, a
+dented doll — could otherwise only be seen by playing until it happened, which is how the
+Substitute work reached review with no picture of itself. The closest analog is a Jetpack
+Compose `@Preview`, and the same caveat applies twice over: nothing here is a preview-only
+render path (each entry calls the builder a live hover calls, over a battle `section.test.ts`
+also asserts against), but the CHROME around each panel is an approximation, since `render.ts`
+is deliberately almost CSS-free and inherits Showdown's own fonts and colours. Trust a preview
+for what a section says and how it is structured, not for its last pixel.
+
+**Scenarios mutate a captured battle; they are never authored from scratch.** `src/scenario.ts`
+owns the one builder both the previews and `section.test.ts` use, and the direction is the
+point: the client ships no types, so a hand-built `ClientBattle` would be OUR idea of what it
+produces. A test or preview resting on one can pass beautifully while the live hover is broken.
+Adding a knob there serves both consumers at once — which is why a preview that renders nothing
+is reported loudly by the run rather than shown as a blank card.
+
 **Shape of the suite, base to top.** Unit + integration tests (`npm run check`) are the
 base and middle — colocated `*.test.ts` beside each module, two tests driven by real
 captured data (`integration.test.ts`, `section.test.ts`), and one architecture-fitness
@@ -409,6 +430,10 @@ arguments the client passes them.
 - **Sets / mirror** (`renderSetsSection`) — the information game. On a foe hover: still-
   possible sets with each move's damage into our active. On our own: the mirror, what the
   opponent can deduce about us — deliberately carrying NO damage at all.
+- **Sub** (`substituteLine`, `substituteAside`) — one count, "2-3 hits to break", when a
+  Substitute stands in front of the defender. A line of its own on the move tooltip, an
+  inline aside on the matchup view's compact rows, and nothing at all on the sets view,
+  which has no room for it. A bypassing move (sound, Infiltrator) says "ignored" instead.
 - **Notes** (`renderNotes`) — ⚠ caveats, attached once per tooltip after the per-foe
   sections so doubles can't repeat them.
 
@@ -518,6 +543,13 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
     - `illusion.ts` — Zoroark detection: `illusionSuspects` flags when a revealed move fits
       a Zoroark set but not the shown species (the Illusion tell), so `section.ts` can add
       that Zoroark as an extra defender variant (move view) and candidate block (sets view).
+  - `substitute.ts` — the Substitute law: a shield with its own HP bar. Sizes the doll (a
+    quarter of its MAKER's max HP — Shed Tail makes that a different Pokémon), counts the
+    hits that break it CUMULATIVELY per hit rather than by division (Triple Axel's hits
+    escalate), and owns which moves walk through it (`sound`, which the calc does expose,
+    plus the three non-sound bypassers and Infiltrator, which it doesn't). The calc models
+    none of this, so the whole mechanic is ours — including the rule that no KO may be
+    claimed through a standing doll, which `render.ts` enforces.
   - `transform.ts` — the Transform law (Ditto's Imposter): a Pokémon that has copied another
     one WHOLE. `transformCopy` builds the copy (the target's body and final numbers, wearing
     the copier's HP — the one stat Transform never takes); `applyTransform` overlays it on the
@@ -613,7 +645,8 @@ test you haven't seen fail isn't protecting anything yet.
 **Where we correct `@smogon/calc`.** Keep the line clear. A calc *gap* — something it
 should arguably handle and doesn't — is ours to own, and each one is a row below: the
 multi-hit hit-count model, the item id→name quirk, the nHKO ladder, Pain Split, Rage Fist,
-variable-power multi-hit, damage-callback moves, and unknown species/items. A third kind hides between those two and
+variable-power multi-hit, damage-callback moves, Substitute (its move table has one as a 0-BP
+status move and stops there), and unknown species/items. A third kind hides between those two and
 is the easiest to ship by accident: the calc answering EXACTLY what we asked, where the asking
 itself was wrong. Requesting one hit of a multi-hit move is that — the calc then reads it as a
 single-hit move and applies the Tera 60 BP floor. Our *product* is not a calc gap: the
@@ -671,6 +704,9 @@ them until someone adds it.
 | One hit of a multi-hit move is asked for as TWO — a single hit takes gen 9's Tera 60 BP floor, which no multi-hit move ever takes | ✅ | `core/damage.ts` (`TERA_FLOOR_SAFE_HITS`) | `damage.test.ts` |
 | Rage Fist's power scales with the ATTACKER's own hits taken | ✅ | `core/damage.ts` (`rageFistPower`), `battle/readState.ts` (`timesAttacked`) | `damage.test.ts`, `readState.test.ts`, `transform.test.ts` |
 | A move with NO base power takes its damage from a callback over current HP — one exact amount, no nHKO ladder, but still stopped by an immunity | ✅ | `core/moves.ts` (`damageCallback`), `core/damage.ts` (`connects`) | `damage.test.ts`, `section.test.ts` |
+| A Substitute is a shield, and the tooltip says ONE thing about it: how many hits break the doll — cumulative per HIT, never spilled over | ✅ | `core/substitute.ts`, `core/damage.ts` (`substituteStanding`) | `substitute.test.ts`, `damage.test.ts`, `section.test.ts` |
+| NO KO may be claimed while a Substitute stands — the KO text, the nHKO ladder, the Sash aside and the sets view's danger tiers go together | ✅ | `core/render.ts` (`blockedBySubstitute`, `koTier`) | `render.test.ts`, `section.test.ts` |
+| A Shed Tail sub is sized on its MAKER's max HP, not the Pokémon wearing it; a dented one caps the count rather than bracketing it | ✅ | `core/substitute.ts` (`substituteHP`), `battle/readState.ts` (`readSubstitute`), `section.ts` (`shedTailMakerMaxHP`) | `substitute.test.ts`, `readState.test.ts`, `damage.test.ts` |
 | Speed order: arithmetic delegated, ORDER owned, a fact about the PAIR | ✅ | `core/speed.ts`, `section.ts` (`speedSection`, `ownMovesSection`) | `speed.test.ts`, `render.test.ts`, `section.test.ts` |
 | Unburden's ×2 Speed is armed via an explicit `abilityOn` flag, not inferred from `item` | ✅ | `core/resolve.ts` (`buildResolved`), `core/damage.ts` (`buildPokemon`) | `resolve.test.ts`, `speed.test.ts` |
 | The fetch/reason/render split is a checked import graph, not just a description | ✅ | `src/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |
@@ -715,7 +751,13 @@ rather than in our code. Run the named check by hand after a Showdown client upd
   reads that line's ABSENCE as evidence, so a client that stopped emitting it would make
   every balloon holder look like it had none, and call a Ground move safe into a Pokémon
   immune to it. Both probes report whether they actually fired — a `[from]` move and an Air
-  Balloon announcement are each rare enough that a random replay often has neither.
+  Balloon announcement are each rare enough that a random replay often has neither. And
+  `volatiles.substitute` (presence only — the client never tracks the doll's HP, which is why
+  we derive its size), `side.pokemon` (the roster, the only place a Shed Tail's maker can
+  still be found once using it took them off the field), and the `|-start|…|Substitute` and
+  `|-activate|…|move: Substitute|[damage]` layouts — the first tells a fresh doll from a
+  battered one, the second's `[damage]` tag is all that separates an absorbed hit from a
+  status move the sub merely blocked.
 - **`npm run player-check`** (a real two-account battle on a self-hosted server) — anything
   behind `battle.myPokemon`, which a replay has no access to at all: the
   `ClientServerPokemon` contract incl. `stats`, the switch-menu hover and its ⚡ bench

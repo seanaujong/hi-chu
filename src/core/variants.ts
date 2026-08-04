@@ -29,7 +29,12 @@ export interface DamageBucket {
  */
 function resultKey(r: DamageReport): string {
   const self = (r.selfHp ?? []).map((e) => `${e.label}${e.direction}${e.min}-${e.max}`).join(',');
-  return `${r.percent.min}|${r.percent.max}|${Math.round(r.koChance * 1000)}|${self}`;
+  // A Substitute is live state, identical across every set of one Pokémon — except for how
+  // long it survives, which the SET decides: an Assault Vest that halves the hit halves the
+  // damage reaching the doll too, so it stands for more hits. That difference is shown, so
+  // it has to key, or two visibly different lines would collapse into one.
+  const sub = r.substitute?.kind === 'absorbs' ? `${r.substitute.hits.min}-${r.substitute.hits.max}` : (r.substitute?.kind ?? '');
+  return `${r.percent.min}|${r.percent.max}|${Math.round(r.koChance * 1000)}|${self}|${sub}`;
 }
 
 /** Dedupe strings, preserving first-seen order. */

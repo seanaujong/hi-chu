@@ -110,6 +110,7 @@ export function buildResolved(
     timesAttacked: facts.timesAttacked,
     ...(facts.accuracyBoost !== undefined ? {accuracyBoost: facts.accuracyBoost} : {}),
     ...(facts.evasionBoost !== undefined ? {evasionBoost: facts.evasionBoost} : {}),
+    ...(facts.substitute ? {substitute: facts.substitute} : {}),
   };
   // A Transformed Pokémon wears the copy for every calc, and its own set for everything
   // else — so the overlay lands here, after the set has been resolved, not instead of it.

@@ -1,7 +1,7 @@
 {
   "name": "hi-chu",
   "version": "0.22.0",
-  "description": "Battle hints on hover for Pokémon Showdown: move damage, opponent's possible sets, and who's faster.",
+  "description": "Battle hints on hover for Pok\u00e9mon Showdown: move damage, opponent's possible sets, and who's faster.",
   "private": true,
   "type": "module",
   "scripts": {
@@ -23,7 +23,8 @@
     "release-bump": "node scripts/release-bump.mjs",
     "screenshots": "node scripts/screenshots.mjs",
     "build:visual-check": "node scripts/build-visual-check.mjs",
-    "visual-check": "npm run build:visual-check && REAL_EXTENSION=1 node scripts/screenshots.mjs"
+    "visual-check": "npm run build:visual-check && REAL_EXTENSION=1 node scripts/screenshots.mjs",
+    "previews": "node scripts/previews.mjs"
   },
   "dependencies": {
     "@smogon/calc": "^0.11.0"

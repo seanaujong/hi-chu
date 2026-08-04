@@ -20,6 +20,10 @@ store-screenshots/
 # never shipped. The icons themselves ARE committed.
 .icon-proof/
 
+# `npm run previews` output — the gallery page, regenerated from src/previews.ts on demand.
+# The DECLARATIONS are committed (they are the part worth reviewing); the render is not.
+previews/
+
 # `npm run screenshots` output — candidate shots from a throwaway battle; the keepers
 # get copied into demo/ and store-screenshots/ by hand.
 screenshots/

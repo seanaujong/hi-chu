@@ -4,6 +4,8 @@ import {
   readLiveForme,
   readTransformTarget,
   readSpeciesData,
+  readSubstitute,
+  findByIdent,
   hasLandedDamagingHit,
   mostRecentCleanHit,
   timesAttacked,
@@ -1100,5 +1102,104 @@ describe('readSpeciesData (the client dex as calc fallback for unknown formes)',
     expect(readSpeciesData(withDex(fullRecord), clientMon())?.abilities).toBeUndefined();
     expect(readSpeciesData(withDex({...fullRecord, abilities: {}}), clientMon())?.abilities).toBeUndefined();
     expect(readSpeciesData(withDex({...fullRecord, abilities: {0: ''}}), clientMon())?.abilities).toBeUndefined();
+  });
+});
+
+describe('readSubstitute', () => {
+  const subbed = (over: Partial<ClientPokemon> = {}) =>
+    clientMon({ident: 'p2a: Keldeo', volatiles: {substitute: ['substitute']}, ...over});
+  const withLog = (stepQueue: string[]): ClientBattle =>
+    ({gen: 9, tier: '[Gen 9] Random Battle', sides: [], stepQueue}) as unknown as ClientBattle;
+
+  it('reports nothing for a Pokémon with no sub, whatever the log once said', () => {
+    const log = ['|-start|p2a: Keldeo|Substitute', '|-end|p2a: Keldeo|Substitute'];
+    expect(readSubstitute(withLog(log), clientMon({ident: 'p2a: Keldeo', volatiles: {}}))).toBeUndefined();
+  });
+
+  it('reports a fresh sub as undented', () => {
+    const log = ['|move|p2a: Keldeo|Substitute|p2a: Keldeo', '|-start|p2a: Keldeo|Substitute'];
+    expect(readSubstitute(withLog(log), subbed())).toEqual({dented: false});
+  });
+
+  it('marks it dented once a hit has been absorbed', () => {
+    const log = [
+      '|-start|p2a: Keldeo|Substitute',
+      '|move|p1a: Noivern|Flamethrower|p2a: Keldeo',
+      '|-activate|p2a: Keldeo|move: Substitute|[damage]',
+    ];
+    expect(readSubstitute(withLog(log), subbed())).toEqual({dented: true});
+  });
+
+  it('does NOT count a status move the sub merely blocked — no damage, no dent', () => {
+    const log = ['|-start|p2a: Keldeo|Substitute', '|-activate|p2a: Keldeo|move: Substitute'];
+    expect(readSubstitute(withLog(log), subbed())).toEqual({dented: false});
+  });
+
+  it('forgets a PREVIOUS sub’s damage when a new one goes up', () => {
+    // The doll standing now was made this turn; carrying the last one's chip onto it would
+    // understate how many hits it can take.
+    const log = [
+      '|-start|p2a: Keldeo|Substitute',
+      '|-activate|p2a: Keldeo|move: Substitute|[damage]',
+      '|-end|p2a: Keldeo|Substitute',
+      '|-start|p2a: Keldeo|Substitute',
+    ];
+    expect(readSubstitute(withLog(log), subbed())).toEqual({dented: false});
+  });
+
+  it('keeps one Pokémon’s sub separate from another’s', () => {
+    const log = [
+      '|-start|p2a: Keldeo|Substitute',
+      '|-start|p1a: Noivern|Substitute',
+      '|-activate|p1a: Noivern|move: Substitute|[damage]',
+    ];
+    expect(readSubstitute(withLog(log), subbed())).toEqual({dented: false});
+  });
+
+  it('names the MAKER of a Shed Tail sub — the doll was cut from its HP, not the wearer’s', () => {
+    // Captured verbatim from the simulator: the `-start` lands on the user, and the sub
+    // travels on the incoming mon's own switch line.
+    const log = [
+      '|move|p1a: Cyclizar|Shed Tail|p1a: Cyclizar',
+      '|-start|p1a: Cyclizar|Substitute|[from] move: Shed Tail',
+      '|-damage|p1a: Cyclizar|127/255',
+      '|switch|p1a: Gliscor|Gliscor, L84, M|263/263|[from] Shed Tail',
+    ];
+    const gliscor = clientMon({ident: 'p1a: Gliscor', volatiles: {substitute: ['substitute']}});
+    expect(readSubstitute(withLog(log), gliscor)).toEqual({dented: false, shedTailMaker: 'p1a: Cyclizar'});
+  });
+
+  it('claims no maker for an ordinary switch, which never carries a sub in', () => {
+    const log = ['|-start|p1a: Cyclizar|Substitute', '|switch|p1a: Gliscor|Gliscor, L84, M|263/263'];
+    const gliscor = clientMon({ident: 'p1a: Gliscor', volatiles: {substitute: ['substitute']}});
+    expect(readSubstitute(withLog(log), gliscor)).toEqual({dented: false});
+  });
+
+  it('still reports the sub the volatile proves, even with no log to explain it', () => {
+    expect(readSubstitute(withLog([]), subbed())).toEqual({dented: false});
+  });
+});
+
+describe('findByIdent', () => {
+  const cyclizar = clientMon({ident: 'p1: Cyclizar', speciesForme: 'Cyclizar'});
+  const gliscor = clientMon({ident: 'p1: Gliscor', speciesForme: 'Gliscor'});
+  const battle = {
+    gen: 9,
+    tier: '[Gen 9] Random Battle',
+    sides: [{active: [gliscor], pokemon: [gliscor, cyclizar]}, {active: []}],
+  } as unknown as ClientBattle;
+
+  it('finds a Pokémon that has switched OUT — the roster outlives the field', () => {
+    // A Shed Tail user is off the field by definition, so `active` alone would never find it.
+    expect(findByIdent(battle, 'p1a: Cyclizar')?.speciesForme).toBe('Cyclizar');
+  });
+
+  it('matches slot-independently, so a log ident finds a roster one', () => {
+    expect(findByIdent(battle, 'p1a: Gliscor')?.speciesForme).toBe('Gliscor');
+  });
+
+  it('answers undefined for a name nobody has', () => {
+    expect(findByIdent(battle, 'p2a: Keldeo')).toBeUndefined();
+    expect(findByIdent(battle, '')).toBeUndefined();
   });
 });

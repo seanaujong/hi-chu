@@ -388,15 +388,28 @@ function verdictText(first: SpeedOutcome['first'], long: boolean): string {
   return `<span class="hichu-note">${text}</span>`;
 }
 
-/** "⚡ you move first — 231 vs 213 · if Choice Scarf: they do (319)". The lead outcome
- *  is the one most surviving sets share (speedBuckets orders it first); every other
- *  possible speed rides along as an "if <what differs>" aside. Numbers are always
- *  OURS vs THEIRS. Trick Room already flipped the verdicts in core/speed.ts — the
- *  prefix here just says why the slower number is winning. */
+/**
+ * "⚡ you move first — 231 vs 213 · if Choice Scarf: they do (319)". The lead outcome
+ * is the one most surviving sets share (speedBuckets orders it first). Numbers are
+ * always OURS vs THEIRS. Trick Room already flipped the verdicts in core/speed.ts —
+ * the prefix here just says why the slower number is winning.
+ *
+ * An "if …" aside exists to CONTRADICT the lead, so only a differing verdict earns
+ * one. The speed question is binary, and a foe set that is merely slower still than
+ * the one we lead with reaches the same answer — "you move first, unless Iron Ball,
+ * in which case you move first" spends a clause to restate the verdict it just gave.
+ * Dropping it isn't hiding uncertainty: what survives the filter is exactly the set of
+ * ways the answer could differ, so no asides means the verdict holds under EVERY
+ * still-possible set — a stronger claim than the hedged line made, and a true one. A
+ * tie is a genuinely different answer (a 50/50, not a win), never a restatement, so it
+ * survives. The speeds themselves stay in `SpeedOrder`: core enumerates every possible
+ * outcome, and this layer decides which are worth a reader's attention.
+ */
 function speedLine(model: SpeedLineModel): string {
   const {order, ourName} = model;
-  const [lead, ...asides] = order.outcomes;
+  const [lead, ...rest] = order.outcomes;
   if (!lead) return '';
+  const asides = rest.filter((o) => o.first !== lead.first);
   const name = ourName ? `<small>your ${esc(ourName)}:</small> ` : '';
   const room = order.trickRoom ? '<small>Trick Room:</small> ' : '';
   const head = `⚡ ${name}${room}${verdictText(lead.first, true)} — ${order.ourSpeed} vs ${lead.speed}`;

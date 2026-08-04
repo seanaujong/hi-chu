@@ -24,7 +24,7 @@
 // which is exactly the wait this file exists to delete.
 
 import {buildMoveSection, buildPokemonSection, buildSwitchSection} from './section.js';
-import {loadBattle, scenarioData, scenarioDataTwinRoles, scenarioDataWithDitto} from './scenario.js';
+import {loadBattle, scenarioData, scenarioDataTwinRoles, scenarioDataWithDitto, scenarioDataWithEmboar} from './scenario.js';
 
 // Re-exported so the gallery can style its panels with the very stylesheet the extension
 // injects, rather than a copy of it that could drift.
@@ -159,6 +159,14 @@ export const PREVIEWS: readonly Preview[] = [
     {},
     'Tentacruel',
     scenarioDataTwinRoles,
+  ),
+  pokemonHover(
+    'Foe active',
+    'Two foe speeds, one answer',
+    'Emboar has shown Head Smash, which leaves only its Choice-locked role: a Band at 157 Spe or a Scarf at 235. Our Noivern is 249 and moves first against both, so the second speed gets no "if" clause — an aside is for the set that would change the verdict, and neither does.',
+    {foeEmboar: true},
+    'Emboar',
+    scenarioDataWithEmboar,
   ),
   pokemonHover(
     'Foe active',

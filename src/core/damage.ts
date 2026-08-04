@@ -51,12 +51,12 @@ export interface HitCountBreakdown {
  * and `direction` carries the sign, so the render layer never has to sniff the label or
  * juggle negative ranges.
  *
- * A LIST, not one net figure, because the causes genuinely stack: a Life Orb Giga Drain
- * both heals and hurts, and those read as two separate facts to a player deciding whether
- * the trade is worth it. Netting them would also hide which one is which.
+ * A LIST, not one net figure, because the causes genuinely stack: a recoil move under a
+ * Shell Bell both heals and hurts, and those read as two separate facts to a player
+ * deciding whether the trade is worth it. Netting them would also hide which one is which.
  */
 export interface SelfHpEffect {
-  /** Names the cause for the tooltip: "Drains", "Recoil", "Life Orb", "Liquid Ooze". */
+  /** Names the cause for the tooltip: "Drains", "Recoil", "Liquid Ooze". */
   readonly label: string;
   readonly direction: 'gain' | 'loss';
   readonly min: number;
@@ -93,8 +93,9 @@ export interface DamageReport {
    */
   readonly nhko?: {readonly base: readonly number[]; readonly withLeftovers: readonly number[]};
   /**
-   * The attacker's own HP swing from landing this move (drain, recoil, Life Orb, Liquid
-   * Ooze). Present only when requested (`CalcDamageOptions.selfHp`) — the move tooltip is
+   * The attacker's own HP swing from landing this move (drain, recoil, Liquid Ooze — a
+   * Life Orb's flat cut is deliberately not among them, see `selfHpEffects`). Present
+   * only when requested (`CalcDamageOptions.selfHp`) — the move tooltip is
    * the one surface that shows it, and leaving it off everywhere else keeps those surfaces'
    * damage buckets keyed exactly as before (see `variants.resultKey`).
    */
@@ -469,7 +470,7 @@ export interface CalcDamageOptions {
   /** Compute the nHKO ladder up to this many turns (omit to skip — the sets view does). */
   readonly nhkoTurns?: number;
   /**
-   * Compute the attacker's own HP swing (drain/recoil/Life Orb/Liquid Ooze). Opt-in like
+   * Compute the attacker's own HP swing (drain/recoil/Liquid Ooze). Opt-in like
    * `nhkoTurns`, and for the same reason: only the move tooltip renders it, and a report
    * that doesn't carry it leaves `variants.resultKey` — and so every other surface's
    * bucketing — byte-identical to before.

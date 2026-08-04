@@ -24,7 +24,7 @@
 // which is exactly the wait this file exists to delete.
 
 import {buildMoveSection, buildPokemonSection, buildSwitchSection} from './section.js';
-import {loadBattle, scenarioData, scenarioDataWithDitto} from './scenario.js';
+import {loadBattle, scenarioData, scenarioDataTwinRoles, scenarioDataWithDitto} from './scenario.js';
 
 // Re-exported so the gallery can style its panels with the very stylesheet the extension
 // injects, rather than a copy of it that could drift.
@@ -151,6 +151,14 @@ export const PREVIEWS: readonly Preview[] = [
     'The same block with a doll in front of our Noivern: the numbers are still true about the Pokémon, so they stay — but nothing they throw is close to a KO, so the danger colouring goes.',
     {noivernSubstitute: 'fresh', myNoivernHpPercent: 0.2},
     'Tentacruel',
+  ),
+  pokemonHover(
+    'Foe active',
+    'Two roles the calc cannot tell apart',
+    'A feed where two roles share an ability and an item and differ only in their moves — a Sandaconda’s "Bulky Attacker" and "Bulky Setup". A player reads them as different sets; the calc resolves them to one Pokémon. Each block still has to carry its own damage.',
+    {},
+    'Tentacruel',
+    scenarioDataTwinRoles,
   ),
   pokemonHover(
     'Foe active',

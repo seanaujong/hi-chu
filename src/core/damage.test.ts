@@ -593,7 +593,7 @@ describe('doubles game type (spread moves take their 0.75×)', () => {
   });
 })
 
-describe("the attacker's own HP swing (drain, recoil, Life Orb, Liquid Ooze)", () => {
+describe("the attacker's own HP swing (drain, recoil, Liquid Ooze)", () => {
   const swing = (
     attacker: Partial<ResolvedMon> & {speciesForme: string},
     defender: Partial<ResolvedMon> & {speciesForme: string},
@@ -619,6 +619,15 @@ describe("the attacker's own HP swing (drain, recoil, Life Orb, Liquid Ooze)", (
     expect(plain!.max).toBeGreaterThan(0);
     const rockHead = swing({speciesForme: 'Dragonite', ability: 'Rock Head'}, {speciesForme: 'Skarmory'}, 'Double-Edge');
     expect(find(rockHead, 'Recoil')).toBeUndefined();
+  });
+
+  it('is a LIST because the causes stack — a Shell Bell recoil move both heals and hurts', () => {
+    // The shape `SelfHpEffect` exists for: one move, two opposite swings, reported as two
+    // facts rather than netted. Every other case here has a single cause, so nothing else
+    // pins the list. ("Drains" is the calc's own bucket for any damage-proportional
+    // recovery, Shell Bell's included — imprecise as a label, but the right figure.)
+    const both = swing({speciesForme: 'Dragonite', item: 'Shell Bell'}, {speciesForme: 'Skarmory'}, 'Double-Edge');
+    expect(both.map((e) => `${e.label}/${e.direction}`)).toEqual(['Drains/gain', 'Recoil/loss']);
   });
 
   // The two corrections below are ours: @smogon/calc models neither, verified by probing it

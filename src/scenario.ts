@@ -34,6 +34,31 @@ export const scenarioDataWithDitto = {
   },
 } as unknown as RandbatsData;
 
+/** The captured Tentacruel entry, as the shape this file has to reach into to grow a role. */
+type FeedEntry = {roles: Record<string, {moves: readonly string[]}>};
+const tentacruel = (scenarioData as unknown as Record<string, FeedEntry>)['Tentacruel'] as FeedEntry;
+
+/**
+ * The same feed with Tentacruel given a SECOND role that resolves to an identical Pokémon:
+ * the first role's ability and items, a different move list.
+ *
+ * Real randbats entries do this constantly — a Sandaconda's "Bulky Attacker" and "Bulky
+ * Setup" are both Shed Skin + Leftovers, differing only in what they carry. Two roles a
+ * PLAYER tells apart at a glance (one sets up, one doesn't) and the CALC cannot tell apart
+ * at all. That gap is easy to introduce and invisible without a picture, so the state is
+ * worth both an assertion and a preview.
+ */
+export const scenarioDataTwinRoles = {
+  ...(scenarioData as object),
+  Tentacruel: {
+    ...tentacruel,
+    roles: {
+      ...tentacruel.roles,
+      'Bulky Attacker': {...tentacruel.roles['Bulky Support'], moves: ['Flip Turn', 'Knock Off', 'Sludge Bomb', 'Surf']},
+    },
+  },
+} as unknown as RandbatsData;
+
 /**
  * Rebuild the client's object graph from the captured JSON, wiring the
  * `pokemon.side` back-references the live client maintains (and that

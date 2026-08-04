@@ -202,12 +202,32 @@ function variantSignature(m: ResolvedMon): string {
   ]);
 }
 
-/** Exported alongside `buildResolved` for assume.ts, the second variant producer. */
+/**
+ * Collapse variants that are the same SET — not merely the same Pokémon.
+ *
+ * The mon signature alone is not the identity, because a `SetVariant` also carries the
+ * ROLE it came from and callers index by it: `section.groupByRole` is how each candidate
+ * block in the sets view gets its own damage. Two roles routinely resolve to one
+ * Pokémon — a Sandaconda's "Bulky Attacker" and "Bulky Setup" are both Shed Skin +
+ * Leftovers, differing only in the moves they carry, which is nothing the calc-facing
+ * Pokémon encodes. Keying on the mon alone dropped the second role out of the fan-out
+ * entirely, and its block then rendered every move bare.
+ *
+ * What remains collapsible is a pool that repeats itself — a feed listing one item twice.
+ * Items × abilities within a role are distinct by construction, since both are part of the
+ * signature. So this is a guard against redundant work rather than a load-bearing
+ * reduction, and identical results merge again downstream in `variants.bucketByDamage`:
+ * the outcomes a tooltip displays never depended on it.
+ *
+ * Exported alongside `buildResolved` for assume.ts, the second variant producer.
+ */
 export function dedupeVariants(variants: readonly SetVariant[]): SetVariant[] {
   const seen = new Set<string>();
   const out: SetVariant[] = [];
   for (const v of variants) {
-    const key = variantSignature(v.mon);
+    // NUL-joined: a role name is free text from the feed, and no separator that could
+    // appear in one may be able to make two different pairs share a key.
+    const key = `${v.role}\u0000${variantSignature(v.mon)}`;
     if (!seen.has(key)) {
       seen.add(key);
       out.push(v);

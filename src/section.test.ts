@@ -13,7 +13,7 @@
 import {describe, it, expect} from 'vitest';
 import {buildMoveSection, buildPokemonSection, buildSwitchSection} from './section.js';
 import type {ClientBattle, ClientPokemon, ClientSide} from './battle/readState.js';
-import {loadBattle, scenarioData as data, scenarioDataWithDitto} from './scenario.js';
+import {loadBattle, scenarioData as data, scenarioDataWithDitto, scenarioDataTwinRoles} from './scenario.js';
 import type {RandbatsData} from './core/types.js';
 
 /** The max-damage percentage the "Damage: X% - Y%" line prints. */
@@ -329,6 +329,35 @@ describe('buildPokemonSection hovering THEIR Tentacruel (possible sets)', () => 
     expect(html).toMatch(/Surf \(\d+(\.\d+)?–\d+(\.\d+)?%\)/);
     expect(html).toContain('Haze');
     expect(html).not.toMatch(/Haze \(/);
+  });
+});
+
+describe('two roles that resolve to the SAME Pokémon each keep their own damage', () => {
+  // Real feeds do this constantly: a Sandaconda's "Bulky Attacker" and "Bulky Setup" are
+  // both Shed Skin + Leftovers, differing only in the moves they carry. Deduping variants
+  // by their calc-facing Pokémon ALONE dropped the second role from the fan-out entirely,
+  // so its block rendered every move bare — a `Surf` sitting beside another block's
+  // `Surf (24–28%)`, which reads as "this set's Surf does nothing".
+  const {battle, active} = loadBattle();
+  const html = buildPokemonSection(battle, active('Tentacruel'), scenarioDataTwinRoles);
+
+  /** The slice of the tooltip belonging to one role's block — up to the next block. */
+  const blockFor = (role: string): string => {
+    const start = html.indexOf(`>${role}</span>`);
+    if (start < 0) throw new Error(`no block for ${role} in:\n${html}`);
+    const next = html.indexOf('<div class="hichu-block">', start);
+    return next < 0 ? html.slice(start) : html.slice(start, next);
+  };
+
+  it('renders a block for each role', () => {
+    expect(html).toContain('>Bulky Support</span>');
+    expect(html).toContain('>Bulky Attacker</span>');
+  });
+
+  it('attaches damage inside EVERY block, not only the first', () => {
+    const damaged = /Surf \(\d+(\.\d+)?–\d+(\.\d+)?%\)/;
+    expect(blockFor('Bulky Support')).toMatch(damaged);
+    expect(blockFor('Bulky Attacker')).toMatch(damaged);
   });
 });
 

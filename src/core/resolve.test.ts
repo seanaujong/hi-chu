@@ -250,17 +250,31 @@ describe('resolveVariants — the still-possible sets to calc over', () => {
     expect(resolveVariants(varied, entry).map((v) => v.role)).toEqual(['Bulky Setup']);
   });
 
-  it('dedupes roles that resolve identically — no fan-out from redundant sets', () => {
+  it('keeps roles that resolve to the SAME Pokémon as separate variants', () => {
+    // Two roles the calc cannot tell apart are still two SETS, and the sets view indexes
+    // this fan-out by role name to fill each candidate block. Collapsing them by their
+    // calc-facing Pokémon dropped one role out of the map entirely, so its block rendered
+    // every move with no damage beside it — see section.test.ts for that surface.
     const twin: RandbatsEntry = {
       level: 80,
       abilities: ['Levitate'],
       items: [],
       roles: {
         'Role A': {abilities: ['Levitate'], items: ['Leftovers'], teraTypes: ['Fire'], moves: ['Flamethrower']},
-        'Role B': {abilities: ['Levitate'], items: ['Leftovers'], teraTypes: ['Fire'], moves: ['Flamethrower']},
+        'Role B': {abilities: ['Levitate'], items: ['Leftovers'], teraTypes: ['Fire'], moves: ['Hydro Pump']},
       },
     };
-    expect(resolveVariants(noivernFacts({speciesForme: 'Rotom'}), twin)).toHaveLength(1);
+    expect(resolveVariants(noivernFacts({speciesForme: 'Rotom'}), twin).map((v) => v.role)).toEqual(['Role A', 'Role B']);
+  });
+
+  it('still collapses a pool that repeats itself — the same item listed twice is one variant', () => {
+    const repeated: RandbatsEntry = {
+      level: 80,
+      abilities: ['Levitate'],
+      items: [],
+      roles: {'Role A': {abilities: ['Levitate'], items: ['Leftovers', 'Leftovers'], teraTypes: ['Fire'], moves: ['Flamethrower']}},
+    };
+    expect(resolveVariants(noivernFacts({speciesForme: 'Rotom'}), repeated)).toHaveLength(1);
   });
 });
 

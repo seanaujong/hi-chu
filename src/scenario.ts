@@ -34,6 +34,30 @@ export const scenarioDataWithDitto = {
   },
 } as unknown as RandbatsData;
 
+/**
+ * The same feed plus Emboar's real gen9 randbats entry, verbatim from the live feed.
+ *
+ * Brought along for one property its "Fast Attacker" role has and nothing in the captured
+ * battle does: an item pool of exactly `["Choice Band", "Choice Scarf"]`. One ability and two
+ * items make two variants of EQUAL weight, so the faster (Scarf, 235) leads and the slower
+ * (Band, 157) trails — the shape that produces a speed aside pointing DOWNWARD, which is the
+ * case `speedLine` drops. Head Smash is the move that gets there: it belongs to that role
+ * alone, so revealing it narrows the other two away and leaves the split standing by itself.
+ */
+export const scenarioDataWithEmboar = {
+  ...(scenarioData as object),
+  Emboar: {
+    level: 84,
+    abilities: ['Reckless'],
+    items: ['Assault Vest', 'Choice Band', 'Choice Scarf', 'Leftovers'],
+    roles: {
+      'Bulky Setup': {abilities: ['Reckless'], items: ['Leftovers'], teraTypes: ['Fighting', 'Grass'], moves: ['Bulk Up', 'Drain Punch', 'Flare Blitz', 'Trailblaze']},
+      'AV Pivot': {abilities: ['Reckless'], items: ['Assault Vest'], teraTypes: ['Dark', 'Electric', 'Fire', 'Water'], moves: ['Close Combat', 'Flare Blitz', 'Knock Off', 'Scald', 'Sucker Punch', 'Wild Charge']},
+      'Fast Attacker': {abilities: ['Reckless'], items: ['Choice Band', 'Choice Scarf'], teraTypes: ['Fire'], moves: ['Close Combat', 'Flare Blitz', 'Head Smash', 'Knock Off', 'Wild Charge']},
+    },
+  },
+} as unknown as RandbatsData;
+
 /** The captured Tentacruel entry, as the shape this file has to reach into to grow a role. */
 type FeedEntry = {roles: Record<string, {moves: readonly string[]}>};
 const tentacruel = (scenarioData as unknown as Record<string, FeedEntry>)['Tentacruel'] as FeedEntry;
@@ -67,7 +91,7 @@ export const scenarioDataTwinRoles = {
  * The client's classes are untyped and cyclic, so the reconstruction casts through
  * `unknown` — the shapes match readState's structural interfaces.
  */
-export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; farStealthRock?: boolean; farSpikes?: number; tentacruelHpPercent?: number; foeDitto?: 'transformed' | 'plain'; ourZoroark?: boolean; tentacruelSubstitute?: 'fresh' | 'dented'; noivernSubstitute?: 'fresh' | 'dented'} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
+export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; farStealthRock?: boolean; farSpikes?: number; tentacruelHpPercent?: number; foeDitto?: 'transformed' | 'plain'; foeEmboar?: boolean; ourZoroark?: boolean; tentacruelSubstitute?: 'fresh' | 'dented'; noivernSubstitute?: 'fresh' | 'dented'} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
   const sides: ClientSide[] = fixture.battle.sides.map((s, i) => {
     // Tailwind blows on OUR side (index 0) only — the asymmetry is the point: it must
     // double our speed and leave the foe's alone, whichever side a caller orients on.
@@ -130,6 +154,18 @@ export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?
       terastallized: '', ident: 'p1: Zoroark-Hisui', side: sides[0], moveTrack: [],
     };
     (sides[0]!.active as (ClientPokemon | null)[])[0] = zoroark as unknown as ClientPokemon;
+  }
+  // Swap the foe active for an Emboar that has shown Head Smash and no item yet. Its one
+  // surviving role runs a Choice Band or a Choice Scarf, which is two speeds (157 and 235)
+  // for one Pokémon — and our Noivern, at 249, moves first against both. The state exists to
+  // be looked at: it is where the ⚡ line has something true to say about the foe's speed
+  // that changes nothing about the answer.
+  if (over.foeEmboar) {
+    const emboar = {
+      speciesForme: 'Emboar', level: 84, hp: 322, maxhp: 322, status: '', boosts: {},
+      terastallized: '', ident: 'p2: Emboar', side: sides[1], item: '', moveTrack: [['Head Smash', 0]],
+    };
+    (sides[1]!.active as (ClientPokemon | null)[])[0] = emboar as unknown as ClientPokemon;
   }
   // Swap the foe active for a Ditto — plain, or Transformed into our Noivern. The client
   // records a transform as TWO volatiles: the target's own Pokemon object, and the same

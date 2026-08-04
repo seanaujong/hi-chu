@@ -239,8 +239,23 @@ GitHub Release, then failed the Chrome Web Store upload — Google refuses to pu
 previous version is still in review, and v0.20.0 had gone out 26 minutes earlier. v0.22.0
 failed the same step for an unrelated credential reason. Tags were
 all `release-status` read, so it reported `in-sync` while the store sat a version behind.
-**`--check-publish`** closes that: it matches the newest tag's commit to its `auto-tag.yml`
-run by SHA and fails if that run did not succeed. `release-drift.yml` passes it on every run.
+**`--check-publish`** closes that, and the hard part is that a release can finish by three
+routes leaving three different traces. A `workflow_call` from `auto-tag.yml` is a JOB inside
+the caller's run, so it never appears in `release.yml`'s own run list — its evidence is the
+auto-tag run standing on the tag's commit. A pushed `v*` tag leaves a `release.yml` run on
+that same commit. A recovery **dispatch** leaves neither: it runs against the default branch,
+so its head commit is main's and nothing about the commit ties it to the tag — which is why
+`release.yml` sets `run-name: Release <tag>` and `scripts/lib/publish-verdict.mjs` joins on
+that title. Those two strings are one contract; changing either alone unjoins them silently.
+
+The verdict is one of four and only ONE fails a build: `ok`; `failed`, with nothing later
+fixing it; `unknown` (no `gh`, no auth, no network — never a silent all-clear); and `retried`
+— the original failed and a LATER release run succeeded that cannot be tied to this tag,
+because it predates run naming. `retried` is honest uncertainty rather than an alarm, and
+v0.22.0 sits in it permanently: its recovery dispatch really did publish, but no join key for
+it exists. Calling that `failed` is what turns a shipped release into a permanently red
+`main`, which trains everyone to read past the one check that has caught real problems.
+`release-drift.yml` passes `--check-publish` on every run.
 Note the recovery is NOT a re-run of `auto-tag.yml` — the tag exists by then, so `detect`
 no-ops and the whole thing goes green having published nothing. Re-run the failed `release`
 job, whose steps are idempotent for exactly this reason: it publishes the GitHub release only

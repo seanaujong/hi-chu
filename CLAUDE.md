@@ -35,7 +35,7 @@ prose and diagrams.
 ## Build, test, run
 ```sh
 npm install
-npm run check   # the gate: typecheck (strict TS) + Vitest. Run before every commit; CI runs it too.
+npm run check   # the gate: typecheck (strict TS) + Vitest + the dependency cruise. CI runs it too.
 npm test        # Vitest alone. The authority — assert against real runs, don't mental-math.
 npm run build   # esbuild → dist/ (content.js + manifest.json)
 ```
@@ -47,7 +47,26 @@ npm run previews      # LOCAL, no browser: render every declared tooltip state t
 npm run drift-check   # LOCAL, needs Chrome: runs readState against a live replay (see below)
 npm run drift-check gen9randombattle-2659404198   # …or against ONE named replay
 npm run icons         # LOCAL, needs Chrome: redraw EVERY icon from scripts/lib/logo.mjs
+npm run deps          # LOCAL, no browser: cruise the import graph (part of `check`)
+npm run graph         # LOCAL, no browser: redraw docs/architecture-graph.md from the source
 ```
+**Three things describe the layering, and they are not interchangeable.** The README diagram is
+the PIPELINE — what flows where, hand-drawn because it is an argument about design and doesn't
+rot. `docs/architecture-graph.md` is the CURRENT SHAPE — which module imports which, generated
+by `npm run graph` and never hand-edited, because a hand-drawn version of that is wrong the
+first time anyone adds a file (CI regenerates and diffs it, so a stale one fails the build
+rather than quietly misleading). The rules that FAIL are split by kind: the project's own named
+invariants — calc confinement, core↛shell, `render.ts` type-only, every deduction through
+`narrow.ts`, `facts.ts`/`types.ts` as leaves — live in `src/dependency-boundaries.test.ts`,
+argued in prose beside each assertion; the generic structural ones — no cycles, no orphans —
+in `.dependency-cruiser.cjs`, because they are about the graph as a whole rather than any edge
+we could name ahead of time. **Neither restates the other**; duplicating a rule across the two
+would recreate the exact drift that motivated them (see the `candidateItems` invariant).
+`dependency-cruiser` cannot resolve this codebase unaided — TS ESM writes `./narrow.js` for
+`narrow.ts` and its schema has no `extensionAlias` — so `scripts/lib/ts-esm-resolve.cjs` is a
+load-bearing resolver shim, not a build config. Its failure mode is SILENT (every edge fails,
+leaves look like orphans, the cruise still reports success), which is why `graph.mjs` refuses
+to write a graph with fewer edges than modules.
 **The icons are generated, never hand-edited.** `scripts/lib/logo.mjs` holds the mark as pure
 SVG (no I/O), and `make-icons.mjs` renders it to all sixteen PNGs the repo ships — Chrome's
 three, Safari's eleven-file app-icon catalogue, and the two loose Safari copies — plus the
@@ -84,9 +103,10 @@ is reported loudly by the run rather than shown as a blank card.
 
 **Shape of the suite, base to top.** Unit + integration tests (`npm run check`) are the
 base and middle — colocated `*.test.ts` beside each module, two tests driven by real
-captured data (`integration.test.ts`, `section.test.ts`), and one architecture-fitness
-test (`dependency-boundaries.test.ts`) that fails the build if the import graph itself
-drifts. All fast, deterministic, CI-gated on every push. `drift-check` and `player-check`
+captured data (`integration.test.ts`, `section.test.ts`), and two architecture-fitness
+layers that fail the build if the import graph itself drifts — `dependency-boundaries.test.ts`
+for this project's named layering rules, and the `.dependency-cruiser.cjs` cruise (`npm run
+deps`) for cycles and orphans. All fast, deterministic, CI-gated on every push. `drift-check` and `player-check`
 are a different KIND of check above that, not just a slower one: they defend against
 Pokémon Showdown's own undocumented client changing shape, not against a regression in
 our logic, so a real browser is load-bearing and neither can run in CI's fast path (each
@@ -741,6 +761,10 @@ them until someone adds it.
 | An "if …" aside exists to CONTRADICT the ⚡ verdict — a set reaching the same answer is dropped, so no asides means the verdict holds under EVERY still-possible set | ✅ | `core/render.ts` (`speedLine`) | `render.test.ts` |
 | Unburden's ×2 Speed is armed via an explicit `abilityOn` flag, not inferred from `item` | ✅ | `core/resolve.ts` (`buildResolved`), `core/damage.ts` (`buildPokemon`) | `resolve.test.ts`, `speed.test.ts` |
 | The fetch/reason/render split is a checked import graph, not just a description | ✅ | `src/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |
+| Every behavioural deduction is reached through `narrow.ts` — nothing else imports `deductions.ts` | ✅ | `src/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |
+| `facts.ts` stays a leaf (and `types.ts` a true one), so no layer depends on a sibling for shared vocabulary | ✅ | `src/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |
+| No cycles, no orphan modules | ✅ | `.dependency-cruiser.cjs` | `npm run deps` (inside `npm run check`) |
+| The committed module graph is TRUE — regenerated and diffed, never hand-maintained | ✅ | `scripts/graph.mjs` | `.github/workflows/ci.yml` |
 | "No DOM, no network" is typechecked everywhere but the two files whose job it is | ✅ | `src/tsconfig.pure.json` | `npm run typecheck` |
 | The store's summary ships FROM the package — the listing doc, the manifest and `package.json` carry one sentence | ✅ | `docs/chrome-web-store-listing.md` (Summary) | `store-summary.test.ts` |
 | A knocked-off / consumed item resolves to NO item, not an assumed set item | ✅ | `core/resolve.ts` (`itemGone`) | `resolve.test.ts` |
@@ -805,6 +829,9 @@ rather than in our code. Run the named check by hand after a Showdown client upd
 ## Pointers
 - `README.md` — full architecture, diagrams, install steps. (Known limitations are the ◐
   rows in the invariant index, not a README section.)
+- `docs/architecture-graph.md` — the generated module graph: which file imports which, as of
+  the last `npm run graph`. Read it to find your way around; read the Architecture section
+  above to learn what the layers MEAN. Never edit it by hand — CI regenerates and diffs it.
 - `docs/chrome-web-store-listing.md` — the store listing copy OF RECORD: description,
   privacy-practice answers, host-permission justification, reviewer test instructions,
   submission checklist. Edit it here and paste into the dashboard; don't rewrite it there

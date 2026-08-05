@@ -18,5 +18,9 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm run check   # typecheck (strict TS) + vitest
+      - run: npm run check   # typecheck (strict TS) + vitest + the dependency cruise
       - run: npm run build   # the bundle must build
+      # `docs/architecture-graph.md` is generated and committed, so it is only worth having
+      # if it is TRUE. Regenerate and diff: adding a module without re-running `npm run
+      # graph` fails here rather than leaving a plausible, wrong picture in the repo.
+      - run: npm run graph && git diff --exit-code docs/architecture-graph.md

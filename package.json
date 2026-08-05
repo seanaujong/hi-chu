@@ -14,7 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/tsconfig.pure.json",
-    "check": "npm run typecheck && npm run test && npm run deps",
+    "check": "npm run typecheck && npm run test && npm run deps && npm run graph:check",
     "drift-check": "node scripts/drift-check.mjs",
     "player-check": "node scripts/player-check.mjs",
     "release-check": "npm run build && npm run check && npm run drift-check && npm run player-check",
@@ -26,7 +26,8 @@
     "visual-check": "npm run build:visual-check && REAL_EXTENSION=1 node scripts/screenshots.mjs",
     "previews": "node scripts/previews.mjs",
     "deps": "depcruise \"src/**/*.ts\" --config .dependency-cruiser.cjs",
-    "graph": "node scripts/graph.mjs"
+    "graph": "node scripts/graph.mjs",
+    "graph:check": "node scripts/graph.mjs --check"
   },
   "dependencies": {
     "@smogon/calc": "^0.11.0"

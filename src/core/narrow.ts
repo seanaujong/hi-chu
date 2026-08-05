@@ -109,6 +109,46 @@ function consistentRoles(
 }
 
 /**
+ * The items ONE candidate could still be holding — the role's own pool (or the entry's,
+ * where the role declares none), with the behavioural rule-outs allowed to narrow it but
+ * never to empty it.
+ *
+ * The item-level twin of `consistentRoles`, and it lives here for the reason this file's
+ * header already gives: resolution and display must narrow through ONE rule. They did not.
+ * Each derived this pool itself and they disagreed in two separate ways, both of which put
+ * a number on screen that the block above it contradicted:
+ *
+ *   - A role that declares no `items` falls back to the ENTRY's pool. The calc did that;
+ *     the display read the role's empty list literally and printed no Items line at all.
+ *     Thundurus' Wallbreaker is the live case — a block listing no item whose damage was
+ *     nonetheless fanned out over Choice Specs, directly above a block that listed it.
+ *   - When the rule-outs empty every role, `consistentRoles` drops them wholesale. That
+ *     verdict was never communicated, so the calc re-derived it as an ad-hoc "if empty, use
+ *     the full pool" and the display re-derived it as "show nothing".
+ *
+ * Both are the same mistake, so both get the same fix: derive it once, here. An empty
+ * `survivingItems` stays real signal for `roleMatches` above — that is what drops a role —
+ * but by the time a candidate is being described, that reading has already been made and
+ * rejected, and believing it again would resolve a Gliscor (Toxic Orb on every role) as
+ * holding nothing at all.
+ *
+ * Comes back empty only when there is genuinely nothing to hold: a role and an entry that
+ * both declare no items, which the feed really does contain (Jumpluff). Both layers agree
+ * on that answer, which is why it is the honest one.
+ */
+export function candidateItems(
+  entry: RandbatsEntry,
+  role: Pick<RandbatsRole, 'items' | 'abilities'> | undefined,
+  facts: LiveFacts,
+): readonly string[] {
+  // A feed omits an empty array rather than writing one, so neither list is guaranteed present.
+  const declared = role?.items?.length ? role.items : (entry.items ?? []);
+  const abilities = role?.abilities?.length ? role.abilities : (entry.abilities ?? []);
+  const surviving = survivingItems(abilities, declared, facts);
+  return surviving.length > 0 ? surviving : declared;
+}
+
+/**
  * Pick the role(s) consistent with everything the battle has revealed (moves used,
  * item, ability), and the single role we'll calculate with. If nothing is
  * consistent (or nothing has been revealed yet) we keep all roles and flag the

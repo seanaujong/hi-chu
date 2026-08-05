@@ -378,3 +378,80 @@ describe('resolveByRole — one resolution per surviving set, aligned with infer
     expect(byName.get('Fast Support')).toBe('Heavy-Duty Boots');
   });
 });
+
+describe('candidateItems is the ONE rule deciding a candidate’s item pool', () => {
+  // The feed omits an empty array rather than writing one, so a role can declare no items
+  // at all while its ENTRY still names some — Thundurus' Wallbreaker is the live case, and
+  // Jumpluff's two roles the case where nothing anywhere declares an item.
+  const WALLBREAKER_STYLE: RandbatsEntry = {
+    level: 78,
+    abilities: ['Defiant', 'Prankster'],
+    items: ['Choice Specs', 'Heavy-Duty Boots'],
+    roles: {
+      Wallbreaker: {abilities: ['Defiant', 'Prankster'], items: [], teraTypes: ['Electric'], moves: ['Thunderbolt']},
+      'Fast Attacker': {
+        abilities: ['Defiant', 'Prankster'],
+        items: ['Choice Specs', 'Heavy-Duty Boots'],
+        teraTypes: ['Electric'],
+        moves: ['Thunderbolt'],
+      },
+    },
+  };
+
+  /** What each candidate block would LIST, per role name. */
+  const listed = (entry: RandbatsEntry, facts = liveFacts({speciesForme: 'Thundurus'})) =>
+    Object.fromEntries(inferSets(facts, entry).candidates.map((c) => [c.name, c.items.map((i) => i.name)]));
+
+  /** The DISTINCT items each role is CALCULATED with, per role name. `resolveVariants`
+   *  crosses items with abilities, so the same item comes back once per ability. */
+  const calculated = (entry: RandbatsEntry, facts = liveFacts({speciesForme: 'Thundurus'})) => {
+    const out: Record<string, string[]> = {};
+    for (const v of resolveVariants(facts, entry)) {
+      const seen = (out[v.role] ??= []);
+      const item = v.mon.item ?? '(none)';
+      if (!seen.includes(item)) seen.push(item);
+    }
+    return out;
+  };
+
+  it('falls back to the ENTRY’s items for a role that declares none', () => {
+    // The divergence this rule exists to close: the calc already fanned Wallbreaker out over
+    // both entry items while the block above listed nothing, so a span reaching Choice Specs
+    // damage sat under a heading that never mentioned it.
+    expect(listed(WALLBREAKER_STYLE)['Wallbreaker']).toEqual(['Choice Specs', 'Heavy-Duty Boots']);
+    expect(calculated(WALLBREAKER_STYLE)['Wallbreaker']).toEqual(['Choice Specs', 'Heavy-Duty Boots']);
+  });
+
+  it('lists exactly what it calculates with, for every role', () => {
+    // The invariant itself, stated over both roles at once rather than one example of it.
+    expect(listed(WALLBREAKER_STYLE)).toEqual(calculated(WALLBREAKER_STYLE));
+  });
+
+  it('stays empty when a role AND its entry genuinely declare no items (Jumpluff)', () => {
+    // Not everything empty is a bug: here both halves agree on "holds nothing", which is
+    // the honest answer and the reason the guard can't just be "never return empty".
+    const JUMPLUFF_STYLE: RandbatsEntry = {
+      level: 88,
+      abilities: ['Infiltrator'],
+      items: [],
+      roles: {'Bulky Support': {abilities: ['Infiltrator'], items: [], teraTypes: ['Steel'], moves: ['Acrobatics']}},
+    };
+    expect(listed(JUMPLUFF_STYLE)['Bulky Support']).toEqual([]);
+    expect(calculated(JUMPLUFF_STYLE)['Bulky Support']).toEqual(['(none)']);
+  });
+
+  it('keeps the two halves agreeing when a deduction rules out every item', () => {
+    // `consistentRoles` drops the rule-outs wholesale when they leave no role standing. That
+    // verdict has to reach BOTH halves — the calc used to re-derive it privately and the
+    // display used to ignore it, which is what emptied the Items line under a live span.
+    const orbOnly: RandbatsEntry = {
+      level: 80,
+      abilities: ['Poison Heal'],
+      items: ['Toxic Orb'],
+      roles: {'Bulky Setup': {abilities: ['Poison Heal'], items: ['Toxic Orb'], teraTypes: ['Water'], moves: ['Protect']}},
+    };
+    const quiet = liveFacts({speciesForme: 'Gliscor', ability: 'Poison Heal', endedTurnUnstatused: true});
+    expect(listed(orbOnly, quiet)['Bulky Setup']).toEqual(['Toxic Orb']);
+    expect(listed(orbOnly, quiet)).toEqual(calculated(orbOnly, quiet));
+  });
+});

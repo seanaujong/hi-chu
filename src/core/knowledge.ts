@@ -7,8 +7,7 @@
 
 import type {Gimmick, KnownOption, LiveFacts, RandbatsEntry, RandbatsRole, SetKnowledge} from './types.js';
 import {toId, innateAbility} from './facts.js';
-import {selectRoles} from './narrow.js';
-import {survivingItems} from './deductions.js';
+import {selectRoles, candidateItems} from './narrow.js';
 
 /** Union a pool into options, confirmed names first; dedup by id, keep display names. */
 function unionOptions(pool: readonly string[], confirmed: readonly string[]): KnownOption[] {
@@ -91,7 +90,7 @@ export function inferSets(facts: LiveFacts, entry: RandbatsEntry): SetKnowledge 
   const fullMoveset = facts.revealedMoves.length >= 4;
 
   const toCandidate = (name: string, role: RandbatsRole): SetKnowledge['candidates'][number] => {
-    const items = exclusiveOptions(survivingItems(role.abilities, role.items, facts), revealedItem ? [revealedItem] : []);
+    const items = exclusiveOptions(candidateItems(entry, role, facts), revealedItem ? [revealedItem] : []);
     const teraTypes = exclusiveOptions(role.teraTypes, activeTera);
     return {
       name,

@@ -553,7 +553,8 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
       deduction rule-outs. The one place the "which roles survive" rule lives —
       `buildableAbilities` is the guard that an ability no SET could carry narrows nothing,
       and `consistentRoles` the guard that a deduction may narrow the field but never empty
-      it (`resolve.calcItemPool` is its item-level twin — see the invariant).
+      it (`candidateItems` is its item-level twin, and the ONE place a candidate's item
+      pool is decided — see the invariant).
     - `resolve.ts` — the resolution law: `resolveMon` merges live facts over randbats into
       the one set we calculate with; `resolveVariants` enumerates EVERY still-possible set
       (hidden item/ability) for uncertainty-aware damage — grouped by role name
@@ -712,7 +713,8 @@ them until someone adds it.
 | Two freely-chosen moves in ONE stint rule out all three Choice items — scoped per stint, since the lock dies on switch-out | ✅ | `core/deductions.ts`, `battle/readState.ts` (`usedDifferentMovesSinceSwitchIn`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts` |
 | A switch-in that announced nothing rules Air Balloon out — the one item that always reveals itself, so SILENCE is the evidence | ✅ | `core/deductions.ts`, `battle/readState.ts` (`switchedInWithoutAnnouncingBalloon`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts`, `section.test.ts` |
 | A turn that ended with its holder un-statused rules out Flame Orb AND Toxic Orb — the same silence, at a moment that comes round every turn | ✅ | `core/deductions.ts`, `battle/readState.ts` (`endedTurnUnstatused`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts`, `section.test.ts` |
-| A deduction narrows the candidate roles but never empties them — nor the item pool a chosen role calcs with | ✅ | `core/narrow.ts` (`consistentRoles`), `core/resolve.ts` (`calcItemPool`) | `resolve.test.ts` |
+| A deduction narrows the candidate roles but never empties them — nor the item pool a chosen role calcs with | ✅ | `core/narrow.ts` (`consistentRoles`, `candidateItems`) | `resolve.test.ts` |
+| ONE rule decides a candidate's item pool, so the block's Items line and its damage can't disagree | ✅ | `core/narrow.ts` (`candidateItems`) | `resolve.test.ts`, `section.test.ts` |
 | The forme a Pokémon IS and the one it is WEARING differ — only the calc reads the second | ✅ | `battle/readState.ts` (`readLiveForme`), `core/resolve.ts` (`buildResolved`) | `readState.test.ts`, `resolve.test.ts` |
 | A Transformed Pokémon is calculated as the one it COPIED, keeping only its own HP | ✅ | `core/transform.ts`, `section.ts` (`factsReader`) | `transform.test.ts`, `readState.test.ts`, `section.test.ts` |
 | An ability narrows a role only if a SET could have been built with it | ✅ | `core/narrow.ts` (`buildableAbilities`) | `resolve.test.ts` |

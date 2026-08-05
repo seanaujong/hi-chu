@@ -112,11 +112,19 @@ The only thing a battle's format changes is *where the foe's possibilities come
 from* — a real set feed (`resolve.ts`) vs. two bracketing assumptions with none
 (`assume.ts`) — everything below that fork in REASON is shared.
 
-Full per-module detail — what each file in `src/core/`, `src/battle/`, and `src/data/`
-owns and why — lives in `CLAUDE.md`'s Architecture section, kept current file-by-file as
-the codebase grows. For exact shapes and signatures, read the source and the `*.test.ts`
-next to each module — the tests double as worked examples, pinned against real Showdown
-numbers.
+The diagram above is the **pipeline** — what flows where. It is deliberately not the import
+graph: the two answer different questions, and only one of them rots. For *which module
+actually imports which*, see [`docs/architecture-graph.md`](docs/architecture-graph.md),
+generated from the source by `npm run graph` and re-diffed by CI so it cannot drift. For what
+the layers MEAN — why `facts.ts` is a leaf, why every behavioural deduction routes through
+`narrow.ts` — read `CLAUDE.md`'s Architecture section, kept current file-by-file as the
+codebase grows. Those layering rules are enforced, not just described:
+`src/dependency-boundaries.test.ts` holds this project's named ones and
+`.dependency-cruiser.cjs` the structural ones (no cycles, no orphans); both run in
+`npm run check`.
+
+For exact shapes and signatures, read the source and the `*.test.ts` next to each module —
+the tests double as worked examples, pinned against real Showdown numbers.
 
 ## Develop
 

@@ -30,6 +30,17 @@ interface RawEntry {
   readonly ivs?: StatsTable;
 }
 
+/**
+ * The feed under the loose type it really has, per the note above. Every read of a fetched
+ * feed goes through here rather than repeating the assertion: written four times at four call
+ * sites it was four separate claims that `RandbatsData`'s totalized arrays are a promise the
+ * JSON never made, and a reader had to take each one on trust. Written once it is a named
+ * seam, and `normalizeEntry` is the only way back out of it.
+ */
+function rawEntries(data: RandbatsData): Readonly<Record<string, RawEntry>> {
+  return data as unknown as Readonly<Record<string, RawEntry>>;
+}
+
 // Champions has no EVs or IVs — each stat carries 0+ "stat points", and the feed's
 // `evs` field holds those POINTS, not EVs. Showdown's Champions mod substitutes
 // `max(2·points − 1, 0)` where the mainline stat formula has `IV + ⌊EV/4⌋`, with
@@ -52,13 +63,15 @@ function pointsToEvs(stats: StatsTable): StatsTable {
 
 /** Convert a Champions feed's stat points to the mainline-EV currency the calc speaks. */
 export function championsStatPointsToEvs(data: RandbatsData): RandbatsData {
-  const raw = data as unknown as Readonly<Record<string, RawEntry>>;
+  const raw = rawEntries(data);
   const convertRole = (r: RawRole): RawRole => ({...r, ...(r.evs !== undefined ? {evs: pointsToEvs(r.evs)} : {})});
   const convertEntry = (e: RawEntry): RawEntry => ({
     ...e,
     ...(e.evs !== undefined ? {evs: pointsToEvs(e.evs)} : {}),
     ...(e.roles ? {roles: Object.fromEntries(Object.entries(e.roles).map(([n, r]) => [n, convertRole(r)]))} : {}),
   });
+  // The inverse of `rawEntries`, and the only place it is taken: the conversion rewrites EV
+  // VALUES and touches no array, so the feed is exactly as total — or as sparse — as it arrived.
   return Object.fromEntries(Object.entries(raw).map(([name, e]) => [name, convertEntry(e)])) as unknown as RandbatsData;
 }
 
@@ -95,7 +108,7 @@ function normalizeEntry(e: RawEntry): RandbatsEntry {
  * and the core, so every entry the core sees has total array dimensions.
  */
 export function pickEntry(data: RandbatsData, speciesForme: string): RandbatsEntry | undefined {
-  const raw = data as unknown as Readonly<Record<string, RawEntry>>;
+  const raw = rawEntries(data);
   if (raw[speciesForme]) return normalizeEntry(raw[speciesForme]!);
   const parts = speciesForme.split('-');
   for (let n = parts.length - 1; n >= 1; n--) {
@@ -118,7 +131,7 @@ const asId = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 export function megaEntryForItem(data: RandbatsData, item: string | undefined): RandbatsEntry | undefined {
   if (!item) return undefined;
   const wanted = asId(item);
-  const raw = data as unknown as Readonly<Record<string, RawEntry>>;
+  const raw = rawEntries(data);
   for (const [key, entry] of Object.entries(raw)) {
     if (!/-Mega(-[XY])?$/.test(key)) continue; // only Mega-forme entries hold stones
     const e = normalizeEntry(entry);
@@ -143,7 +156,7 @@ export function megaEntryForItem(data: RandbatsData, item: string | undefined): 
  */
 export function megaEntriesFor(data: RandbatsData, speciesForme: string): readonly {forme: string; entry: RandbatsEntry}[] {
   const wanted = asId(speciesForme.split('-')[0] ?? speciesForme);
-  const raw = data as unknown as Readonly<Record<string, RawEntry>>;
+  const raw = rawEntries(data);
   return Object.entries(raw)
     .filter(([key]) => /-Mega(-[XY])?$/.test(key) && asId(key.split('-')[0] ?? key) === wanted)
     .map(([forme, entry]) => ({forme, entry: normalizeEntry(entry)}));

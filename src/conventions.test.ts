@@ -43,10 +43,11 @@ function shippedFiles(): string[] {
  * double assertion (whose whole purpose is to defeat the overlap rule a single `as` must
  * still satisfy), `as any`, and the three suppression comments.
  *
- * Deliberately NOT the plain `as X` (29 sites) or the non-null `!` (147). Under
- * `noUncheckedIndexedAccess` those two ARE the ordinary way to read a checked index; a
- * rationale on each would be noise, and a check that emits noise gets ignored — which costs
- * more than the check can save. The five below are rare enough to afford a sentence each.
+ * Deliberately NOT the plain `as X` or the non-null `!`. Under `noUncheckedIndexedAccess`
+ * those two ARE the ordinary way to read a checked index, they outnumber the hatches below by
+ * more than an order of magnitude, and a rationale on each would be noise — a check that emits
+ * noise gets ignored, which costs more than the check can save. A plain `as` also still has to
+ * satisfy the overlap rule; the ones below are chosen precisely because they do not.
  */
 const HATCH = /\bas\s+unknown\s+as\b|\bas\s+any\b|@ts-expect-error|@ts-ignore|eslint-disable/;
 

@@ -103,10 +103,19 @@ is reported loudly by the run rather than shown as a blank card.
 
 **Shape of the suite, base to top.** Unit + integration tests (`npm run check`) are the
 base and middle — colocated `*.test.ts` beside each module, two tests driven by real
-captured data (`integration.test.ts`, `section.test.ts`), and two architecture-fitness
-layers that fail the build if the import graph itself drifts — `dependency-boundaries.test.ts`
-for this project's named layering rules, and the `.dependency-cruiser.cjs` cruise (`npm run
-deps`) for cycles and orphans. All fast, deterministic, CI-gated on every push. `drift-check` and `player-check`
+captured data (`integration.test.ts`, `section.test.ts`), and three architecture-fitness
+layers that fail the build when the SHAPE of the codebase drifts rather than its behaviour —
+`dependency-boundaries.test.ts` for this project's named layering rules, the
+`.dependency-cruiser.cjs` cruise (`npm run deps`) for cycles and orphans, and
+`conventions.test.ts` for rules this file states in prose (a rationale beside every
+typechecker-silencing cast in SHIPPED code, a colocated test for every core module).
+`invariant-index.test.ts` is the fourth of the kind, pointed at this file rather than at the
+source: every pointer in the table below has to land on a real file and symbol. The two that
+read imports LEXICALLY do so through `importgraph.ts`, which parses whole statements rather
+than lines — a wrapped import read line by line is an edge nobody can see, and an edge nobody
+can see reads as a boundary held. (The cruise has no such problem: it resolves modules
+properly, which is exactly why cycles and orphans are its job and not theirs.)
+All fast, deterministic, CI-gated on every push. `drift-check` and `player-check`
 are a different KIND of check above that, not just a slower one: they defend against
 Pokémon Showdown's own undocumented client changing shape, not against a regression in
 our logic, so a real browser is load-bearing and neither can run in CI's fast path (each
@@ -662,9 +671,13 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
     server) is structurally blind to Safari extensions by design — confirmed directly, not
     assumed. See `README.md`'s Install section for the hover-and-look steps.
 
-Tests come in two flavours: colocated `*.test.ts` with hand-built stubs, plus two driven by **real
+Tests come in three flavours: colocated `*.test.ts` with hand-built stubs; two driven by **real
 captured data** — `integration.test.ts` (real feed, synthetic mons) and `section.test.ts` (a real
-two-sided battle captured live from a replay; the fixture is `__fixtures__/replay-*.json`).
+two-sided battle captured live from a replay; the fixture is `__fixtures__/replay-*.json`); and
+the **architecture-fitness** trio, which asserts things about the codebase's SHAPE rather than
+its behaviour (see "Shape of the suite" above). `importgraph.ts` is theirs — it reads this
+tree's own imports and ships in nothing, which `conventions.test.ts` relies on to tell shipped
+code from the fixture builders (`scenario.ts`, `previews.ts`, `*.testfixtures.ts`) beside it.
 
 For exact shapes and signatures, read the source and the colocated `*.test.ts` — the
 tests are the worked examples (and pin numbers against Showdown). Exception: `moves.ts` and
@@ -765,6 +778,10 @@ them until someone adds it.
 | `facts.ts` stays a leaf (and `types.ts` a true one), so no layer depends on a sibling for shared vocabulary | ✅ | `src/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |
 | No cycles, no orphan modules | ✅ | `.dependency-cruiser.cjs` | `npm run deps` (inside `npm run check`) |
 | The committed module graph is TRUE — regenerated and diffed, never hand-maintained | ✅ | `scripts/graph.mjs` | `.github/workflows/ci.yml` |
+| A lexical boundary check reads whole import STATEMENTS, never lines — the rules above are defeated by a line wrap otherwise | ✅ | `src/importgraph.ts` (`importStatements`) | `importgraph.test.ts`, `dependency-boundaries.test.ts` |
+| No barrel file — one directory-wide re-export makes "does the core import the shell?" and "who imports `deductions.ts`?" stop having per-module answers | ✅ | `src/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |
+| An escape hatch that switches the typechecker OFF carries a written rationale — in code that SHIPS, derived from the build's entry points rather than listed | ✅ | `src/conventions.test.ts` (`HATCH`, `shippedFiles`), `data/lookup.ts` (`rawEntries`) | `conventions.test.ts` |
+| Every module in the pure core has a colocated test, or a listed reason it does not | ✅ | `src/conventions.test.ts` (`UNTESTED_BY_DESIGN`) | `conventions.test.ts` |
 | "No DOM, no network" is typechecked everywhere but the two files whose job it is | ✅ | `src/tsconfig.pure.json` | `npm run typecheck` |
 | The store's summary ships FROM the package — the listing doc, the manifest and `package.json` carry one sentence | ✅ | `docs/chrome-web-store-listing.md` (Summary) | `store-summary.test.ts` |
 | A knocked-off / consumed item resolves to NO item, not an assumed set item | ✅ | `core/resolve.ts` (`itemGone`) | `resolve.test.ts` |

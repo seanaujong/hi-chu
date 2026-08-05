@@ -48,11 +48,6 @@ function multiHitDetail(r: DamageReport): string {
   return `${hits} · ${perHit}`;
 }
 
-/** "14.5–17.2%" — compact range for the set-view move lists (parens spot). */
-function rangeText(r: DamageReport): string {
-  return `${r.percent.min}–${r.percent.max}%`;
-}
-
 /** "14.5% - 17.2%" — the native move tooltip's exact "Damage:" number format. */
 function moveDamageText(r: DamageReport): string {
   return `${r.percent.min}% - ${r.percent.max}%`;
@@ -595,35 +590,69 @@ function tierWrap(tier: KoTier, text: string): string {
   return text;
 }
 
+/**
+ * The widest reading across a move's still-possible outcomes — lowest low to highest high,
+ * "53.3–106.2%" — so a move says its damage in ONE entry however many items and abilities
+ * the role could still be running.
+ *
+ * The same fold `substituteAcross` performs a few sections up, for the same reason and on
+ * the same terms: a span is the answer the tooltip already gives everywhere ("it is
+ * somewhere in here"), and it is honest, because every outcome it covers really is
+ * possible. What it deliberately drops is which item produces which end — a Pokémon with
+ * three items and two abilities can multiply out to six different numbers on each of four
+ * moves, and spelling all of those out ran a single hover past the height of the screen.
+ * `koCondition` buys back the one piece of that worth its line.
+ */
+function spanText(buckets: readonly DamageBucket[]): string {
+  const lo = Math.min(...buckets.map((b) => b.report.percent.min));
+  const hi = Math.max(...buckets.map((b) => b.report.percent.max));
+  return `${lo}–${hi}%`;
+}
+
+/** The most dangerous tier any still-possible outcome reaches. A move that KOes under one
+ *  of six possible items is a move that can KO, so the span wears red — `TOOLTIP_STYLE`'s
+ *  test is whether a Pokémon actually faints, and under that item one does. `koCondition`
+ *  is what keeps the colour from overstating: it names the item the red rests on. */
+function worstTier(buckets: readonly DamageBucket[]): KoTier {
+  const tiers = buckets.map((b) => koTier(b.report));
+  return tiers.includes('ohko') ? 'ohko' : tiers.includes('2hko') ? '2hko' : null;
+}
+
 /** A move entry inside the comma-joined "Moves:" line: "✓ Giga Drain (63.9–75.3%)" —
  *  damage in the original's parens spot, colored by KO tier instead of spelling out a "to
- *  KO" clause (see `tierWrap`) — for a move with a single certain outcome (no report at
- *  all for a status move, or every still-possible item/ability landing on the same
- *  number). A move with a REAL split (2+ distinct outcomes) stays just the bare name here;
- *  its outcomes render as their own break-out lines below instead (`moveBreakout`). */
+ *  KO" clause (see `tierWrap`). One certain outcome and a six-way item/ability split render
+ *  identically here; the span is what unifies them (`spanText`). A status move, or one the
+ *  calc can't model, has no buckets and stays a bare name. */
 function moveText(row: MoveKnowledgeRow): string {
   const name = row.known ? `<b>✓ ${esc(row.name)}</b>` : esc(row.name);
-  if (!row.buckets || row.buckets.length !== 1) return name;
-  const r = row.buckets[0]!.report;
-  return tierWrap(koTier(r), `${name} (${rangeText(r)})`);
+  if (!row.buckets || row.buckets.length === 0) return name;
+  return tierWrap(worstTier(row.buckets), `${name} (${spanText(row.buckets)})`);
 }
 
-/** One outcome line for a move whose hidden item/ability changes the number: "(Life Orb)
- *  74.1% - 87.6%" — the same labelled-outcome shape the move tooltip's variant lines and
- *  the Incoming section already use, indented under the move's own label and colored by
- *  KO tier so a fast scan down the block shows which item makes this move dangerous. */
-function moveBucketLine(bucket: DamageBucket): string {
-  const r = bucket.report;
-  const text = `<small>(${esc(bucket.label)})</small> ${moveDamageText(r)}`;
-  return `<span style="padding-left: 12px;">${tierWrap(koTier(r), text)}</span>`;
-}
-
-/** The break-out lines for a move with 2+ distinct outcomes — a label line naming the
- *  move, then one indented outcome per still-possible item/ability. Empty for a move with
- *  0 or 1 outcome; those stay inline in the "Moves:" list instead (see `moveText`). */
-function moveBreakout(row: MoveKnowledgeRow): string[] {
-  if (!row.buckets || row.buckets.length <= 1) return [];
-  return [`<small>${esc(row.name)}:</small>`, ...row.buckets.map(moveBucketLine)];
+/**
+ * The one line a split move earns for itself: "Tri Attack: 62% to KO if Choice Specs ·
+ * Download" — under WHICH still-possible set the move actually kills, and how often.
+ *
+ * This is the half of the fan-out worth a line. The span above already says how hard the
+ * move hits; what it cannot say is that the top of that span is a KO and the bottom is not,
+ * so the reader is left unable to act on the one distinction that changes a decision. The
+ * KO chance rides along because the span genuinely doesn't carry it — a 106% maximum roll
+ * says nothing about how much of the distribution clears the HP bar.
+ *
+ * Nothing renders when no outcome KOes (there is no danger to condition), nor when EVERY
+ * outcome does (the move kills whatever the set turns out to be — an "if" would invent a
+ * doubt that isn't there). So the line appears exactly when the item is what decides
+ * whether a Pokémon faints. A 2HKO/3HKO split earns no line: the sets view grades danger
+ * for a fast scan, not every move (see `koTier`), and the span already brackets it.
+ */
+function koCondition(row: MoveKnowledgeRow): string[] {
+  const buckets = row.buckets ?? [];
+  const lethal = buckets.filter((b) => koTier(b.report) === 'ohko');
+  if (lethal.length === 0 || lethal.length === buckets.length) return [];
+  const clauses = lethal.map(
+    (b) => `<span class="hichu-ko">${koText(b.report.koChance)}</span> <small>if</small> ${esc(b.label)}`,
+  );
+  return [`<small>${esc(row.name)}:</small> ${clauses.join(' · ')}`];
 }
 
 /** One gimmick's labelled line. The exhaustive switch is the whole point of the
@@ -654,7 +683,7 @@ function setLines(c: CandidateBlock): string[] {
     optionLine('Items', c.items),
     ...c.gimmicks.map(gimmickLine),
     `<small>Moves:</small> ${c.moves.map(moveText).join(', ')}`,
-    ...c.moves.flatMap(moveBreakout),
+    ...c.moves.flatMap(koCondition),
   ];
 }
 
@@ -664,10 +693,11 @@ function setLines(c: CandidateBlock): string[] {
  * throughout, each set divided from the next. No summary header (the blocks speak
  * for themselves); confirmed facts are bold with a ✓. The foe view's move lists
  * carry damage vs our active in parens (their move buttons aren't hoverable for us,
- * so threat numbers live here), colored by KO tier for a fast scan (`moveText`), and
- * broken out into their own lines when the role's hidden item/ability genuinely
- * changes the number (`moveBreakout`) rather than guessing a single representative
- * one; the own-side mirror simply omits the numbers.
+ * so threat numbers live here), colored by KO tier for a fast scan (`moveText`).
+ * A role's hidden item/ability is never guessed at and never fully enumerated: every
+ * still-possible outcome folds into one span (`spanText`), and only the outcome that
+ * decides whether a Pokémon faints is spelled out (`koCondition`). The own-side mirror
+ * simply omits the numbers.
  */
 export function renderSetsSection(model: SetsRenderModel): string {
   const blocks = model.candidates.map((c) => block(setLines(c))).join('');

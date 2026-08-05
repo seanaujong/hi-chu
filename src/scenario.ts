@@ -84,6 +84,37 @@ export const scenarioDataTwinRoles = {
 } as unknown as RandbatsData;
 
 /**
+ * The same feed with ONE role that can hold three items and two abilities — the shape that
+ * decides how much of the screen a hover costs.
+ *
+ * Six item × ability combinations multiply out to as many different numbers on every
+ * damaging move in the role, and a real Porygon-Z is exactly this: three items, two
+ * abilities, four attacks. Spelling each outcome out ran a single tooltip past the height
+ * of the screen, so the sets view folds them into one span per move and spends a line only
+ * on the outcome that decides a KO. The captured Tentacruel cannot show it — its two items
+ * are both offensively inert, so its own moves never split at all — and meeting a Porygon-Z
+ * takes playing until one appears. Hence a feed built to have the property, the same way
+ * `scenarioDataTwinRoles` is. Every ability here is one the dex really gives Tentacruel, so
+ * `narrow.buildableAbilities` still has something real to check.
+ */
+export const scenarioDataItemAbilitySplit = {
+  ...(scenarioData as object),
+  Tentacruel: {
+    ...tentacruel,
+    abilities: ['Liquid Ooze', 'Clear Body'],
+    items: ['Choice Specs', 'Life Orb', 'Leftovers'],
+    roles: {
+      'Fast Attacker': {
+        ...tentacruel.roles['Bulky Support'],
+        abilities: ['Liquid Ooze', 'Clear Body'],
+        items: ['Choice Specs', 'Life Orb', 'Leftovers'],
+        moves: ['Sludge Bomb', 'Surf', 'Knock Off', 'Haze'],
+      },
+    },
+  },
+} as unknown as RandbatsData;
+
+/**
  * Rebuild the client's object graph from the captured JSON, wiring the
  * `pokemon.side` back-references the live client maintains (and that
  * findOpposingActive / readFieldFacts depend on). Side 0 is the near side (ours),

@@ -259,25 +259,96 @@ describe('renderSetsSection', () => {
     expect(html).not.toContain('Haze (');
   });
 
-  it('breaks a move with 2+ distinct outcomes out of the Moves: line into its own labelled lines', () => {
+  /** A move split by a hidden item. `koChance` makes an outcome OHKO-tier; `twoHko` gives
+   *  it an nHKO ladder that reaches the '2hko' tier without any single-use KO chance. */
+  const split = (
+    name: string,
+    outcomes: readonly {label: string; min: number; max: number; koChance?: number; twoHko?: number}[],
+  ) => ({
+    name,
+    known: true,
+    buckets: outcomes.map((o) => ({
+      label: o.label,
+      report: report({
+        move: name,
+        percent: {min: o.min, max: o.max, mean: (o.min + o.max) / 2},
+        koChance: o.koChance ?? 0,
+        ...(o.twoHko !== undefined ? {nhko: {base: [0, o.twoHko], withLeftovers: [0, o.twoHko]}} : {}),
+      }),
+    })),
+  });
+
+  it('folds a move with 2+ distinct outcomes into ONE spanning range, lowest low to highest high', () => {
+    // The size rule: a role holding several items multiplies out to a different number per
+    // item on every move, and enumerating each one ran a hover past the screen. The span
+    // covers them all and stays a single entry in the Moves: line.
     const uncertainItem = {
       ...bulkySupport,
       moves: [
-        {name: 'Draco Meteor', known: true, buckets: [
-          {label: 'Choice Specs', report: report({move: 'Draco Meteor', percent: {min: 62, max: 74, mean: 68}})},
-          {label: 'Leftovers', report: report({move: 'Draco Meteor', percent: {min: 41, max: 49, mean: 45}})},
-        ]},
+        split('Draco Meteor', [
+          {label: 'Choice Specs', min: 62, max: 74},
+          {label: 'Leftovers', min: 41, max: 49},
+        ]),
         {name: 'Haze', known: false},
       ],
     };
     const html = renderSetsSection(model({candidates: [uncertainItem]}));
-    // The Moves: line names it (still ✓, still bold) but carries no number of its own —
-    // the number lives in the break-out below, never a single guessed representative.
-    expect(html).toMatch(/<small>Moves:<\/small> <b>✓ Draco Meteor<\/b>, Haze/);
-    expect(html).not.toContain('Draco Meteor</b> (');
-    expect(html).toContain('<small>Draco Meteor:</small>');
-    expect(html).toMatch(/<small>\(Choice Specs\)<\/small> 62% - 74%/);
-    expect(html).toMatch(/<small>\(Leftovers\)<\/small> 41% - 49%/);
+    expect(html).toContain('<b>✓ Draco Meteor</b> (41–74%)');
+    expect(html).not.toContain('<small>Draco Meteor:</small>'); // no per-item break-out
+    expect(html).not.toContain('Choice Specs)'); // …and no per-item label
+  });
+
+  it('spells out the ONE outcome that decides a KO, naming the set it rests on', () => {
+    // What the span can't say: the top of it kills and the bottom doesn't. The KO chance
+    // rides along because a 106% maximum roll says nothing about how much of the
+    // distribution clears the HP bar.
+    const decided = {
+      ...bulkySupport,
+      moves: [
+        split('Tri Attack', [
+          {label: 'Choice Specs · Download', min: 89, max: 106, koChance: 0.62},
+          {label: 'Choice Scarf · Adaptability', min: 53, max: 63},
+        ]),
+      ],
+    };
+    const html = renderSetsSection(model({candidates: [decided]}));
+    expect(html).toContain('<b class="hichu-ko"><b>✓ Tri Attack</b> (53–106%)</b>'); // span wears the danger
+    expect(html).toContain(
+      '<small>Tri Attack:</small> <span class="hichu-ko">62% to KO</span> <small>if</small> Choice Specs · Download',
+    );
+    expect(html).not.toContain('Choice Scarf'); // the surviving outcome needs no line of its own
+  });
+
+  it('conditions nothing when EVERY outcome KOes — an "if" would invent a doubt', () => {
+    const alwaysLethal = {
+      ...bulkySupport,
+      moves: [
+        split('Overkill', [
+          {label: 'Life Orb', min: 120, max: 140, koChance: 1},
+          {label: 'Leftovers', min: 100, max: 118, koChance: 0.9},
+        ]),
+      ],
+    };
+    const html = renderSetsSection(model({candidates: [alwaysLethal]}));
+    expect(html).toContain('<b class="hichu-ko"><b>✓ Overkill</b> (100–140%)</b>');
+    expect(html).not.toContain('<small>if</small>');
+  });
+
+  it('conditions nothing on a 2HKO/3HKO split — the sets view grades danger, not every move', () => {
+    // Life Orb reaches the '2hko' tier and Leftovers doesn't, so this move DOES split on a
+    // tier boundary — just not the one worth a line. Only a KO gets spelled out.
+    const graded = {
+      ...bulkySupport,
+      moves: [
+        split('Middling', [
+          {label: 'Life Orb', min: 45, max: 55, twoHko: 0.6},
+          {label: 'Leftovers', min: 30, max: 38},
+        ]),
+      ],
+    };
+    const html = renderSetsSection(model({candidates: [graded]}));
+    expect(html).toContain('<span class="hichu-note"><b>✓ Middling</b> (30–55%)</span>'); // amber span
+    expect(html).not.toContain('<small>Middling:</small>');
   });
 
   it('colors an OHKO-risk outcome red+bold and a realistic 2HKO one amber, but leaves a 3HKO+ move plain', () => {

@@ -52,6 +52,15 @@ const rolesOf = (bucket: readonly SetVariant[]): string[] => uniqueStrings(bucke
 // with a damage-relevant ability (Multiscale) differs on BOTH axes at once.
 const roleAbilityOf = (bucket: readonly SetVariant[]): string[] =>
   uniqueStrings(bucket.map((v) => [v.role, v.mon.ability].filter(Boolean).join(' · ')));
+// Item × ability — the last axis that carries meaning, and the one a SINGLE role's fan-out
+// needs. When one role can hold several items and several abilities, two different (item,
+// ability) pairs routinely multiply out to the same damage: Choice Specs × Adaptability and
+// Choice Scarf × Download both land on ×1.5, so they share a bucket. That puts "Choice
+// Scarf" in two buckets and "Adaptability" in two others, leaving neither single axis with
+// a value unique to any bucket — and role, being the same for every variant here, separates
+// nothing either. Only the pair does.
+const itemAbilityOf = (bucket: readonly SetVariant[]): string[] =>
+  uniqueStrings(bucket.map((v) => [v.mon.item ?? NO_ITEM, v.mon.ability].filter(Boolean).join(' · ')));
 
 /**
  * Label each bucket by the values UNIQUE to it on one axis (item, then ability). A
@@ -71,13 +80,21 @@ function labelByAxis(valueSets: readonly (readonly string[])[]): string[] | null
   });
 }
 
-/** Short labels distinguishing the buckets: species axis (a disguised Zoroark is a
- *  DIFFERENT Pokémon — the loudest distinction), else item, else ability, else role
- *  name (which is the spread name for open-format assumption variants), else role ×
- *  ability, else a numbered set. Every separating axis runs through `labelByAxis`, so
- *  a label is only ever built from values unique to its bucket — the numbered fallback
- *  is what guarantees distinct labels when nothing meaningful separates them.
- *  Species is null for the usual same-species case, so behaviour is unchanged there. */
+/** Short labels distinguishing the buckets, in order of how much the label tells a reader:
+ *  species (a disguised Zoroark is a DIFFERENT Pokémon — the loudest distinction), else
+ *  item, else ability, else role name (which is the spread name for open-format assumption
+ *  variants), else role × ability, else item × ability, else a numbered set. Every
+ *  separating axis runs through `labelByAxis`, so a label is only ever built from values
+ *  unique to its bucket. Species is null for the usual same-species case, so behaviour is
+ *  unchanged there.
+ *
+ *  The numbered fallback is what guarantees the labels are DISTINCT, and it has to number
+ *  unconditionally to keep that promise: naming a bucket after its role instead reads fine
+ *  across a mixed pool and silently fails on the pool this is most often asked about — one
+ *  candidate role's own item/ability fan-out, where every variant shares a role by
+ *  construction, so every bucket would be handed the identical name. A label that cannot
+ *  tell two lines apart is worse than an admittedly meaningless one, because the reader
+ *  can't tell it isn't trying. */
 export function labelBuckets(buckets: readonly (readonly SetVariant[])[]): string[] {
   if (buckets.length <= 1) return buckets.map(() => '');
   return (
@@ -86,7 +103,8 @@ export function labelBuckets(buckets: readonly (readonly SetVariant[])[]): strin
     labelByAxis(buckets.map(abilitiesOf)) ??
     labelByAxis(buckets.map(rolesOf)) ??
     labelByAxis(buckets.map(roleAbilityOf)) ??
-    buckets.map((b, i) => b[0]?.role || `set ${i + 1}`)
+    labelByAxis(buckets.map(itemAbilityOf)) ??
+    buckets.map((_, i) => `set ${i + 1}`)
   );
 }
 

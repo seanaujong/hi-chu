@@ -383,16 +383,25 @@ describe('the sets view brackets a genuinely uncertain ATTACKER item instead of 
   far.active = [foeWeavile];
   const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far]} as unknown as ClientBattle;
 
-  it('breaks Icicle Crash out into labelled Life Orb / Leftovers outcomes, never a single guess', () => {
-    const html = buildPokemonSection(battle, foeWeavile, feed);
-    expect(html).not.toMatch(/Icicle Crash<\/b>? \(/); // no single guessed number in the Moves: line
-    expect(html).toContain('<small>Icicle Crash:</small>'); // the move's own break-out label
-    const lifeOrb = /<small>\(Life Orb\)<\/small> [\d.]+% - ([\d.]+)%/.exec(html);
-    const leftovers = /<small>\(Leftovers\)<\/small> [\d.]+% - ([\d.]+)%/.exec(html);
-    expect(lifeOrb).not.toBeNull();
-    expect(leftovers).not.toBeNull();
-    // Life Orb's +30% must actually show up as the bigger number, not just a different label.
-    expect(Number(lifeOrb![1])).toBeGreaterThan(Number(leftovers![1]));
+  /** Icicle Crash's rendered span, as [low, high]. */
+  function span(items: readonly string[]): [number, number] {
+    const oneItem: RandbatsData = {Weavile: {...feed['Weavile']!, items}};
+    const html = buildPokemonSection(battle, foeWeavile, oneItem);
+    const m = /Icicle Crash \(([\d.]+)–([\d.]+)%\)/.exec(html);
+    if (!m) throw new Error(`no Icicle Crash span in:\n${html}`);
+    return [Number(m[1]), Number(m[2])];
+  }
+
+  it('spans BOTH still-possible items, never a single guessed representative', () => {
+    // The span has to reach from the weaker item's floor to the stronger item's ceiling.
+    // Landing on either item's own range alone would mean a representative was picked —
+    // the exact guess this surface exists to avoid. Derived from the calc rather than
+    // hardcoded, so the assertion is about the bracketing, not about today's numbers.
+    const [orbLow, orbHigh] = span(['Life Orb']);
+    const [leftLow, leftHigh] = span(['Leftovers']);
+    expect(orbHigh).toBeGreaterThan(leftHigh); // Life Orb's +30% is the bigger number
+    expect(span(['Life Orb', 'Leftovers'])).toEqual([leftLow, orbHigh]);
+    expect(orbLow).toBeGreaterThan(leftLow); // …and the floor really is the OTHER item's
   });
 });
 
@@ -420,11 +429,14 @@ describe('the sets view narrows a foe’s item pool by an OBSERVED hit’s MAGNI
   near.active = [ourActive];
   far.active = [foeWeavile];
 
+  // Bracketed, both items still possible: the span runs from Boots' floor to Band's ceiling.
+  const BRACKETED = /Icicle Crash \(27\.9[–-]49\.8%\)/;
+  // Narrowed to Choice Band alone: the span is that item's range and nothing wider.
+  const BAND_ONLY = /Icicle Crash \(41\.9[–-]49\.8%\)/;
+
   it('keeps both outcomes with no observed hit in the log (the baseline, unchanged)', () => {
     const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far]} as unknown as ClientBattle;
-    const html = buildPokemonSection(battle, foeWeavile, feed);
-    expect(html).toContain('(Choice Band)');
-    expect(html).toContain('(Heavy-Duty Boots)');
+    expect(buildPokemonSection(battle, foeWeavile, feed)).toMatch(BRACKETED);
   });
 
   it('collapses to a single inline line (Choice Band’s range) once the log shows a hit only its range could have dealt', () => {
@@ -437,11 +449,9 @@ describe('the sets view narrows a foe’s item pool by an OBSERVED hit’s MAGNI
     ];
     const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far], stepQueue} as unknown as ClientBattle;
     const html = buildPokemonSection(battle, foeWeavile, feed);
-    // Only one item survives, so the per-item labels disappear entirely — the same
-    // "revealed item is just the one-set case" rendering rule as an actually-revealed item.
-    expect(html).not.toContain('(Choice Band)');
-    expect(html).not.toContain('(Heavy-Duty Boots)');
-    expect(html).toMatch(/Icicle Crash \(41\.9[–-]49\.8%\)/);
+    // Only one item survives, so the span tightens onto its range — Boots' floor is gone.
+    expect(html).toMatch(BAND_ONLY);
+    expect(html).not.toMatch(BRACKETED);
   });
 
   it('goes back to bracketing both once the hit is stale (a boost happened since)', () => {
@@ -455,9 +465,7 @@ describe('the sets view narrows a foe’s item pool by an OBSERVED hit’s MAGNI
       '|-boost|p2a: Weavile|atk|2',
     ];
     const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far], stepQueue} as unknown as ClientBattle;
-    const html = buildPokemonSection(battle, foeWeavile, feed);
-    expect(html).toContain('(Choice Band)');
-    expect(html).toContain('(Heavy-Duty Boots)');
+    expect(buildPokemonSection(battle, foeWeavile, feed)).toMatch(BRACKETED);
   });
 });
 

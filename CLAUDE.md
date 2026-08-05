@@ -721,7 +721,9 @@ them until someone adds it.
 | Set inference keys on the INNATE ability (`baseAbility`), not the live one | ✅ | `core/facts.ts` (`innateAbility`) | `resolve.test.ts`, `readState.test.ts` |
 | …and only when the species could actually HAVE that ability | ✅ | `core/facts.ts` (`innateAbility`) | `resolve.test.ts` |
 | Damage under a hidden item/ability is split by DISTINCT outcome, not by set | ✅ | `core/variants.ts` (`bucketByDamage`) | `variants.test.ts`, `section.test.ts` |
-| The sets view's per-candidate damage never guesses a representative attacker either | ✅ | `section.ts` (`candidateDamageByMove`), `core/render.ts` (`moveBreakout`, `koTier`) | `render.test.ts`, `section.test.ts` |
+| The sets view's per-candidate damage never guesses a representative attacker either | ✅ | `section.ts` (`candidateDamageByMove`), `core/render.ts` (`spanText`, `koTier`) | `render.test.ts`, `section.test.ts` |
+| A candidate's hidden item/ability folds into ONE span; only the outcome deciding a KO is spelled out | ✅ | `core/render.ts` (`spanText`, `worstTier`, `koCondition`) | `render.test.ts`, `section.test.ts` |
+| Bucket labels are always DISTINCT — one role's item × ability fan-out separates on the pair | ✅ | `core/variants.ts` (`labelBuckets`, `itemAbilityOf`) | `variants.test.ts` |
 | Format ids are derived like PS's own `toID` | ✅ | `battle/readState.ts` | `readState.test.ts` |
 | `render.ts` matches native tooltip styling and layout almost CSS-free | 👁 | `core/render.ts` (`TOOLTIP_STYLE`, `renderMoveSection`, `renderSetsSection`) | `render.test.ts`, `section.test.ts` |
 | Foe-level item facts qualifying KO/nHKO read the RESOLVED variants, never raw facts | ✅ | `section.ts` (`itemStanding`) | `section.test.ts`, `render.test.ts` |

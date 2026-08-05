@@ -1501,3 +1501,63 @@ describe('a Substitute on the real captured battle', () => {
     expect(buildPokemonSection(hidden.battle, hidden.active('Tentacruel'), data)).not.toContain('hichu-ko');
   });
 });
+
+describe('a candidate block lists the items its own damage was computed from', () => {
+  // Thundurus is the live shape: its "Wallbreaker" role declares no `items` at all while
+  // the ENTRY names two, and the feed omits empty arrays rather than writing them. The calc
+  // has always fallen back to the entry's pool for such a role; the display read the role's
+  // empty list literally, so the block showed a Choice Specs-wide damage span under a
+  // heading that listed no item — directly above a second block that did list it.
+  const feed: RandbatsData = {
+    Thundurus: {
+      level: 78,
+      abilities: ['Prankster'],
+      items: ['Choice Specs', 'Heavy-Duty Boots'],
+      roles: {
+        Wallbreaker: {abilities: ['Prankster'], items: [], teraTypes: ['Electric'], moves: ['Thunderbolt']},
+        'Tera Blast user': {
+          abilities: ['Prankster'],
+          items: ['Heavy-Duty Boots'],
+          teraTypes: ['Flying'],
+          moves: ['Thunderbolt'],
+        },
+      },
+    },
+  };
+  const near = {isFar: false, sideConditions: {}, active: [] as unknown[]};
+  const far = {isFar: true, sideConditions: {}, active: [] as unknown[]};
+  const ourActive = {
+    speciesForme: 'Skarmory', level: 78, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p1: Skarmory', side: near,
+  } as unknown as ClientPokemon;
+  const foe = {
+    speciesForme: 'Thundurus', level: 78, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p2: Thundurus', side: far,
+  } as unknown as ClientPokemon;
+  near.active = [ourActive];
+  far.active = [foe];
+  const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far]} as unknown as ClientBattle;
+
+  /** Each candidate block's Items line and its Thunderbolt span, in render order. */
+  function blocks(): {items: string; span: string}[] {
+    const html = buildPokemonSection(battle, foe, feed);
+    return [...html.matchAll(/<span style="text-decoration: underline;">[^<]*<\/span>(.*?)(?=<span style="text-dec|$)/gs)].map((m) => ({
+      items: /<small>Items:<\/small> ([^<]*)/.exec(m[1]!)?.[1]?.trim() ?? '(no Items line)',
+      span: /Thunderbolt \(([^)]*)\)/.exec(m[1]!.replace(/<[^>]+>/g, ''))?.[1] ?? '(none)',
+    }));
+  }
+
+  it('names the entry’s items for a role that declares none, rather than showing no line', () => {
+    expect(blocks()[0]!.items).toBe('Choice Specs, Heavy-Duty Boots');
+  });
+
+  it('gives that role a WIDER span than the one-item role — the two items really do differ', () => {
+    // Without this the first assertion could pass while the block still calculated from
+    // something else: the span is what proves the listed pool is the pool that was used.
+    const [wallbreaker, teraBlast] = blocks();
+    expect(teraBlast!.items).toBe('Heavy-Duty Boots');
+    expect(wallbreaker!.span).not.toBe(teraBlast!.span);
+    const high = (s: string) => Number(/[\d.]+–([\d.]+)%/.exec(s)![1]);
+    expect(high(wallbreaker!.span)).toBeGreaterThan(high(teraBlast!.span));
+  });
+});

@@ -32,6 +32,31 @@ module.exports = {
       to: {circular: true},
     },
     {
+      // The one rule here that is about a NAMED boundary rather than a generic graph
+      // property, and it lives in this file because it is a direction between two path
+      // zones — exactly the shape `from`/`to` expresses, and a shape a test would have to
+      // rebuild the module graph to state.
+      //
+      // `fitness/` reads this codebase; `src/` is the codebase. An import in that direction
+      // would put a fitness check inside the bundle a user installs, which is both dead
+      // weight and a strange thing to have shipped. Nothing else in the repo prevents it:
+      // the directory split alone is a filing convention, and a filing convention holds
+      // exactly until someone needs a helper and finds one next door.
+      //
+      // The reverse — `fitness/` importing `src/` — is deliberately still legal. A check may
+      // reasonably want a TYPE from the product to say what it is asserting about. It stays
+      // unused today because these checks read the tree as text and as a graph rather than
+      // executing it, which is what lets them assert things a running program cannot.
+      name: 'fitness-stays-outside-the-product',
+      severity: 'error',
+      comment:
+        'src/ must not import from fitness/. The fitness checks read the product; they are not ' +
+        'part of it, and an import here ships them to users inside content.js. Move whatever is ' +
+        'shared into src/ and let the check read it, rather than reaching sideways for it.',
+      from: {path: '^src/'},
+      to: {path: '^fitness/'},
+    },
+    {
       name: 'no-orphans',
       severity: 'error',
       comment:

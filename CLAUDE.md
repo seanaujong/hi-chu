@@ -787,6 +787,7 @@ them until someone adds it.
 | Every behavioural deduction is reached through `narrow.ts` — nothing else imports `deductions.ts` | ✅ | `fitness/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |
 | `facts.ts` stays a leaf (and `types.ts` a true one), so no layer depends on a sibling for shared vocabulary | ✅ | `fitness/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |
 | No cycles, no orphan modules | ✅ | `.dependency-cruiser.cjs` | `npm run deps` (inside `npm run check`) |
+| `src/` never imports `fitness/` — the checks read the product, they don't ship inside it (the reverse stays legal) | ✅ | `.dependency-cruiser.cjs` (`fitness-stays-outside-the-product`) | `npm run deps` (inside `npm run check`) |
 | The committed module graph is TRUE — regenerated and diffed, never hand-maintained | ✅ | `scripts/graph.mjs` | `.github/workflows/ci.yml` |
 | A lexical boundary check reads whole import STATEMENTS, never lines — the rules above are defeated by a line wrap otherwise | ✅ | `fitness/importgraph.ts` (`importStatements`) | `importgraph.test.ts`, `dependency-boundaries.test.ts` |
 | No barrel file — one directory-wide re-export makes "does the core import the shell?" and "who imports `deductions.ts`?" stop having per-module answers | ✅ | `fitness/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |

@@ -674,10 +674,12 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
 Tests come in three flavours: colocated `*.test.ts` with hand-built stubs; two driven by **real
 captured data** — `integration.test.ts` (real feed, synthetic mons) and `section.test.ts` (a real
 two-sided battle captured live from a replay; the fixture is `__fixtures__/replay-*.json`); and
-the **architecture-fitness** trio, which asserts things about the codebase's SHAPE rather than
+the **architecture-fitness** layers, which assert things about the codebase's SHAPE rather than
 its behaviour (see "Shape of the suite" above). `importgraph.ts` is theirs — it reads this
 tree's own imports and ships in nothing, which `conventions.test.ts` relies on to tell shipped
 code from the fixture builders (`scenario.ts`, `previews.ts`, `*.testfixtures.ts`) beside it.
+It is deliberately absent from `docs/architecture-graph.md`: the instrument that reads the
+graph does not belong in the picture of it.
 
 For exact shapes and signatures, read the source and the colocated `*.test.ts` — the
 tests are the worked examples (and pin numbers against Showdown). Exception: `moves.ts` and

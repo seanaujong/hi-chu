@@ -17,8 +17,17 @@ import {mkdirSync, writeFileSync} from 'node:fs';
 
 const OUT = 'docs/architecture-graph.md';
 
-/** Test files and their fixtures are real modules but not part of the design being drawn. */
-const EXCLUDE = '\\.test\\.ts$|testfixtures';
+/**
+ * Test files and their fixtures are real modules but not part of the design being drawn.
+ *
+ * `importgraph.ts` is excluded for a sharper reason than "it's test support": it is the
+ * fitness tests' own reader of this very graph, so drawing it inside the graph puts the
+ * measuring instrument in the picture it measures. Left in, it renders as an isolated box —
+ * every one of its dependents is an excluded test file — which reads as dead code in the one
+ * artifact whose whole job is to show what's wired to what. `npm run deps` still cruises it
+ * unexcluded, so `no-orphans` covers it there, where the answer is true.
+ */
+const EXCLUDE = '\\.test\\.ts$|testfixtures|src/importgraph\\.ts$';
 
 function cruise(outputType) {
   return execFileSync(

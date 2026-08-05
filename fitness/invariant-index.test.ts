@@ -68,7 +68,7 @@ function fileSymbolPairs(cell: string): [string, string[]][] {
 
 /** Source paths are written relative to `src/`; root config files stand alone. */
 function resolveFile(ref: string): string | undefined {
-  return [join('src', ref), ref].find((p) => existsSync(p));
+  return [join('src', ref), join('fitness', ref), ref].find((p) => existsSync(p));
 }
 
 function findByBasename(dir: string, basename: string): boolean {
@@ -101,7 +101,7 @@ describe("CLAUDE.md's invariant index points at things that exist", () => {
   it('names a real test file for every "Checked by" entry', () => {
     const missing = rows.flatMap((r) =>
       filesIn(r.checkedBy)
-        .filter((f) => !resolveFile(f) && !findByBasename('src', f))
+        .filter((f) => !resolveFile(f) && !findByBasename('src', f) && !findByBasename('fitness', f))
         .map((f) => `${r.invariant} → ${f}`),
     );
     expect(missing).toEqual([]);

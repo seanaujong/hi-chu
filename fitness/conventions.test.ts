@@ -73,7 +73,12 @@ describe('an escape hatch that switches the typechecker off carries a written ra
         HATCH.test(line) && !/^\s*(\/\/|\*)/.test(line) && !hasRationale(lines, i) ? [`${path}:${i + 1}`] : [],
       );
     });
-    expect(unexplained).toEqual([]);
+    expect(
+      unexplained,
+      'Each site above defeats the typechecker with nothing saying why. Write one sentence on the line ' +
+        'or just above it — or, if the same assertion appears several times, give it a named function whose ' +
+        'docblock explains it once (see `rawEntries` in src/data/lookup.ts)',
+    ).toEqual([]);
   });
 
   it('reaches the whole product from its entry points, and finds hatches there', () => {
@@ -103,13 +108,31 @@ describe('every module in the pure core has a colocated test, or a listed reason
   const modules = readdirSync('src/core').filter(
     (name) => name.endsWith('.ts') && !name.endsWith('.test.ts') && !name.includes('testfixtures'),
   );
+  const hasTest = (name: string): boolean => existsSync(join('src/core', name.replace(/\.ts$/, '.test.ts')));
 
+  // Each direction is its own `it` with its own message, because the two failures call for
+  // opposite actions and a single set-equality assertion reports both as one array diff —
+  // which tells a reader that something moved, but not which way or what to do about it.
   it('leaves no core module both untested and unexplained', () => {
-    const untested = modules.filter((name) => !existsSync(join('src/core', name.replace(/\.ts$/, '.test.ts'))));
-    expect(untested.sort()).toEqual(Object.keys(UNTESTED_BY_DESIGN).sort());
+    const unexplained = modules.filter((name) => !hasTest(name) && !(name in UNTESTED_BY_DESIGN));
+    expect(
+      unexplained,
+      `Untested core module(s): ${unexplained.join(', ')}. Either add src/core/${unexplained[0]?.replace(/\.ts$/, '.test.ts') ?? '<module>.test.ts'}, ` +
+        'or add the module to UNTESTED_BY_DESIGN in this file with the reason it needs no test of its own',
+    ).toEqual([]);
+  });
+
+  it('drops an exemption once the module it excuses has grown a test', () => {
+    const stale = Object.keys(UNTESTED_BY_DESIGN).filter((name) => hasTest(name));
+    expect(
+      stale,
+      `Now tested, so the exemption is dead: ${stale.join(', ')}. Remove them from UNTESTED_BY_DESIGN — ` +
+        'an exemption left behind reads as a standing decision that this module needs no test',
+    ).toEqual([]);
   });
 
   it('keeps the exemption list to modules that really exist', () => {
-    expect(Object.keys(UNTESTED_BY_DESIGN).filter((name) => !modules.includes(name))).toEqual([]);
+    const ghosts = Object.keys(UNTESTED_BY_DESIGN).filter((name) => !modules.includes(name));
+    expect(ghosts, `UNTESTED_BY_DESIGN names modules that are gone: ${ghosts.join(', ')}. Delete those entries`).toEqual([]);
   });
 });

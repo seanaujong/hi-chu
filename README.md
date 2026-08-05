@@ -119,7 +119,7 @@ generated from the source by `npm run graph` and re-diffed by CI so it cannot dr
 the layers MEAN — why `facts.ts` is a leaf, why every behavioural deduction routes through
 `narrow.ts` — read `CLAUDE.md`'s Architecture section, kept current file-by-file as the
 codebase grows. Those layering rules are enforced, not just described:
-`src/dependency-boundaries.test.ts` holds this project's named ones and
+`fitness/dependency-boundaries.test.ts` holds this project's named ones and
 `.dependency-cruiser.cjs` the structural ones (no cycles, no orphans); both run in
 `npm run check`.
 

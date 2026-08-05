@@ -1,6 +1,6 @@
 {
   "name": "hi-chu",
-  "version": "0.23.0",
+  "version": "0.24.0",
   "description": "Battle hints on hover for Pokémon Showdown: move damage, opponent's possible sets, and who's faster.",
   "private": true,
   "type": "module",

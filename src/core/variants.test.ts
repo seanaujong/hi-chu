@@ -110,6 +110,38 @@ describe('labelBuckets', () => {
     ]);
     expect(new Set(labels).size).toBe(4);
   });
+
+  it('labels ONE role’s item × ability fan-out by the pair, when neither alone separates', () => {
+    // Porygon-Z's Fast Attacker: three items × two abilities, where Choice Specs ×
+    // Adaptability and Choice Scarf × Download multiply out to the SAME damage and share a
+    // bucket. That puts Choice Scarf in two buckets and Adaptability in two others, so no
+    // single axis has a value unique to any bucket — and the role, identical across every
+    // variant in one candidate's fan-out, separates nothing at all. Only the pair does.
+    const combo = (item: string, ability: string) => variant({item, ability, role: 'Fast Attacker'});
+    const labels = labelBuckets([
+      [combo('Choice Scarf', 'Adaptability')],
+      [combo('Choice Scarf', 'Download'), combo('Choice Specs', 'Adaptability')],
+      [combo('Choice Specs', 'Download')],
+      [combo('Life Orb', 'Adaptability')],
+    ]);
+    expect(labels).toEqual([
+      'Choice Scarf · Adaptability',
+      'Choice Scarf · Download / Choice Specs · Adaptability',
+      'Choice Specs · Download',
+      'Life Orb · Adaptability',
+    ]);
+    expect(new Set(labels).size).toBe(4);
+  });
+
+  it('numbers the buckets when nothing separates them — never repeats one name', () => {
+    // The fallback's whole job is that the labels come out DISTINCT. Naming a bucket after
+    // its role instead reads fine across a mixed pool and fails silently on a single role's
+    // fan-out, handing every bucket the identical name.
+    const same = {item: 'Leftovers', ability: 'Levitate', role: 'Bulky Support'};
+    const labels = labelBuckets([[variant(same)], [variant(same)], [variant(same)]]);
+    expect(labels).toEqual(['set 1', 'set 2', 'set 3']);
+    expect(new Set(labels).size).toBe(3);
+  });
 });
 
 describe('bucketByDamage', () => {

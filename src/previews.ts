@@ -24,7 +24,7 @@
 // which is exactly the wait this file exists to delete.
 
 import {buildMoveSection, buildPokemonSection, buildSwitchSection} from './section.js';
-import {loadBattle, scenarioData, scenarioDataTwinRoles, scenarioDataWithDitto, scenarioDataWithEmboar} from './scenario.js';
+import {loadBattle, scenarioData, scenarioDataItemAbilitySplit, scenarioDataTwinRoles, scenarioDataWithDitto, scenarioDataWithEmboar} from './scenario.js';
 
 // Re-exported so the gallery can style its panels with the very stylesheet the extension
 // injects, rather than a copy of it that could drift.
@@ -151,6 +151,14 @@ export const PREVIEWS: readonly Preview[] = [
     'The same block with a doll in front of our Noivern: the numbers are still true about the Pokémon, so they stay — but nothing they throw is close to a KO, so the danger colouring goes.',
     {noivernSubstitute: 'fresh', myNoivernHpPercent: 0.2},
     'Tentacruel',
+  ),
+  pokemonHover(
+    'Foe active',
+    'One role, three items, and the line that matters',
+    'The shape that decides how much screen a hover costs — a Porygon-Z can hold three items and two abilities across four attacks, and naming all six outcomes per move ran the tooltip off the screen. Each move folds into one span; only Surf earns a second line, because Choice Specs is what turns it from a near-miss into a kill.',
+    {tentacruelItem: ''},
+    'Tentacruel',
+    scenarioDataItemAbilitySplit,
   ),
   pokemonHover(
     'Foe active',

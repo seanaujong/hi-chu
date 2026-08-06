@@ -15,6 +15,7 @@ import {buildMoveSection, buildPokemonSection, buildSwitchSection} from './secti
 import type {ClientBattle, ClientPokemon, ClientSide} from './battle/readState.js';
 import {loadBattle, scenarioData as data, scenarioDataWithDitto, scenarioDataWithEmboar as dataWithEmboar, scenarioDataTwinRoles} from './scenario.js';
 import type {RandbatsData} from './core/types.js';
+import {HOVER_TARGETS, SECTION_NAMES, shows, type HoverTarget, type SectionName} from './core/surfaces.js';
 
 /** The max-damage percentage the "Damage: X% - Y%" line prints. */
 function maxPercent(html: string): number {
@@ -1560,4 +1561,58 @@ describe('a candidate block lists the items its own damage was computed from', (
     const high = (s: string) => Number(/[\d.]+–([\d.]+)%/.exec(s)![1]);
     expect(high(wallbreaker!.span)).toBeGreaterThan(high(teraBlast!.span));
   });
+});
+
+describe('the Surfaces grid describes what the six surfaces actually render', () => {
+  // `core/surfaces.ts` states which sections each hover target carries, and
+  // `surfaces.test.ts` checks that table against its own laws. This checks it against
+  // REALITY — the rendered HTML of all six surfaces on the captured battle — so the grid
+  // can never quietly become a description of a product we no longer ship. Between them
+  // the five markers below cover all eight sections, so every one of the 48 cells is
+  // asserted rather than only the ones that happen to have a test elsewhere.
+  const moves = ['dracometeor', 'flamethrower', 'hurricane', 'roost'];
+  const {battle, active} = loadBattle({myNoivernItem: 'heavydutyboots', myNoivernMoves: moves});
+  const server = {
+    ident: 'p1: Noivern', details: 'Noivern, L82, F', condition: '272/272',
+    item: 'heavydutyboots', baseAbility: 'infiltrator', teraType: 'Fire', moves,
+  } as never;
+
+  const RENDERED: Readonly<Record<HoverTarget, string>> = {
+    'move-button': buildMoveSection(battle, active('Noivern'), 'Draco Meteor', data),
+    'own-active': buildPokemonSection(battle, active('Noivern'), data),
+    'own-bench': buildPokemonSection(battle, benched(active('Noivern')), data),
+    'switch-menu': buildSwitchSection(battle, server, data),
+    'foe-active': buildPokemonSection(battle, active('Tentacruel'), data),
+    'foe-bench': buildPokemonSection(battle, benched(active('Tentacruel')), data),
+  };
+
+  /** The block `render.ts` heads with "vs <foe>": the matchup view's outgoing half, and
+   *  the same renderer a foe roster hover uses for our damage into that Pokémon. It holds
+   *  a `%` only when it actually carries move lines — the header and the ⚡ verdict never
+   *  do, which is what lets one predicate tell a block with damage from one without. */
+  function vsBlockHasDamage(html: string): boolean {
+    const vs = html.split('<div class="hichu-block">').slice(1).find((b) => b.includes('<small>vs</small>'));
+    return vs !== undefined && vs.includes('%');
+  }
+
+  const MARKERS: readonly {what: string; sections: readonly SectionName[]; present: (html: string) => boolean}[] = [
+    {what: 'the Damage line', sections: ['damage'], present: (h) => h.includes('<small>Damage:</small>')},
+    {what: 'the ⚡ verdict (either placement)', sections: ['speedLead', 'speedPerBlock'], present: (h) => h.includes('⚡')},
+    {what: 'our damage under a "vs <foe>" header', sections: ['outgoing', 'ourDamageInto'], present: vsBlockHasDamage},
+    {what: 'the Incoming group', sections: ['incoming'], present: (h) => h.includes('<small>Incoming:</small>')},
+    {what: 'the candidate set blocks', sections: ['sets', 'mirror'], present: (h) => h.includes('<small>Moves:</small>')},
+  ];
+
+  it('checks every section the grid defines — no cell goes uncovered', () => {
+    expect(MARKERS.flatMap((m) => m.sections).sort()).toEqual([...SECTION_NAMES].sort());
+  });
+
+  for (const target of HOVER_TARGETS) {
+    for (const {what, sections, present} of MARKERS) {
+      const expected = sections.some((s) => shows(target, s));
+      it(`${target} ${expected ? 'renders' : 'does not render'} ${what}`, () => {
+        expect(present(RENDERED[target])).toBe(expected);
+      });
+    }
+  }
 });

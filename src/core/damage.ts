@@ -1,9 +1,10 @@
 // The damage layer: turn two ResolvedMon and a move name into a DamageReport.
 //
 // @smogon/calc owns the hard, generation-specific formula (STAB, Tera, items,
-// abilities, burn-vs-Guts, screens, …). We own what it gets wrong for multi-hit:
-// it models k hits as `k × one shared roll`, with no hit-count randomness, per-hit
-// accuracy, or Skill Link/Loaded Dice. So we read ONE hit at a time out of it —
+// abilities, burn-vs-Guts, screens, …). What it does not own for multi-hit is the hit
+// COUNT: it convolves the rolls of k hits perfectly well, but k is a fixed parameter its
+// caller chooses (3 by default for a 2-5 move), so there is no hit-count randomness,
+// per-hit accuracy, or Skill Link/Loaded Dice weighting. So we read ONE hit at a time —
 // one run for a uniform-power move, one per hit's true BP for Triple Axel/Triple
 // Kick — and convolve those per-hit rolls over the real hit-count distribution
 // (core/multihit.ts) to get the true total, and from it an exact single-use KO chance.

@@ -6,7 +6,8 @@ every format**; the **information game** needs a set feed, so it is Random-Battl
 
 Hovering one of **our move buttons** shows that move's damage into the opposing active
 (with **granular multi-hit damage** — a true KO% that integrates over the random 2–5 hit
-count, not `k × one roll`); hovering **our own Pokémon** (benched included) leads with
+count, rather than conditioning on one chosen count the way the calc does); hovering
+**our own Pokémon** (benched included) leads with
 the **matchup view**: our real moves' damage into the foe active, read from the private
 team, followed by its defensive mirror — an **`Incoming:`** group showing what the foe's
 own moves would do INTO that mon, so a switch decision reads both "can it threaten?" and
@@ -853,7 +854,7 @@ them until someone adds it.
 | Format ids are derived like PS's own `toID` | ✅ | `battle/readState.ts` | `readState.test.ts` |
 | `render.ts` matches native tooltip styling and layout almost CSS-free | 👁 | `core/render.ts` (`TOOLTIP_STYLE`, `renderMoveSection`, `renderSetsSection`) | `render.test.ts`, `section.test.ts` |
 | Foe-level item facts qualifying KO/nHKO read the RESOLVED variants, never raw facts | ✅ | `section.ts` (`itemStanding`) | `section.test.ts`, `render.test.ts` |
-| Own the hit-count model — the calc's `k × one roll` multi-hit is wrong | ✅ | `core/multihit.ts` | `multihit.test.ts`, `damage.test.ts` |
+| Own the hit COUNT — the calc convolves the rolls but conditions on a fixed number of hits | ✅ | `core/multihit.ts` | `multihit.test.ts`, `damage.test.ts` |
 | Variable-power multi-hit is computed per hit, through a stand-in move — which must match the real move on CONTACT and be genuinely multi-hit | ✅ | `core/damage.ts` | `damage.test.ts` |
 | One hit of a multi-hit move is asked for as TWO — a single hit takes gen 9's Tera 60 BP floor, which no multi-hit move ever takes | ✅ | `core/damage.ts` (`TERA_FLOOR_SAFE_HITS`) | `damage.test.ts` |
 | Rage Fist's power scales with the ATTACKER's own hits taken | ✅ | `core/damage.ts` (`rageFistPower`), `battle/readState.ts` (`timesAttacked`) | `damage.test.ts`, `readState.test.ts`, `transform.test.ts` |

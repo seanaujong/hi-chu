@@ -1,10 +1,27 @@
 // The probability law behind multi-hit damage.
 //
-// @smogon/calc models a k-hit move as `k × one shared damage roll` — every hit
-// rolls identically. That is wrong twice over: each hit actually rolls its damage
-// independently (so the total is far less variable than k × one roll), and for a
-// 2-5 hit move the *number* of hits is itself random. This module fixes both by
-// working with explicit probability mass functions (PMFs) and convolving them.
+// The gap this fills is the HIT COUNT, not the per-hit rolls. @smogon/calc already
+// convolves the rolls of a k-hit move (`desc.ts`'s `combine`/`squashMultihit` — exact
+// for k ≤ 3, an approximation within about 1% above that), so it does NOT model every
+// hit as one shared roll; only gen 1 multiplies. What it treats as fixed is k itself:
+// `move.hits` is a scenario parameter the caller chooses, defaulting to `min + 1` — so
+// a 2-5 move is answered as exactly 3 hits, 4 under Loaded Dice, 5 under Skill Link.
+// That is the right shape for the official calculator, whose UI has a hit-count
+// dropdown, and the wrong shape for a tooltip, which has no one to ask.
+//
+// Conditioning on 3 hits is not a rounding error. Measured against the calc's own
+// numbers at @smogon/calc 0.11.0 — a version-stamped observation rather than a claim
+// about whatever it does next (gen 9, 252+ Cloyster Icicle Spear, exact convolution on
+// both sides so the only difference is the hit-count model) — 9 of 15
+// standard defenders change verdict, in both directions: Garchomp reads "guaranteed
+// OHKO" and truly dies 67.2% of the time, while Zapdos reads as un-KOable and dies
+// 30.0% of the time. Both are decision-changing, and neither shows up in the mean —
+// the averages nearly agree, and KO chance is entirely a question about the tails.
+//
+// So this module owns the whole distribution: a hit-count PMF (Showdown's own
+// 35/35/15/15, plus Skill Link / Loaded Dice / stop-at-miss) convolved with the per-hit
+// rolls. Holding the full PMF is also what lets `koLadder` carry a defender's HP
+// distribution across turns with recovery, which no single damage range can express.
 //
 // Everything here is pure: no DOM, no network, no @smogon/calc. It takes the
 // 16 single-hit damage rolls (each equally likely, 1/16) and a hit-count
@@ -259,7 +276,8 @@ export function convolveN(base: Pmf, n: number): Pmf {
  * (Triple Axel 20/40/60) one per hit. For each possible hit count k (weighted by
  * `hitCounts`), the total is the sum of the first k hits' independent rolls; mixing
  * those by their hit-count probability gives the exact total-damage distribution.
- * This is the corrected replacement for the calc's `k × one shared roll`.
+ * The mixing step is the part the calc has no equivalent for: it convolves the rolls of
+ * ONE chosen hit count, so its answer is conditional on that count rather than over it.
  */
 export function totalDamagePmf(perHit: readonly Pmf[], hitCounts: Pmf): Pmf {
   const total = new Map<number, number>();

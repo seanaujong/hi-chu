@@ -15,8 +15,8 @@
 //     Kick 10/20/30 — the only two; every other multi-hit move rolls one power).
 //
 // All of them are modelled exactly by convolving per-hit rolls over the hit-count
-// distribution (see core/multihit.ts); a variable-power move just supplies one
-// damage roll per hit instead of one shared roll.
+// distribution (see core/multihit.ts); a variable-power move just supplies its own
+// damage distribution per hit, where a uniform-power move reuses a single one.
 
 import type {HitSpec} from './multihit.js';
 

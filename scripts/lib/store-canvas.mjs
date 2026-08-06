@@ -22,7 +22,6 @@ export const STORE_CANVAS = {width: 1280, height: 800};
  */
 const PAPER = '#FFF3D6';
 const DEEP_CHEEK = '#C4392B';
-const INK = '#2A2118';
 
 /**
  * A store-frame page holding one shot.

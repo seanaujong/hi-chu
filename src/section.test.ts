@@ -1018,7 +1018,7 @@ function openBattle(over: {tier?: string; gameType?: string; myStats?: Record<st
     side.active = [
       i === 0
         ? {...mon('Dragonite', i), side}
-        : {...mon('Tentacruel', i, {...(over.foeItem !== undefined ? {item: over.foeItem} : {})}), side},
+        : {...mon('Tentacruel', i, over.foeItem !== undefined ? {item: over.foeItem} : {}), side},
     ];
     return side as unknown as ClientSide;
   });

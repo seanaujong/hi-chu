@@ -28,7 +28,6 @@ import {
   renderSpeedSection,
   type CandidateBlock,
   type MoveKnowledgeRow,
-  type SetsRenderModel,
   type SpeedLineModel,
 } from './core/render.js';
 import type {

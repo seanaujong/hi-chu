@@ -38,14 +38,14 @@ function isMegaStone(item: string): boolean {
 /** A held item is a Z-crystal (gen7) if it ends in " Z" — "Firium Z",
  *  "Ultranecrozium Z". No non-crystal item ends that way, so the rule is exact. */
 function isZCrystal(item: string): boolean {
-  return / Z$/.test(item);
+  return item.endsWith(' Z');
 }
 
 /** "Charizard" + "Charizardite Y" → "Charizard-Mega-Y". Species names the base; the
  *  stone's X/Y suffix names the variant (stone→species is irregular, species→forme
  *  is not, so we key off the hovered species, not the stone's prefix). */
 function megaForme(baseSpecies: string, stone: string): string {
-  const variant = / X$/.test(stone) ? '-X' : / Y$/.test(stone) ? '-Y' : '';
+  const variant = stone.endsWith(' X') ? '-X' : stone.endsWith(' Y') ? '-Y' : '';
   return `${baseSpecies}-Mega${variant}`;
 }
 

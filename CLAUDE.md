@@ -35,10 +35,27 @@ prose and diagrams.
 ## Build, test, run
 ```sh
 npm install
-npm run check   # the gate: typecheck (strict TS) + Vitest + the dependency cruise. CI runs it too.
+npm run check   # the gate: typecheck + oxlint + Vitest + the dependency cruise + the graph. CI runs it too.
 npm test        # Vitest alone. The authority — assert against real runs, don't mental-math.
+npm run lint    # oxlint alone
 npm run build   # esbuild → dist/ (content.js + manifest.json)
 ```
+**The linter is oxlint, and that is a forced choice worth knowing about.** `typescript-eslint`
+throws `does not support TS 7.0` at module load — its peer range is `>=4.8.4 <6.1.0` on both
+latest and canary — so ESLint and every `eslint-plugin-import` rule are unavailable while this
+repo is on TypeScript 7. oxlint has its own parser and no `typescript` peer, which is the whole
+reason it works here. It runs on **defaults**: `.oxlintrc.json` names the plugins and sets no
+rules, because running it bare found eight real things (a dead type import, five regexes that
+wanted `startsWith`/`endsWith`, an unused constant, a redundant spread) and nothing spurious.
+`--deny-warnings` makes it a gate rather than a squiggle. Fix a finding before configuring the
+rule away; if a rule genuinely doesn't fit, disable it here with the reason, since JSON config
+carries no comments of its own.
+
+**Do not move the layering rules into it.** oxlint's `no-restricted-imports` expresses them —
+including `allowTypeImports` for `render.ts` — but every way of exempting ONE file is broken:
+`excludedFiles` and `ignorePatterns` silently void the whole override, and a `!negation` in
+`files` is ignored. The `deductions → narrow` rule needs exactly that exemption, and a lint
+config cannot assert it matched anything, where `fitness/` can.
 In-browser check: `npm run build`, then `chrome://extensions` → Developer mode → **Load
 unpacked** → pick `dist/`; open a Random Battle on play.pokemonshowdown.com and hover a
 Pokémon. (The logic is covered end-to-end by tests; only this hover needs a human.)

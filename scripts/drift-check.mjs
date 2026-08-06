@@ -320,7 +320,7 @@ async function main() {
     // Seek to mid-battle so both sides have an active Pokémon on the field.
     await page.evaluate(async () => {
       const b = globalThis.battle;
-      const total = (b.stepQueue || []).filter((l) => /^\|turn\|/.test(l)).length;
+      const total = (b.stepQueue || []).filter((l) => l.startsWith('|turn|')).length;
       const target = Math.max(1, Math.floor(total * 0.5));
       b.seekTurn(target);
       for (let i = 0; i < 80; i++) {

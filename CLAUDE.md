@@ -139,6 +139,28 @@ modules the way the compiler does, so anything about the graph as a whole — cy
 belongs to it. The tests read source text through `fitness/importgraph.ts`, which parses whole
 import STATEMENTS rather than lines; that is not a detail, because a wrapped import read line
 by line is an edge nobody can see, and an edge nobody can see reads as a boundary held.
+**The checks are themselves checked, two ways, because a rule that quietly stops catching its
+own violation is indistinguishable from a rule that passes.** Each rule's JUDGEMENT lives in
+`fitness/rules.ts` as a pure function over a list, so `fitness/rules.test.ts` can hand it a
+violation directly and assert it is caught — the plant-and-watch-it-fail step made permanent
+instead of performed once, by hand, in the session that wrote the rule. That matters because
+it has already gone wrong twice: a reader that dropped every wrapped import, and one that
+dropped every module whose name held a hyphen. Both read green. Separately,
+**`npm run fitness-retro`** replays today's rules over real history and reports which have ever
+FIRED — read-only, deliberately not in `npm run check`. It is the only thing that can tell a
+rule protecting you from a rule protecting nothing, and it does not flatter this repo: several
+rules here have never fired once.
+
+**A cold read is the judgement half, and its trigger is machinery, not the calendar.** After a
+change that ADDS OR MOVES machinery — a fitness check, a build or release script, a docs
+restructure — have a fresh reader (a person or an agent with no context) try a small first
+contribution using only what CLAUDE.md points them at. Deliberately NOT a release-checklist
+step: a release fires on "main has moved", which is a cadence signal and barely correlates
+with the one that matters here, and the release flow already has its one conscious human gate
+(see Cutting a release). The evidence is direct: a cold read run after ~800 lines of new
+checks landed found six real defects, three of them introduced by the very PR that added the
+checks — including a filename shape that silently disabled every layering rule.
+
 All fast, deterministic, CI-gated on every push. `drift-check` and `player-check`
 are a different KIND of check above that, not just a slower one: they defend against
 Pokémon Showdown's own undocumented client changing shape, not against a regression in
@@ -670,14 +692,15 @@ picture and not in this list, this list is the thing that's wrong.
     names each bucket by the axis that differs (an Assault Vest that changes the number).
   - `render.ts` — model → tooltip HTML string: `renderMoveSection` (one move's damage,
     or one labelled line per damage bucket when the target's item is unknown) and
-    `renderSetsSection` (the information game, both perspectives). `moves.ts` —
-    the move tables (data only; no colocated test — covered via `damage.test.ts`): the
-    multi-hit table, and the damage callbacks of moves that have no base power at all.
+    `renderSetsSection` (the information game, both perspectives).
   - `surfaces.ts` — the display law, and `render.ts`'s natural pair: render owns what a
     section LOOKS like, this owns which sections a target GETS. The Surfaces grid as a
     table (`SURFACES`), plus the one fact under it — is the hovered mon on the field? —
     from which both the withholding and the switch-in hazard preview follow. Zero imports;
     it decides nothing about numbers.
+  - `moves.ts` — the move tables (data only): the multi-hit table, and the damage callbacks
+    of moves that have no base power at all. Exercised end-to-end via `damage.test.ts`
+    rather than a colocated test — see `UNTESTED_BY_DESIGN`.
   - `types.ts` — shared vocabulary (`LiveFacts`, `RandbatsEntry`, `ResolvedMon`,
     `SetVariant`, `SetKnowledge`, `FieldFacts`).
 - `src/battle/readState.ts` — Showdown's untyped client objects → typed `LiveFacts`/`FieldFacts`.
@@ -847,7 +870,9 @@ them until someone adds it.
 | No cycles, no orphan modules | ✅ | `.dependency-cruiser.cjs` | `npm run deps` (inside `npm run check`) |
 | `src/` never imports `fitness/` — the checks read the product, they don't ship inside it (the reverse stays legal) | ✅ | `.dependency-cruiser.cjs` (`fitness-stays-outside-the-product`) | `npm run deps` (inside `npm run check`) |
 | The committed module graph is TRUE — regenerated and diffed, never hand-maintained | ✅ | `scripts/graph.mjs` | `npm run graph:check` (inside `npm run check`) |
-| A core module is named so the layering rules can SEE it — lowercase letters only, since they match sibling edges lexically | ✅ | `fitness/dependency-boundaries.test.ts` (`CORE_MODULE`) | `dependency-boundaries.test.ts` |
+| A core module is named so the layering rules can SEE it — lowercase letters only, since they match sibling edges lexically | ✅ | `fitness/rules.ts` (`CORE_MODULE`, `unreadableModuleNames`) | `dependency-boundaries.test.ts`, `rules.test.ts` |
+| Every module in `src/core` appears in the Architecture list — adding a file is when a hand-maintained map goes stale, and nothing else notices | ✅ | `fitness/rules.ts` (`docCoverageGaps`) | `conventions.test.ts`, `rules.test.ts` |
+| Each fitness rule is a pure judgement, tested against a violation it must catch — watched failing on every commit, not once by hand | ✅ | `fitness/rules.ts` | `rules.test.ts` |
 | A lexical boundary check reads whole import STATEMENTS, never lines — the rules above are defeated by a line wrap otherwise | ✅ | `fitness/importgraph.ts` (`importStatements`) | `importgraph.test.ts`, `dependency-boundaries.test.ts` |
 | No barrel file — one directory-wide re-export makes "does the core import the shell?" and "who imports `deductions.ts`?" stop having per-module answers | ✅ | `fitness/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |
 | An escape hatch that switches the typechecker OFF carries a written rationale — in code that SHIPS, derived from the build's entry points rather than listed | ✅ | `fitness/conventions.test.ts` (`HATCH`, `shippedFiles`), `data/lookup.ts` (`rawEntries`) | `conventions.test.ts` |

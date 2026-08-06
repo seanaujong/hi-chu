@@ -670,14 +670,15 @@ picture and not in this list, this list is the thing that's wrong.
     names each bucket by the axis that differs (an Assault Vest that changes the number).
   - `render.ts` — model → tooltip HTML string: `renderMoveSection` (one move's damage,
     or one labelled line per damage bucket when the target's item is unknown) and
-    `renderSetsSection` (the information game, both perspectives). `moves.ts` —
-    the move tables (data only; no colocated test — covered via `damage.test.ts`): the
-    multi-hit table, and the damage callbacks of moves that have no base power at all.
+    `renderSetsSection` (the information game, both perspectives).
   - `surfaces.ts` — the display law, and `render.ts`'s natural pair: render owns what a
     section LOOKS like, this owns which sections a target GETS. The Surfaces grid as a
     table (`SURFACES`), plus the one fact under it — is the hovered mon on the field? —
     from which both the withholding and the switch-in hazard preview follow. Zero imports;
     it decides nothing about numbers.
+  - `moves.ts` — the move tables (data only): the multi-hit table, and the damage callbacks
+    of moves that have no base power at all. Exercised end-to-end via `damage.test.ts`
+    rather than a colocated test — see `UNTESTED_BY_DESIGN`.
   - `types.ts` — shared vocabulary (`LiveFacts`, `RandbatsEntry`, `ResolvedMon`,
     `SetVariant`, `SetKnowledge`, `FieldFacts`).
 - `src/battle/readState.ts` — Showdown's untyped client objects → typed `LiveFacts`/`FieldFacts`.

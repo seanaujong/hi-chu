@@ -2,6 +2,7 @@ import {describe, it, expect} from 'vitest';
 import {readdirSync, readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {importStatements, localImports} from './importgraph.js';
+import {CORE_MODULE, importersOf, unreadableModuleNames} from './rules.js';
 
 /**
  * The only runtime dependency, `@smogon/calc`, is confined to the modules that
@@ -23,21 +24,21 @@ function allSourceFiles(dir: string): string[] {
   });
 }
 
-/**
- * The name shape the layering rules can SEE. Written once and used both to read sibling edges
- * and to constrain the filenames below, so the reader and the constraint cannot drift apart —
- * a disagreement between them is precisely the failure that made this necessary.
- */
-const CORE_MODULE = '[a-z]+';
-
 /** The sibling core modules a file imports, by bare name: `['facts', 'narrow']`. Covers
  *  `import` and `import type` alike — a type-only edge is still an edge in the layering,
- *  and `render.ts`'s own rule below is the one place the distinction matters. */
+ *  and `render.ts`'s own rule below is the one place the distinction matters. The name shape
+ *  is `CORE_MODULE`, shared with the filename guard below so the reader and the constraint
+ *  cannot drift apart — a disagreement between them is what made that guard necessary. */
 function coreImportsOf(path: string): string[] {
   const sibling = new RegExp(`^\\./(${CORE_MODULE})\\.js$`);
   return localImports(path)
     .map((statement) => sibling.exec(statement.specifier)?.[1])
     .filter((name): name is string => name !== undefined);
+}
+
+/** Each core module's own sibling imports, keyed by bare name. */
+function coreImportGraph(): Record<string, string[]> {
+  return Object.fromEntries(coreModules().map((m) => [m, coreImportsOf(`src/core/${m}.ts`)]));
 }
 
 /** Every module under `src/core`, by bare name. */
@@ -102,8 +103,7 @@ describe('render.ts only knows the SHAPE reasoning produced, never calls into it
  */
 describe('a core module is named so the layering rules can see it', () => {
   it('names every file under src/core in lowercase letters only', () => {
-    const shape = new RegExp(`^${CORE_MODULE}(\\.test|\\.testfixtures)?\\.ts$`);
-    const unreadable = readdirSync('src/core').filter((name) => !shape.test(name));
+    const unreadable = unreadableModuleNames(readdirSync('src/core'));
     expect(
       unreadable,
       `Rename to lowercase letters only: ${unreadable.join(', ')}. The layering rules match sibling ` +
@@ -120,8 +120,7 @@ describe('a core module is named so the layering rules can see it', () => {
 describe('the set-inference layering holds as an import graph, not just a description', () => {
   it('routes every deduction through narrow.ts — nothing else may import deductions.ts', () => {
     // The rule that would have caught the item-pool split the day it was written.
-    const importers = coreModules().filter((m) => coreImportsOf(`src/core/${m}.ts`).includes('deductions'));
-    expect(importers).toEqual(['narrow']);
+    expect(importersOf('deductions', coreImportGraph())).toEqual(['narrow']);
   });
 
   it('keeps facts.ts a leaf, so the layers above need not depend on each other for it', () => {

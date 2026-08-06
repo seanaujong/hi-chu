@@ -30,7 +30,7 @@ const EXCLUDE = '\\.test\\.ts$|testfixtures';
 function cruise(outputType) {
   return execFileSync(
     'npx',
-    ['depcruise', 'src/**/*.ts', '--config', '.dependency-cruiser.cjs', '--exclude', EXCLUDE, '--output-type', outputType],
+    ['depcruise', 'src/**/*.ts', 'gallery/**/*.ts', '--config', '.dependency-cruiser.cjs', '--exclude', EXCLUDE, '--output-type', outputType],
     {encoding: 'utf8', maxBuffer: 32 * 1024 * 1024},
   );
 }

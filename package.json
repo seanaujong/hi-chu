@@ -25,10 +25,10 @@
     "build:visual-check": "node scripts/build-visual-check.mjs",
     "visual-check": "npm run build:visual-check && REAL_EXTENSION=1 node scripts/screenshots.mjs",
     "previews": "node scripts/previews.mjs",
-    "deps": "depcruise \"src/**/*.ts\" \"fitness/**/*.ts\" --config .dependency-cruiser.cjs",
+    "deps": "depcruise \"src/**/*.ts\" \"fitness/**/*.ts\" \"gallery/**/*.ts\" --config .dependency-cruiser.cjs",
     "graph": "node scripts/graph.mjs",
     "graph:check": "node scripts/graph.mjs --check",
-    "lint": "oxlint --deny-warnings src fitness scripts build.mjs",
+    "lint": "oxlint --deny-warnings src fitness gallery scripts build.mjs",
     "fitness-retro": "node scripts/fitness-retro.mjs"
   },
   "dependencies": {

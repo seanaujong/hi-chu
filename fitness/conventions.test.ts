@@ -18,9 +18,11 @@ import {HATCH, docCoverageGaps, testCoverageGaps, unexplainedHatchLines} from '.
  *
  * Derived rather than listed, because the interesting rules below are about code that runs
  * on someone else's machine and the tree keeps growing test-support files beside it —
- * `scenario.ts`, `previews.ts`, `sets.testfixtures.ts`. None of them had to be named here or
- * kept up to date: nothing the product runs imports them, so nothing the product runs makes
- * a claim on their behalf.
+ * `scenario.ts` and `sets.testfixtures.ts`, the two that stay in `src/` beside the product
+ * tests that drive them. Neither had to be named here or kept up to date: nothing the product
+ * runs imports them, so nothing the product runs makes a claim on their behalf. (`previews.ts`
+ * needs no mention at all now — it lives in `gallery/`, which the cruise forbids the product
+ * from reaching.)
  *
  * Type-only edges count. They are erased before the bundle runs, but a file the product's own
  * types are built out of is part of the product's definition — the conservative reading, and

@@ -16,5 +16,5 @@
     "verbatimModuleSyntax": true,
     "noEmit": true
   },
-  "include": ["src", "fitness", "build.mjs", "vitest.config.ts"]
+  "include": ["src", "fitness", "gallery", "build.mjs", "vitest.config.ts"]
 }

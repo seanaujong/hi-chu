@@ -1,4 +1,4 @@
-// Render every declared preview (src/previews.ts) into one page you can open and look at.
+// Render every declared preview (gallery/previews.ts) into one page you can open and look at.
 //
 // The whole point is that this needs NOTHING: no browser, no battle, no server, no extension
 // installed. `section.ts` and `render.ts` are pure — a battle state in, a string out — so a
@@ -27,7 +27,7 @@ async function loadPreviews() {
   mkdirSync('node_modules/.cache', {recursive: true});
   const out = join('node_modules/.cache', `hichu-previews-${process.pid}.mjs`);
   await esbuild.build({
-    entryPoints: ['src/previews.ts'],
+    entryPoints: ['gallery/previews.ts'],
     bundle: true,
     format: 'esm',
     platform: 'node',

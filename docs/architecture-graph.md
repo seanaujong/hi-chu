@@ -16,135 +16,137 @@ structural ones — no cycles, no orphans — in `.dependency-cruiser.cjs` (run 
 ```mermaid
 flowchart LR
 
-subgraph 0["src"]
-1["background.ts"]
-subgraph 6["battle"]
-7["readState.ts"]
+subgraph 0["gallery"]
+1["previews.ts"]
 end
-subgraph 8["core"]
-9["facts.ts"]
-A["types.ts"]
-B["hazards.ts"]
-I["damage.ts"]
-J["moves.ts"]
-K["multihit.ts"]
-L["substitute.ts"]
-N["render.ts"]
-O["speed.ts"]
-P["variants.ts"]
-U["assume.ts"]
-V["resolve.ts"]
-W["narrow.ts"]
-X["deductions.ts"]
-Y["transform.ts"]
-Z["illusion.ts"]
-10["itemreveal.ts"]
-11["knowledge.ts"]
-12["surfaces.ts"]
+subgraph 2["src"]
+subgraph 3["core"]
+4["render.ts"]
+5["damage.ts"]
+B["moves.ts"]
+C["multihit.ts"]
+D["substitute.ts"]
+E["facts.ts"]
+F["types.ts"]
+G["speed.ts"]
+J["variants.ts"]
+P["hazards.ts"]
+R["assume.ts"]
+S["resolve.ts"]
+T["narrow.ts"]
+U["deductions.ts"]
+V["transform.ts"]
+W["illusion.ts"]
+X["itemreveal.ts"]
+Y["knowledge.ts"]
+Z["surfaces.ts"]
 end
-M["content.ts"]
-subgraph Q["data"]
-R["randbats.ts"]
-S["lookup.ts"]
+K["scenario.ts"]
+subgraph L["__fixtures__"]
+M["replay-gen9randombattle-2640322654-turn5.json"]
+18["gen9.sample.json"]
 end
-T["section.ts"]
-subgraph 13["__fixtures__"]
-14["gen9.sample.json"]
-17["replay-gen9randombattle-2640322654-turn5.json"]
+subgraph N["battle"]
+O["readState.ts"]
 end
-15["previews.ts"]
-16["scenario.ts"]
+Q["section.ts"]
+subgraph 10["data"]
+11["lookup.ts"]
+17["randbats.ts"]
 end
-subgraph 2["node_modules"]
-subgraph 3["vitest"]
-subgraph 4["dist"]
-5["index.js"]
+12["background.ts"]
+16["content.ts"]
 end
-end
-subgraph C["@smogon"]
-subgraph D["calc"]
-subgraph E["dist"]
-F["index.js"]
-subgraph G["mechanics"]
-H["util.js"]
+subgraph 6["node_modules"]
+subgraph 7["@smogon"]
+subgraph 8["calc"]
+subgraph 9["dist"]
+A["index.js"]
+subgraph H["mechanics"]
+I["util.js"]
 end
 end
 end
 end
+subgraph 13["vitest"]
+subgraph 14["dist"]
+15["index.js"]
 end
-7-->9
-7-->B
-7-->J
-7-->A
-9-->A
-B-->I
-B-->A
-B-->F
-B-->H
-I-->J
-I-->K
-I-->L
-I-->A
-I-->F
-J-->K
-L-->9
-M-->7
-M-->N
-M-->R
-M-->T
-N-->I
-N-->O
-N-->A
-N-->P
-O-->I
-O-->A
+end
+end
+1-->4
+1-->K
+1-->Q
+4-->5
+4-->G
+4-->F
+4-->J
+5-->B
+5-->C
+5-->D
+5-->F
+5-->A
+B-->C
+D-->E
+E-->F
+G-->5
+G-->F
+G-->J
+G-->A
+G-->I
+J-->5
+J-->F
+K-->M
+K-->O
+K-->F
+O-->E
 O-->P
+O-->B
 O-->F
-O-->H
-P-->I
+P-->5
+P-->F
 P-->A
-R-->A
+P-->I
+Q-->O
+Q-->R
+Q-->5
+Q-->P
+Q-->W
+Q-->X
+Q-->Y
+Q-->T
+Q-->4
+Q-->S
+Q-->G
+Q-->Z
+Q-->V
+Q-->F
+Q-->J
+Q-->11
 R-->S
-S-->A
-T-->7
+R-->F
+S-->E
+S-->T
+S-->V
+S-->F
 T-->U
-T-->I
-T-->B
-T-->Z
-T-->10
-T-->11
-T-->W
-T-->N
-T-->V
-T-->O
-T-->12
-T-->Y
-T-->A
-T-->P
-T-->S
-U-->V
-U-->A
-V-->9
-V-->W
-V-->Y
-V-->A
-W-->X
-W-->9
-W-->A
-X-->9
-X-->A
-Y-->A
-Z-->9
-Z-->A
-10-->I
-10-->A
-11-->9
-11-->W
-11-->A
-15-->N
-15-->16
-15-->T
+T-->E
+T-->F
+U-->E
+U-->F
+V-->F
+W-->E
+W-->F
+X-->5
+X-->F
+Y-->E
+Y-->T
+Y-->F
+11-->F
+16-->O
+16-->4
 16-->17
-16-->7
-16-->A
+16-->Q
+17-->F
+17-->11
 ```

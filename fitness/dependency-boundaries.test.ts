@@ -1,6 +1,7 @@
 import {describe, it, expect} from 'vitest';
 import {readdirSync, readFileSync} from 'node:fs';
 import {join} from 'node:path';
+import {importStatements, localImports} from './importgraph.js';
 
 /**
  * The only runtime dependency, `@smogon/calc`, is confined to the modules that
@@ -22,20 +23,12 @@ function allSourceFiles(dir: string): string[] {
   });
 }
 
-function importLines(source: string): string[] {
-  return source.split('\n').filter((line) => /^import\b/.test(line));
-}
-
-function importsCalc(source: string): boolean {
-  return importLines(source).some((line) => line.includes('@smogon/calc'));
-}
-
 /** The sibling core modules a file imports, by bare name: `['facts', 'narrow']`. Covers
  *  `import` and `import type` alike — a type-only edge is still an edge in the layering,
  *  and `render.ts`'s own rule below is the one place the distinction matters. */
 function coreImportsOf(path: string): string[] {
-  return importLines(readFileSync(path, 'utf8'))
-    .map((line) => /from '\.\/([a-z]+)\.js'/.exec(line)?.[1])
+  return localImports(path)
+    .map((statement) => /^\.\/([a-z]+)\.js$/.exec(statement.specifier)?.[1])
     .filter((name): name is string => name !== undefined);
 }
 
@@ -46,7 +39,9 @@ function coreModules(): string[] {
 
 describe('the @smogon/calc dependency stays confined to damage.ts and speed.ts', () => {
   it('is imported by exactly the allowed files, nowhere else', () => {
-    const importers = allSourceFiles('src').filter((path) => importsCalc(readFileSync(path, 'utf8')));
+    const importers = allSourceFiles('src').filter((path) =>
+      importStatements(readFileSync(path, 'utf8')).some((s) => s.specifier.startsWith('@smogon/calc')),
+    );
     expect(importers.sort()).toEqual([...ALLOWED_IMPORTERS].sort());
   });
 });
@@ -54,7 +49,7 @@ describe('the @smogon/calc dependency stays confined to damage.ts and speed.ts',
 describe('the pure core never imports back into the shell (fetch/render.ts stays a leaf)', () => {
   it('no file under src/core imports from battle/, data/, content.ts, or section.ts', () => {
     const offenders = allSourceFiles('src/core').filter((path) =>
-      importLines(readFileSync(path, 'utf8')).some((line) => /from ['"]\.\.\/(battle|data|content|section)/.test(line)),
+      localImports(path).some((s) => /^\.\.\/(battle|data|content|section)/.test(s.specifier)),
     );
     expect(offenders).toEqual([]);
   });
@@ -62,12 +57,9 @@ describe('the pure core never imports back into the shell (fetch/render.ts stays
 
 describe('render.ts only knows the SHAPE reasoning produced, never calls into it', () => {
   it('every import from a sibling core module is type-only', () => {
-    const siblingImports = importLines(readFileSync('src/core/render.ts', 'utf8')).filter((line) =>
-      /from '\.\/[a-z]/.test(line),
-    );
-    const valueImports = siblingImports.filter((line) => !/^import type\b/.test(line));
-    expect(valueImports).toEqual([]);
-    expect(siblingImports.length).toBeGreaterThan(0); // not vacuously true
+    const siblings = localImports('src/core/render.ts').filter((s) => /^\.\/[a-z]/.test(s.specifier));
+    expect(siblings.filter((s) => !s.typeOnly).map((s) => s.specifier)).toEqual([]);
+    expect(siblings.length).toBeGreaterThan(0); // not vacuously true
   });
 });
 
@@ -103,5 +95,27 @@ describe('the set-inference layering holds as an import graph, not just a descri
   it('keeps types.ts a TRUE leaf — the vocabulary depends on nothing', () => {
     // What makes the exception above safe rather than a hole in it.
     expect(coreImportsOf('src/core/types.ts')).toEqual([]);
+  });
+});
+
+/**
+ * A barrel — an `index.ts` re-exporting its whole directory, or any `export * from` — makes
+ * every module in that directory transitively import every other one, and it erases exactly
+ * the distinction every rule above exists to draw: with one barrel in place, "does the core
+ * import the shell?" and "who imports deductions.ts?" stop having per-module answers.
+ *
+ * The dependency cruise would catch it eventually, as the cycle it causes. This catches it at
+ * the point the barrel is added, and names it as the cause rather than reporting the symptom
+ * — the difference between "delete this file" and unpicking a directory's worth of edges.
+ * There has never been one here, which is most of why the graph is clean.
+ */
+describe('no barrel file collapses a directory into a single import target', () => {
+  it('has no index.ts anywhere under src', () => {
+    expect(allSourceFiles('src').filter((path) => /(^|\/)index\.ts$/.test(path))).toEqual([]);
+  });
+
+  it('has no directory-wide re-export', () => {
+    const offenders = allSourceFiles('src').filter((path) => /^export\s+\*/m.test(readFileSync(path, 'utf8')));
+    expect(offenders).toEqual([]);
   });
 });

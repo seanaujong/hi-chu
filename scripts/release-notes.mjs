@@ -53,7 +53,7 @@ export function parseSubject(subject) {
 /** The `-before` half of a PR's before/after pair, matched on the basename so that a shot
  *  legitimately called `pr-99-before-and-after.png` is not caught by accident. */
 function isBeforeShot(name) {
-  return /-before$/.test(name.replace(/\.[^./]+$/, ''));
+  return name.replace(/\.[^./]+$/, '').endsWith('-before');
 }
 
 /**

@@ -14,7 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/tsconfig.pure.json",
-    "check": "npm run typecheck && npm run test && npm run deps",
+    "check": "npm run typecheck && npm run lint && npm run test && npm run deps && npm run graph:check",
     "drift-check": "node scripts/drift-check.mjs",
     "player-check": "node scripts/player-check.mjs",
     "release-check": "npm run build && npm run check && npm run drift-check && npm run player-check",
@@ -25,8 +25,10 @@
     "build:visual-check": "node scripts/build-visual-check.mjs",
     "visual-check": "npm run build:visual-check && REAL_EXTENSION=1 node scripts/screenshots.mjs",
     "previews": "node scripts/previews.mjs",
-    "deps": "depcruise \"src/**/*.ts\" --config .dependency-cruiser.cjs",
-    "graph": "node scripts/graph.mjs"
+    "deps": "depcruise \"src/**/*.ts\" \"fitness/**/*.ts\" --config .dependency-cruiser.cjs",
+    "graph": "node scripts/graph.mjs",
+    "graph:check": "node scripts/graph.mjs --check",
+    "lint": "oxlint --deny-warnings src fitness scripts build.mjs"
   },
   "dependencies": {
     "@smogon/calc": "^0.11.0"
@@ -35,6 +37,7 @@
     "@types/node": "^26.1.2",
     "dependency-cruiser": "^17.4.3",
     "esbuild": "^0.28.1",
+    "oxlint": "^1.77.0",
     "puppeteer-core": "^25.4.0",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"

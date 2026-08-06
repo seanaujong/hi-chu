@@ -18,9 +18,11 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm run check   # typecheck (strict TS) + vitest + the dependency cruise
+      # typecheck (strict TS) + vitest + the dependency cruise + the generated graph.
+      # `docs/architecture-graph.md` is generated and committed, so it is only worth having if
+      # it is TRUE — `graph:check` regenerates it in memory and fails if the committed copy has
+      # drifted. It lives inside `npm run check` rather than as a step here on purpose: run
+      # from CI alone, this gate could only ever fire AFTER a push, on a file the developer had
+      # no reason to know was generated.
+      - run: npm run check
       - run: npm run build   # the bundle must build
-      # `docs/architecture-graph.md` is generated and committed, so it is only worth having
-      # if it is TRUE. Regenerate and diff: adding a module without re-running `npm run
-      # graph` fails here rather than leaving a plausible, wrong picture in the repo.
-      - run: npm run graph && git diff --exit-code docs/architecture-graph.md

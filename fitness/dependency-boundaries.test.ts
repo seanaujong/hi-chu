@@ -23,12 +23,20 @@ function allSourceFiles(dir: string): string[] {
   });
 }
 
+/**
+ * The name shape the layering rules can SEE. Written once and used both to read sibling edges
+ * and to constrain the filenames below, so the reader and the constraint cannot drift apart —
+ * a disagreement between them is precisely the failure that made this necessary.
+ */
+const CORE_MODULE = '[a-z]+';
+
 /** The sibling core modules a file imports, by bare name: `['facts', 'narrow']`. Covers
  *  `import` and `import type` alike — a type-only edge is still an edge in the layering,
  *  and `render.ts`'s own rule below is the one place the distinction matters. */
 function coreImportsOf(path: string): string[] {
+  const sibling = new RegExp(`^\\./(${CORE_MODULE})\\.js$`);
   return localImports(path)
-    .map((statement) => /^\.\/([a-z]+)\.js$/.exec(statement.specifier)?.[1])
+    .map((statement) => sibling.exec(statement.specifier)?.[1])
     .filter((name): name is string => name !== undefined);
 }
 
@@ -77,6 +85,38 @@ describe('render.ts only knows the SHAPE reasoning produced, never calls into it
  * already argues for, promoted to predicates — deliberately just those two, because the rest
  * of the graph is current shape and would only rot here.
  */
+/**
+ * What makes every rule below able to see anything at all.
+ *
+ * The layering rules read a sibling edge lexically, matching `./<name>.js` against
+ * `CORE_MODULE`. A filename outside that shape — a hyphen, a digit, a capital — produces an
+ * edge the reader silently drops, and a dropped edge reads as a boundary held. Measured, not
+ * theorised: `facts.ts` importing `./item-loss.js` violates the leaf rule directly and passes
+ * the entire gate — fitness tests, a clean cruise, clean lint. Named `itemloss.ts`, the same
+ * violation is caught at once.
+ *
+ * So the naming convention is not style here; it is the precondition for the checks working,
+ * and it was written down nowhere until a cold read of this repo went looking for it. This is
+ * the second time a lexical reader has failed by under-matching — the first read imports line
+ * by line and lost every wrapped one — and both failed in the same direction: toward green.
+ */
+describe('a core module is named so the layering rules can see it', () => {
+  it('names every file under src/core in lowercase letters only', () => {
+    const shape = new RegExp(`^${CORE_MODULE}(\\.test|\\.testfixtures)?\\.ts$`);
+    const unreadable = readdirSync('src/core').filter((name) => !shape.test(name));
+    expect(
+      unreadable,
+      `Rename to lowercase letters only: ${unreadable.join(', ')}. The layering rules match sibling ` +
+        `imports with /^\\.\\/(${CORE_MODULE})\\.js$/, so any other name makes this module's edges ` +
+        'invisible to them, and a violation involving it passes silently',
+    ).toEqual([]);
+  });
+
+  it('reads a real sibling edge — not vacuously true', () => {
+    expect(coreImportsOf('src/core/narrow.ts')).toContain('deductions');
+  });
+});
+
 describe('the set-inference layering holds as an import graph, not just a description', () => {
   it('routes every deduction through narrow.ts — nothing else may import deductions.ts', () => {
     // The rule that would have caught the item-pool split the day it was written.

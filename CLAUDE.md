@@ -574,6 +574,16 @@ replacement for them.
 A **pure core + thin browser shell**. Dependencies point one way: the shell uses the
 core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in `README.md`.)
 
+**Adding a core module is three edits, and only the first one fails a build.** The module
+plus its colocated test (`fitness/conventions.test.ts` refuses one without the other), a
+bullet in the list below, and — if it carries a law — a row in the invariant index. Nothing
+checks the last two: `invariant-index.test.ts` verifies every row points at something real,
+never that everything real has a row. `itemreveal.ts` shipped without either and stayed
+absent from this section for two releases, which is how the OTHER half of the deduction
+story became invisible to anyone reading the map. The generated
+`docs/architecture-graph.md` is the check of last resort here — if a module is in the
+picture and not in this list, this list is the thing that's wrong.
+
 - `src/core/` — pure: no DOM, no network, unit-tested. All the interesting logic lives here.
   - `multihit.ts` — the probability law (hit-count PMFs + convolution → KO%/expected).
   - `damage.ts` — wraps `@smogon/calc`; builds the calc `Field` from `FieldFacts`.
@@ -621,6 +631,16 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
     - `illusion.ts` — Zoroark detection: `illusionSuspects` flags when a revealed move fits
       a Zoroark set but not the shown species (the Illusion tell), so `section.ts` can add
       that Zoroark as an extra defender variant (move view) and candidate block (sets view).
+    - `itemreveal.ts` — the damage-MAGNITUDE law, and the other half of the deduction story:
+      items ruled out by the NUMBER a hit dealt, where `deductions.ts` reads whether a side
+      effect FIRED. It reruns the calc per still-possible variant and keeps only those whose
+      own roll range could have produced the observed fraction, never narrowing to nothing.
+      Its one observation comes from `readState.ts`'s `mostRecentCleanHit`. A rule-out read
+      from a hit's magnitude belongs here; one read from a side effect belongs in
+      `deductions.ts`.
+  - `hazards.ts` — the switch-in law: entry-hazard damage, modelled ONLY for a switch-in
+    preview (see the invariant). One of the three files allowed to import `@smogon/calc`,
+    for its type chart and grounding check.
   - `substitute.ts` — the Substitute law: a shield with its own HP bar. Sizes the doll (a
     quarter of its MAKER's max HP — Shed Tail makes that a different Pokémon), counts the
     hits that break it CUMULATIVELY per hit rather than by division (Triple Axel's hits
@@ -706,11 +726,18 @@ imports and ships in nothing, which `conventions.test.ts` uses to tell shipped c
 fixture builders (`scenario.ts`, `previews.ts`, `*.testfixtures.ts`) that DO live in `src/`,
 beside the product tests that consume them.
 
+Writing one of those colocated tests, the trap is building a `LiveFacts` by hand:
+`exactOptionalPropertyTypes` rejects a literal that omits a required field, and the error names
+the field rather than the fix. Use `core/sets.testfixtures.ts`'s `liveFacts()`, which supplies
+them all.
+
 For exact shapes and signatures, read the source and the colocated `*.test.ts` — the
-tests are the worked examples (and pin numbers against Showdown). Exception: `moves.ts` and
-`types.ts` (pure data/types), and `facts.ts`/`narrow.ts` (covered by `resolve.test.ts`); the move tables are exercised
-end-to-end in `damage.test.ts` (the `uniform-power multi-hit` and `damage-callback move`
-cases) — add a case there when you add a move to either.
+tests are the worked examples (and pin numbers against Showdown). The modules that carry no
+test of their own are listed, with the reason for each, in `fitness/conventions.test.ts`'s
+`UNTESTED_BY_DESIGN` — the list of record, and checked in both directions, so don't keep a
+second copy here. The move tables are exercised end-to-end in `damage.test.ts` (the
+`uniform-power multi-hit` and `damage-callback move` cases) — add a case there when you add a
+move to either.
 
 ## Conventions & invariants — don't break these
 An **index**, not the argument. Each rule is stated once with its enforcement level, the
@@ -805,7 +832,8 @@ them until someone adds it.
 | `facts.ts` stays a leaf (and `types.ts` a true one), so no layer depends on a sibling for shared vocabulary | ✅ | `fitness/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |
 | No cycles, no orphan modules | ✅ | `.dependency-cruiser.cjs` | `npm run deps` (inside `npm run check`) |
 | `src/` never imports `fitness/` — the checks read the product, they don't ship inside it (the reverse stays legal) | ✅ | `.dependency-cruiser.cjs` (`fitness-stays-outside-the-product`) | `npm run deps` (inside `npm run check`) |
-| The committed module graph is TRUE — regenerated and diffed, never hand-maintained | ✅ | `scripts/graph.mjs` | `.github/workflows/ci.yml` |
+| The committed module graph is TRUE — regenerated and diffed, never hand-maintained | ✅ | `scripts/graph.mjs` | `npm run graph:check` (inside `npm run check`) |
+| A core module is named so the layering rules can SEE it — lowercase letters only, since they match sibling edges lexically | ✅ | `fitness/dependency-boundaries.test.ts` (`CORE_MODULE`) | `dependency-boundaries.test.ts` |
 | A lexical boundary check reads whole import STATEMENTS, never lines — the rules above are defeated by a line wrap otherwise | ✅ | `fitness/importgraph.ts` (`importStatements`) | `importgraph.test.ts`, `dependency-boundaries.test.ts` |
 | No barrel file — one directory-wide re-export makes "does the core import the shell?" and "who imports `deductions.ts`?" stop having per-module answers | ✅ | `fitness/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |
 | An escape hatch that switches the typechecker OFF carries a written rationale — in code that SHIPS, derived from the build's entry points rather than listed | ✅ | `fitness/conventions.test.ts` (`HATCH`, `shippedFiles`), `data/lookup.ts` (`rawEntries`) | `conventions.test.ts` |

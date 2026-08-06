@@ -1,7 +1,7 @@
 // Structural properties of the import graph that would be silly to hand-roll.
 //
 // This config deliberately does NOT restate the project's own layering rules. Those live in
-// `src/dependency-boundaries.test.ts` — named, argued in prose beside the assertion, and run
+// `fitness/dependency-boundaries.test.ts` — named, argued in prose beside the assertion, and run
 // on every `npm run check` with no install. Duplicating them here would recreate exactly the
 // failure mode that motivated this work: one rule, two homes, free to drift.
 //

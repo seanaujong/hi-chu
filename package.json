@@ -28,7 +28,8 @@
     "deps": "depcruise \"src/**/*.ts\" \"fitness/**/*.ts\" --config .dependency-cruiser.cjs",
     "graph": "node scripts/graph.mjs",
     "graph:check": "node scripts/graph.mjs --check",
-    "lint": "oxlint --deny-warnings src fitness scripts build.mjs"
+    "lint": "oxlint --deny-warnings src fitness scripts build.mjs",
+    "fitness-retro": "node scripts/fitness-retro.mjs"
   },
   "dependencies": {
     "@smogon/calc": "^0.11.0"

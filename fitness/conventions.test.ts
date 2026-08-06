@@ -2,6 +2,7 @@ import {describe, it, expect} from 'vitest';
 import {existsSync, readdirSync, readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {localImports} from './importgraph.js';
+import {HATCH, docCoverageGaps, testCoverageGaps, unexplainedHatchLines} from './rules.js';
 
 /**
  * Rules this project states in prose and, until now, stated ONLY in prose. Its two sibling
@@ -39,40 +40,17 @@ function shippedFiles(): string[] {
 }
 
 /**
- * The escape hatches that switch the typechecker OFF rather than merely leaning on it: the
- * double assertion (whose whole purpose is to defeat the overlap rule a single `as` must
- * still satisfy), `as any`, and the three suppression comments.
- *
- * Deliberately NOT the plain `as X` or the non-null `!`. Under `noUncheckedIndexedAccess`
- * those two ARE the ordinary way to read a checked index, they outnumber the hatches below by
- * more than an order of magnitude, and a rationale on each would be noise — a check that emits
- * noise gets ignored, which costs more than the check can save. A plain `as` also still has to
- * satisfy the overlap rule; the ones below are chosen precisely because they do not.
+ * `HATCH` and the three-line rationale window live in `rules.ts`, with the reasoning for both:
+ * why these five and not the plain `as X` or the non-null `!` (under
+ * `noUncheckedIndexedAccess` those two ARE the ordinary way to read a checked index, and a
+ * rationale on each would be noise a reader learns to skip), and why the window is three lines
+ * rather than one. What stays here is the reading of the tree they judge.
  */
-const HATCH = /\bas\s+unknown\s+as\b|\bas\s+any\b|@ts-expect-error|@ts-ignore|eslint-disable/;
-
-/**
- * A comment on the cast's own line, or within the three lines above it.
- *
- * Three, because the best form this rule can reward is a cast wrapped in a named function
- * whose docblock explains it — and that puts the nearest comment line, the one closing the
- * docblock, two lines up with the signature in between. A one-line lookback rejects exactly
- * the shape it should encourage; that is not hypothetical, it is how `lookup.ts`'s
- * `rawEntries` first failed this test.
- */
-function hasRationale(lines: readonly string[], index: number): boolean {
-  const isComment = (line: string | undefined): boolean => /^\s*(\/\/|\/\*|\*)/.test(line ?? '');
-  return lines[index]!.includes('//') || lines.slice(Math.max(0, index - 3), index).some(isComment);
-}
-
 describe('an escape hatch that switches the typechecker off carries a written rationale', () => {
   it('every `as unknown as`, `as any` or suppression comment in shipped code is explained', () => {
-    const unexplained = shippedFiles().flatMap((path) => {
-      const lines = readFileSync(path, 'utf8').split('\n');
-      return lines.flatMap((line, i) =>
-        HATCH.test(line) && !/^\s*(\/\/|\*)/.test(line) && !hasRationale(lines, i) ? [`${path}:${i + 1}`] : [],
-      );
-    });
+    const unexplained = shippedFiles().flatMap((path) =>
+      unexplainedHatchLines(readFileSync(path, 'utf8').split('\n')).map((line) => `${path}:${line}`),
+    );
     expect(
       unexplained,
       'Each site above defeats the typechecker with nothing saying why. Write one sentence on the line ' +
@@ -104,26 +82,31 @@ const UNTESTED_BY_DESIGN: Readonly<Record<string, string>> = {
   'narrow.ts': 'the evidence law — covered by resolve.test.ts',
 };
 
+/** The pure core's own modules — not their tests, not the fixture builder beside them. */
+const coreModules = readdirSync('src/core').filter(
+  (name) => name.endsWith('.ts') && !name.endsWith('.test.ts') && !name.includes('testfixtures'),
+);
+
 describe('every module in the pure core has a colocated test, or a listed reason it does not', () => {
-  const modules = readdirSync('src/core').filter(
-    (name) => name.endsWith('.ts') && !name.endsWith('.test.ts') && !name.includes('testfixtures'),
-  );
+  const modules = coreModules;
   const hasTest = (name: string): boolean => existsSync(join('src/core', name.replace(/\.ts$/, '.test.ts')));
 
   // Each direction is its own `it` with its own message, because the two failures call for
   // opposite actions and a single set-equality assertion reports both as one array diff —
   // which tells a reader that something moved, but not which way or what to do about it.
+  const gaps = testCoverageGaps(modules, hasTest, Object.keys(UNTESTED_BY_DESIGN));
+
   it('leaves no core module both untested and unexplained', () => {
-    const unexplained = modules.filter((name) => !hasTest(name) && !(name in UNTESTED_BY_DESIGN));
+    const {untested} = gaps;
     expect(
-      unexplained,
-      `Untested core module(s): ${unexplained.join(', ')}. Either add src/core/${unexplained[0]?.replace(/\.ts$/, '.test.ts') ?? '<module>.test.ts'}, ` +
+      untested,
+      `Untested core module(s): ${untested.join(', ')}. Either add src/core/${untested[0]?.replace(/\.ts$/, '.test.ts') ?? '<module>.test.ts'}, ` +
         'or add the module to UNTESTED_BY_DESIGN in this file with the reason it needs no test of its own',
     ).toEqual([]);
   });
 
   it('drops an exemption once the module it excuses has grown a test', () => {
-    const stale = Object.keys(UNTESTED_BY_DESIGN).filter((name) => hasTest(name));
+    const {stale} = gaps;
     expect(
       stale,
       `Now tested, so the exemption is dead: ${stale.join(', ')}. Remove them from UNTESTED_BY_DESIGN — ` +
@@ -134,5 +117,47 @@ describe('every module in the pure core has a colocated test, or a listed reason
   it('keeps the exemption list to modules that really exist', () => {
     const ghosts = Object.keys(UNTESTED_BY_DESIGN).filter((name) => !modules.includes(name));
     expect(ghosts, `UNTESTED_BY_DESIGN names modules that are gone: ${ghosts.join(', ')}. Delete those entries`).toEqual([]);
+  });
+});
+
+/**
+ * The section titled "where to make a change" describes the modules that exist.
+ *
+ * `invariant-index.test.ts` checks that every pointer in CLAUDE.md resolves; this is the
+ * direction it deliberately left open, and the direction that actually rotted. `itemreveal.ts`
+ * — the damage-magnitude half of the deduction story — existed for two releases without
+ * appearing in that section at all, so anyone routed by the map could not learn it was there.
+ * A cold read of this repo found it by noticing the GENERATED graph listed a module the
+ * hand-written list didn't.
+ *
+ * Adding a file is exactly when a hand-maintained list goes stale, and it is the one moment
+ * nothing else notices — the module compiles, its test passes, the cruise is clean. So this is
+ * the mechanical half of "a new file should trigger a second look": the half a predicate can
+ * take, leaving only the judgement to a human.
+ */
+describe('the Architecture section lists the modules that actually exist', () => {
+  /** Each `- `name.ts` — …` bullet under `## Architecture`, at any nesting depth. */
+  function modulesNamedInArchitecture(): string[] {
+    const doc = readFileSync('CLAUDE.md', 'utf8');
+    const start = doc.indexOf('## Architecture');
+    const section = doc.slice(start, doc.indexOf('\n## ', start + 1));
+    return [...section.matchAll(/^\s*-\s+`([a-z]+\.ts)`/gm)].map((m) => m[1]!);
+  }
+
+  it('names every module under src/core, and no module that is gone', () => {
+    const listed = modulesNamedInArchitecture();
+    expect(listed.length, 'parsed no bullets — the section format changed').toBeGreaterThan(10);
+
+    const {undocumented, phantom} = docCoverageGaps(coreModules, listed);
+    expect(
+      undocumented,
+      `Missing from CLAUDE.md's Architecture section: ${undocumented.join(', ')}. Add a bullet saying what ` +
+        'the module OWNS — the list is how someone decides where a change belongs, so a module absent from ' +
+        'it is a module nobody will find',
+    ).toEqual([]);
+    expect(
+      phantom,
+      `CLAUDE.md's Architecture section describes modules that no longer exist: ${phantom.join(', ')}`,
+    ).toEqual([]);
   });
 });

@@ -130,12 +130,17 @@ the tests double as worked examples, pinned against real Showdown numbers.
 
 ```sh
 npm install
+npm run check         # THE GATE — typecheck + lint + tests + dependency cruise + module graph. What CI runs.
 npm test              # the math, the merge, the render, field effects, the dependency boundary, and an end-to-end run on real data
 npm run typecheck
+npm run lint          # oxlint
 npm run build         # bundles to dist/ (content.js + manifest.json) — Chrome
 npm run build:safari  # bundles to dist-safari/ — Safari (see Install below)
 npm run watch         # rebuild on save
 ```
+`npm run check` is the one that means "done" — the rest are the fast inner loop. Passing
+`npm test` alone leaves the linter, the dependency cruise and the generated module graph
+unrun, and CI checks all three.
 
 `npm install` also points git at `.githooks/` (the `prepare` script), which refuses a commit
 or push made directly against `main` — every change goes through a branch + PR instead,

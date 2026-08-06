@@ -470,6 +470,14 @@ This section IS the grid. `Architecture` below says which file owns each piece; 
 & invariants` says why each rule holds. Read this first when the change is something a
 player would SEE; go straight to Architecture when it's something we COMPUTE.
 
+**The grid is also code**: `core/surfaces.ts` holds the same 48 decisions as a table
+`section.ts` reads, so a surface consults the policy instead of re-deriving "is this the
+foe's? is it on the field?" at each section. Change a cell THERE — the table below is
+pinned to it (`fitness/surfaces-grid.test.ts`), and the grid is in turn pinned to the HTML
+the six surfaces really render (`section.test.ts`), so doc, policy and product cannot drift
+apart. `core/surfaces.ts` also records WHY each empty cell is empty, which is what makes
+"withheld" and "never" below checkable rather than merely written down.
+
 ### The hover targets
 `content.ts` patches only two client renderers; six distinct targets fall out of which
 arguments the client passes them.
@@ -645,6 +653,11 @@ core, never the reverse. (Layering, runtime-flow, and multi-hit diagrams are in 
     `renderSetsSection` (the information game, both perspectives). `moves.ts` —
     the move tables (data only; no colocated test — covered via `damage.test.ts`): the
     multi-hit table, and the damage callbacks of moves that have no base power at all.
+  - `surfaces.ts` — the display law, and `render.ts`'s natural pair: render owns what a
+    section LOOKS like, this owns which sections a target GETS. The Surfaces grid as a
+    table (`SURFACES`), plus the one fact under it — is the hovered mon on the field? —
+    from which both the withholding and the switch-in hazard preview follow. Zero imports;
+    it decides nothing about numbers.
   - `types.ts` — shared vocabulary (`LiveFacts`, `RandbatsEntry`, `ResolvedMon`,
     `SetVariant`, `SetKnowledge`, `FieldFacts`).
 - `src/battle/readState.ts` — Showdown's untyped client objects → typed `LiveFacts`/`FieldFacts`.
@@ -765,6 +778,7 @@ them until someone adds it.
 | A move's own HP swing (drain, recoil, Liquid Ooze) is opt-in, move-tooltip only, and amber — never the KO red | ✅ | `core/damage.ts` (`SelfHpEffect`, `selfHpEffects`), `core/variants.ts` (`resultKey`), `core/render.ts` (`selfHpText`) | `damage.test.ts`, `section.test.ts` |
 | Set narrowing uses every public reveal, nothing private | ✅ | `core/narrow.ts` | `resolve.test.ts` |
 | `battle.myPokemon` feeds OUR-view surfaces only, never the opponent's-knowledge views | 👁 | `battle/readState.ts` (`readOwnServerPokemon`), `section.ts` | `section.test.ts`, `readState.test.ts` |
+| Which section a surface shows is read from ONE table, never re-derived per section — and every empty cell records why (`withheld` = redundancy, `private` = privacy) | ✅ | `core/surfaces.ts` (`SURFACES`, `previewsSwitchInHazards`, `hasMatchupBlock`) | `surfaces.test.ts`, `surfaces-grid.test.ts`, `section.test.ts` |
 | Hovering our OWN Pokémon leads with the matchup view — outgoing lines withheld for the mon already on the field; the mirror below stays public | ✅ | `section.ts` (`ownMovesSection`, `ownHoverMatchup`, `buildSwitchSection`) | `section.test.ts`, `render.test.ts`, `readState.test.ts`, `content.test.ts` |
 | The matchup view's defensive half — the `Incoming:` group | ✅ | `section.ts` (`randbatsIncomingMovesFor`, `ownMovesSection`) | `section.test.ts`, `render.test.ts` |
 | Hovering a FOE's roster icon shows OUR active's damage into it | ✅ | `section.ts` (`foeSwitchInDamage`) | `section.test.ts` |

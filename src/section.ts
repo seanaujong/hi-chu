@@ -42,6 +42,13 @@ import type {
 } from './core/types.js';
 import {transformCopy} from './core/transform.js';
 import {applySwitchInHazards} from './core/hazards.js';
+import {
+  hasMatchupBlock,
+  pokemonHoverTarget,
+  previewsSwitchInHazards,
+  shows,
+  type HoverTarget,
+} from './core/surfaces.js';
 import {variantsConsistentWithDamage} from './core/itemreveal.js';
 import {pickEntry, megaEntryForItem, megaEntriesFor} from './data/lookup.js';
 import {
@@ -709,6 +716,7 @@ function speedOrderVs(
 function ownHoverMatchup(
   battle: ClientBattle,
   pokemon: ClientPokemon,
+  target: HoverTarget,
   publicFacts: LiveFacts,
   data: RandbatsData,
   format: {gen: number; doubles: boolean},
@@ -742,24 +750,17 @@ function ownHoverMatchup(
   // Our real item feeds the ⚡ line too: a Scarf we are holding is our own private
   // truth, and showing US our own speed as uncertain would be absurd.
   const speedFor = (foeFacts: LiveFacts): readonly SetVariant[] => randbatsFoeVariants(data, foeFacts);
-  // The mon actually on the field gets its Incoming numbers from hovering the FOE
-  // instead (see the doc comment above) — only a switch-decision candidate keeps them,
-  // and only a switch-decision candidate can still be hit by hazards on the way in (an
-  // active mon's HP already reflects anything that already happened to it).
-  const isSwitchCandidate = !isActiveMon(pokemon);
-  const incomingMovesFor = isSwitchCandidate ? randbatsIncomingMovesFor(data) : undefined;
-  const ownHazards = isSwitchCandidate ? readOwnHazards(pokemon.side) : {stealthRock: false, spikesLayers: 0};
-  const switchInAttacker = isSwitchCandidate ? applySwitchInHazards(attacker, ownHazards, format.gen) : attacker;
-  const hazardFaints = isSwitchCandidate && switchInAttacker.hpPercent <= 0;
-  // The OUTGOING lines are withheld for the mon already on the field, for exactly the
-  // reason the Incoming group above them is: never show the same number on two surfaces.
-  // An active Pokémon's move buttons sit right under the tooltip and each one's own
-  // tooltip already carries that damage — with more detail than this compact view (the
-  // nHKO ladder, the Sash/Leftovers caveats, the drain/recoil swing). A benched mon has
-  // no hoverable move buttons at all, which is the whole reason this half exists, so it
-  // keeps them. The ⚡ verdict stays either way: it is a fact about the PAIR and appears
-  // on no other own-side surface.
-  const outgoingMoves = isSwitchCandidate ? moves : [];
+  // Which of the three halves this target carries is the grid's call, not this
+  // function's — `core/surfaces.ts` holds both the cells and the reason each empty one is
+  // empty (the two withheld here are one law: never show the same number on two
+  // surfaces). Hazards ride on the same underlying fact, so they read from it too rather
+  // than from a second copy of "is this mon on the field".
+  const previewsHazards = previewsSwitchInHazards(target);
+  const incomingMovesFor = shows(target, 'incoming') ? randbatsIncomingMovesFor(data) : undefined;
+  const ownHazards = previewsHazards ? readOwnHazards(pokemon.side) : {stealthRock: false, spikesLayers: 0};
+  const switchInAttacker = previewsHazards ? applySwitchInHazards(attacker, ownHazards, format.gen) : attacker;
+  const hazardFaints = previewsHazards && switchInAttacker.hpPercent <= 0;
+  const outgoingMoves = shows(target, 'outgoing') ? moves : [];
   return ownMovesSection(
     battle, pokemon.side, switchInAttacker, outgoingMoves, format, readFacts, randbatsVariantsFor(data), speedFor,
     speedAttacker, hazardFaints ? undefined : incomingMovesFor, hazardFaints,
@@ -841,6 +842,7 @@ function foeSwitchInDamage(
  * item is forced to none rather than letting the resolver assume the set's back on.
  */
 export function buildSwitchSection(battle: ClientBattle, server: ClientServerPokemon, data: RandbatsData | null): string {
+  const target: HoverTarget = 'switch-menu'; // this surface IS one target — the client gives it its own renderer
   const format = detectFormat(battle);
   if (!format) return '';
   const moves = server.moves ?? [];
@@ -865,14 +867,18 @@ export function buildSwitchSection(battle: ClientBattle, server: ClientServerPok
       // team (an id-form Choice Scarf; the damage layer resolves ids through the dex),
       // and it carries no boosts, because it enters with none.
       const speedFor = (foeFacts: LiveFacts): readonly SetVariant[] => randbatsFoeVariants(data, foeFacts);
-      // Every switch-menu candidate is, by construction, not yet on the field — so
-      // unlike ownHoverMatchup there's no active-mon branch to skip here.
+      // Every switch-menu candidate is, by construction, not yet on the field — which is
+      // why the hazard preview here needs no branch at all (`previewsSwitchInHazards` is
+      // true for this whole surface), while `ownHoverMatchup`, whose target can be either,
+      // has to ask.
       const ownHazards = readOwnHazards(ourSide);
       const switchInAttacker = applySwitchInHazards(attacker, ownHazards, format.gen);
       const hazardFaints = switchInAttacker.hpPercent <= 0;
+      const incomingMovesFor = shows(target, 'incoming') ? randbatsIncomingMovesFor(data) : undefined;
       return ownMovesSection(
-        battle, ourSide, switchInAttacker, moves, format, readFacts, randbatsVariantsFor(data), speedFor,
-        switchInAttacker, hazardFaints ? undefined : randbatsIncomingMovesFor(data), hazardFaints,
+        battle, ourSide, switchInAttacker, shows(target, 'outgoing') ? moves : [], format, readFacts,
+        randbatsVariantsFor(data), speedFor,
+        switchInAttacker, hazardFaints ? undefined : incomingMovesFor, hazardFaints,
       );
     }
     case 'open': {
@@ -1346,10 +1352,13 @@ function randbatsPokemonSection(
     }),
   ];
 
+  // Which of the six surfaces this hover IS — decided once, from the only two facts that
+  // distinguish them, and read from `core/surfaces.ts` everywhere below rather than
+  // re-derived per section.
+  const target = pokemonHoverTarget(isFoe(battle, pokemon), isActiveMon(pokemon));
   // Foe view: attach each possible move's damage into OUR active (their move buttons
   // aren't hoverable for us). The own-side mirror carries no damage — public info only.
-  const foe = isFoe(battle, pokemon);
-  const ourMon = foe ? findOpposingActive(battle, pokemon) : null;
+  const ourMon = shows(target, 'sets') ? findOpposingActive(battle, pokemon) : null;
   // The threat lands on the Pokémon really standing there, not on the disguise we're wearing.
   const ourFacts = ourMon ? ownTruth(battle, ourMon, readFacts(ourMon)) : null;
   // A ticked Mega/Terastallize changes what the foe's moves do INTO us, not only what our
@@ -1398,7 +1407,7 @@ function randbatsPokemonSection(
   // its ⚡ line inside the matchup block instead (same pair, read from our side); what
   // stays foe-only is this placement, not the fact. The mirror below never gets one:
   // its honesty rests on carrying nothing but public info.
-  const speedHtml = foe
+  const speedHtml = shows(target, 'speedLead')
     ? speedSection(
         battle,
         [...resolveVariants(facts, entry), ...illusionVariants(facts, entry, data)],
@@ -1412,12 +1421,14 @@ function randbatsPokemonSection(
   // Own view's at-a-glance answer: OUR moves' damage into the current foe (private
   // moveset — an our-view surface). Leads the tooltip like ⚡ does on a foe hover;
   // the mirror blocks below remain strictly public.
-  const ownMovesHtml = foe ? '' : ownHoverMatchup(battle, pokemon, facts, data, format, megaSelected, teraSelected, readFacts);
+  const ownMovesHtml = hasMatchupBlock(target)
+    ? ownHoverMatchup(battle, pokemon, target, facts, data, format, megaSelected, teraSelected, readFacts)
+    : '';
   // Foe view's own at-a-glance answer, but only for a switch-decision candidate (not
   // yet active): OUR active's damage into THIS Pokémon if it switched in. An active
   // foe already carries this number on the move tooltip, so it's withheld there —
   // see foeSwitchInDamage's own doc comment for why.
-  const foeMovesHtml = foe && !isActiveMon(pokemon)
+  const foeMovesHtml = shows(target, 'ourDamageInto')
     ? foeSwitchInDamage(battle, pokemon, facts, data, format, megaSelected, teraSelected, readFacts)
     : '';
 

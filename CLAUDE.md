@@ -100,8 +100,11 @@ light and a dark variant: the name is set in the wrapper's red, which clears the
 contrast bar on white (3.7:1) and on a near-black page (5.1:1) alike, and one file cannot be
 paired with the wrong background. `node scripts/make-icons.mjs --proof` renders a sheet to
 `.icon-proof/` — the thresholds were chosen by looking, so looking is how to re-check them.
-**Previews are not a check — they are somewhere to LOOK.** `npm run previews` renders every
-state named in `src/previews.ts` to `previews/index.html` and needs nothing at all: no
+**Previews are not a check — they are somewhere to LOOK**, which is why they live in
+**`gallery/`** rather than in `src/`: the declarations are read by `scripts/previews.mjs` and
+by nothing the extension runs, so they sit outside the product for the same reason `fitness/`
+does. `npm run previews` renders every
+state named in `gallery/previews.ts` to `previews/index.html` and needs nothing at all: no
 browser, no server, no extension, no network. It exists because a state that takes a real
 two-account battle to roll — a Substitute, a Transform, hazards on one specific side, a
 dented doll — could otherwise only be seen by playing until it happened, which is how the
@@ -758,10 +761,16 @@ two-sided battle captured live from a replay; the fixture is `__fixtures__/repla
 the **architecture-fitness** layers, which live in `fitness/` and assert things about the
 codebase's SHAPE rather than its behaviour (see "Shape of the suite" above). Everything under
 `src/` is the product or a test of the product's behaviour — that is the whole reason `fitness/`
-is a sibling of `src/` and not a corner of it. `fitness/importgraph.ts` reads this tree's own
-imports and ships in nothing, which `conventions.test.ts` uses to tell shipped code from the
-fixture builders (`scenario.ts`, `previews.ts`, `*.testfixtures.ts`) that DO live in `src/`,
-beside the product tests that consume them.
+is a sibling of `src/` and not a corner of it.
+
+**What earns a sibling directory is a one-way edge, not merely being dev-support.** `fitness/`
+and `gallery/` are out here because nothing in `src/` imports them: the checks read the tree,
+and the preview declarations are read by `scripts/previews.mjs`. The fixture builders
+(`scenario.ts`, `*.testfixtures.ts`) DO live in `src/`, beside the product tests that consume
+them — `section.test.ts` drives `scenario.ts` and four core tests drive `sets.testfixtures.ts`,
+so moving them out would point the product's own tests back across the boundary at the tooling.
+`fitness/importgraph.ts` reads this tree's own imports and ships in nothing, which
+`conventions.test.ts` uses to tell shipped code from those builders.
 
 Writing one of those colocated tests, the trap is building a `LiveFacts` by hand:
 `exactOptionalPropertyTypes` rejects a literal that omits a required field, and the error names
@@ -869,7 +878,7 @@ them until someone adds it.
 | Every behavioural deduction is reached through `narrow.ts` — nothing else imports `deductions.ts` | ✅ | `fitness/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |
 | `facts.ts` stays a leaf (and `types.ts` a true one), so no layer depends on a sibling for shared vocabulary | ✅ | `fitness/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |
 | No cycles, no orphan modules | ✅ | `.dependency-cruiser.cjs` | `npm run deps` (inside `npm run check`) |
-| `src/` never imports `fitness/` — the checks read the product, they don't ship inside it (the reverse stays legal) | ✅ | `.dependency-cruiser.cjs` (`fitness-stays-outside-the-product`) | `npm run deps` (inside `npm run check`) |
+| No module under `fitness/` or `gallery/` is reachable from a build entry point — the tooling reads the product, it doesn't ship inside it (the reverse stays legal) | ✅ | `.dependency-cruiser.cjs` (`tooling-stays-outside-the-product`) | `npm run deps` (inside `npm run check`) |
 | The committed module graph is TRUE — regenerated and diffed, never hand-maintained | ✅ | `scripts/graph.mjs` | `npm run graph:check` (inside `npm run check`) |
 | A core module is named so the layering rules can SEE it — lowercase letters only, since they match sibling edges lexically | ✅ | `fitness/rules.ts` (`CORE_MODULE`, `unreadableModuleNames`) | `dependency-boundaries.test.ts`, `rules.test.ts` |
 | Every module in `src/core` appears in the Architecture list — adding a file is when a hand-maintained map goes stale, and nothing else notices | ✅ | `fitness/rules.ts` (`docCoverageGaps`) | `conventions.test.ts`, `rules.test.ts` |

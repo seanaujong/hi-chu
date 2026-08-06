@@ -23,12 +23,12 @@
 // dented doll: each needs a real battle to roll the mechanic before anyone can look at it,
 // which is exactly the wait this file exists to delete.
 
-import {buildMoveSection, buildPokemonSection, buildSwitchSection} from './section.js';
-import {loadBattle, scenarioData, scenarioDataItemAbilitySplit, scenarioDataTwinRoles, scenarioDataWithDitto, scenarioDataWithEmboar} from './scenario.js';
+import {buildMoveSection, buildPokemonSection, buildSwitchSection} from '../src/section.js';
+import {loadBattle, scenarioData, scenarioDataItemAbilitySplit, scenarioDataTwinRoles, scenarioDataWithDitto, scenarioDataWithEmboar} from '../src/scenario.js';
 
 // Re-exported so the gallery can style its panels with the very stylesheet the extension
 // injects, rather than a copy of it that could drift.
-export {TOOLTIP_STYLE} from './core/render.js';
+export {TOOLTIP_STYLE} from '../src/core/render.js';
 
 /** One rendered state, ready for the gallery. */
 export interface Preview {

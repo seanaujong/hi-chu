@@ -33,28 +33,35 @@ module.exports = {
     },
     {
       // The one rule here that is about a NAMED boundary rather than a generic graph
-      // property, and it lives in this file because it is a direction between two path
-      // zones — exactly the shape `from`/`to` expresses, and a shape a test would have to
-      // rebuild the module graph to state.
+      // property, and it lives in this file because it is a question about REACHABILITY —
+      // exactly what dependency-cruiser resolves and what a test would have to rebuild the
+      // module graph to state.
       //
-      // `fitness/` reads this codebase; `src/` is the codebase. An import in that direction
-      // would put a fitness check inside the bundle a user installs, which is both dead
-      // weight and a strange thing to have shipped. Nothing else in the repo prevents it:
-      // the directory split alone is a filing convention, and a filing convention holds
-      // exactly until someone needs a helper and finds one next door.
+      // `fitness/` and `gallery/` read and exercise this codebase; `src/` is the codebase.
+      // An import in that direction puts a check or a preview declaration inside the bundle
+      // a user installs, which is both dead weight and a strange thing to have shipped.
+      // Nothing else in the repo prevents it: the directory split alone is a filing
+      // convention, and a filing convention holds exactly until someone needs a helper and
+      // finds one next door.
       //
-      // The reverse — `fitness/` importing `src/` — is deliberately still legal. A check may
-      // reasonably want a TYPE from the product to say what it is asserting about. It stays
-      // unused today because these checks read the tree as text and as a graph rather than
-      // executing it, which is what lets them assert things a running program cannot.
-      name: 'fitness-stays-outside-the-product',
+      // It is stated as REACHABILITY FROM AN ENTRY POINT rather than as `^src/` ↛ `^gallery/`,
+      // because the path form states a proxy and this one states the harm. What is wrong with
+      // the edge is that the module SHIPS — so the rule asks the question the bundler asks.
+      // Two things follow that the proxy got wrong. A `*.test.ts` may import a fixture builder
+      // out here, since no entry point reaches a test; and the diagnostic names the whole
+      // chain (`content.ts → render.ts → gallery/labels.ts`) rather than only its last hop.
+      //
+      // The reverse — `fitness/` or `gallery/` importing `src/` — is deliberately still legal,
+      // and `gallery/previews.ts` relies on it: a preview calls the very builders a live hover
+      // calls, which is the whole reason it cannot drift from the product.
+      name: 'tooling-stays-outside-the-product',
       severity: 'error',
       comment:
-        'src/ must not import from fitness/. The fitness checks read the product; they are not ' +
-        'part of it, and an import here ships them to users inside content.js. Move whatever is ' +
-        'shared into src/ and let the check read it, rather than reaching sideways for it.',
-      from: {path: '^src/'},
-      to: {path: '^fitness/'},
+        'A module under fitness/ or gallery/ is reachable from a build entry point, so it ships to ' +
+        'users inside content.js. They read and exercise the product; they are not part of it. Move ' +
+        'whatever is shared into src/ and let the tool read it, rather than reaching sideways for it.',
+      from: {path: '^src/(content|background)\\.ts$'},
+      to: {path: '^(fitness|gallery)/', reachable: true},
     },
     {
       name: 'no-orphans',

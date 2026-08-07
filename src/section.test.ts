@@ -628,6 +628,77 @@ describe('buildPokemonSection speed order (the ⚡ line on a foe hover)', () => 
   });
 });
 
+describe('move order rules out a Choice Scarf, through the whole live pipeline', () => {
+  // Emboar's one surviving role runs a Choice Band (157 Spe) or a Choice Scarf (235), and a
+  // -1 Speed drop puts our Noivern at 166 — between them. That is the only arrangement in
+  // which who-moved-first can tell the two apart, and it is exactly the read a player makes
+  // by eye. A Scarf changes no damage number, so `itemreveal.ts` is blind to it: this is the
+  // seam test for the axis nothing else in the codebase can reach.
+  const emboarSets = (over: Record<string, unknown>): string => {
+    const {battle: b, active: a} = loadBattle({foeEmboar: true, noivernBoosts: {spe: -1}, ...over});
+    return buildPokemonSection(b, a('Emboar'), dataWithEmboar);
+  };
+  const unread = emboarSets({});
+  const theyFirst = emboarSets({foeMovedFirst: true});
+  const theySecond = emboarSets({foeMovedFirst: false});
+
+  it('leaves both items standing when no turn is safe to read', () => {
+    expect(unread).toContain('Choice Band, Choice Scarf');
+    expect(unread).toContain('>they move first</span> — 166 vs 235');
+    expect(unread).toContain('if Choice Band'); // the aside the reveals below delete
+  });
+
+  it('rules the Band out when they moved FIRST', () => {
+    expect(theyFirst).toContain('>they move first</span> — 166 vs 235');
+    expect(theyFirst).not.toContain('<small>if '); // one speed left, so nothing to qualify
+  });
+
+  it('rules the Scarf out when they moved SECOND — and FLIPS the verdict', () => {
+    // The whole point, in one line: without the reading the tooltip leads with "they move
+    // first"; with it, we do. A player switches on that sentence.
+    expect(unread).toContain('>they move first</span>');
+    expect(theySecond).toContain('⚡ you move first — 166 vs 157');
+    expect(theySecond).not.toContain('<small>if ');
+  });
+
+  it('carries the rule-out to the Items line, not only to the verdict', () => {
+    // The choke point. A block still advertising a Choice Scarf above a ⚡ line that has just
+    // declared it impossible is worse than no rule-out at all — and it is what the previous
+    // shape did, since `inferSets` never saw `itemreveal.ts`'s narrowing either.
+    expect(theyFirst).toContain('<small>Items:</small> Choice Scarf');
+    expect(theyFirst).not.toContain('Choice Band');
+    expect(theySecond).toContain('<small>Items:</small> Choice Band');
+    expect(theySecond).not.toContain('Choice Scarf');
+  });
+
+  it('reaches the OWN-hover matchup block’s ⚡ line, not only the foe’s own hover', () => {
+    // The gap this nearly shipped with: the observation is about our ACTIVE against their
+    // active, but the rule-out it produces is a fact about the FOE's set — so it has to
+    // reach every surface that shows that foe, including a ⚡ line inside one of OUR blocks.
+    // Without it, hovering Emboar says "not Scarfed" while hovering our own Noivern still
+    // offers "if Choice Scarf" about the same Pokémon on the same turn.
+    const ownHover = (over: Record<string, unknown>): string => {
+      const {battle: b, active: a} = loadBattle({
+        foeEmboar: true,
+        noivernBoosts: {spe: -1},
+        myNoivernItem: 'heavydutyboots',
+        myNoivernMoves: ['dracometeor', 'flamethrower', 'hurricane', 'roost'],
+        ...over,
+      });
+      return buildPokemonSection(b, a('Noivern'), dataWithEmboar);
+    };
+    expect(ownHover({})).toContain('if Choice Band');
+    expect(ownHover({foeMovedFirst: false})).not.toContain('<small>if ');
+    expect(ownHover({foeMovedFirst: false})).toContain('166 vs 157');
+  });
+
+  it('tightens the DAMAGE by the same rule-out, so no surface disagrees', () => {
+    expect(unread).toContain('Head Smash</b> (112.4–198.5%)'); // both items, one wide range
+    expect(theyFirst).toContain('Head Smash</b> (112.4–132.8%)'); // Scarf only
+    expect(theySecond).toContain('Head Smash</b> (168.6–198.5%)'); // Band only
+  });
+});
+
 describe('buildPokemonSection hovering OUR Noivern (their read on us)', () => {
   const {battle, active} = loadBattle();
   const html = buildPokemonSection(battle, active('Noivern'), data);

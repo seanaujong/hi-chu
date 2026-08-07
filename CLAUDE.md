@@ -672,6 +672,17 @@ picture and not in this list, this list is the thing that's wrong.
       Its one observation comes from `readState.ts`'s `mostRecentCleanHit`. A rule-out read
       from a hit's magnitude belongs here; one read from a side effect belongs in
       `deductions.ts`.
+    - `speedreveal.ts` — the move-ORDER law, and the third direction a reveal can come
+      from: `deductions.ts` reads whether a side effect fired, `itemreveal.ts` what number a
+      hit dealt, and this one who moved first. Move order is a fact about the PAIR and our
+      own speed is exact, so an observed order bounds theirs — which is the ONLY reading
+      that separates a Choice Scarf from a Choice Band, since a Scarf changes no damage
+      number for `itemreveal.ts` to see and `deductions.ts` only ever rules out all three
+      Choice items at once. Judges per still-possible variant, because the same observation
+      convicts one set and acquits another: a Prankster variant explains moving first
+      without being fast. Its one observation comes from `readState.ts`'s
+      `mostRecentCleanOrder`, which decides which turns are safe to read at all; what lives
+      here is what the order MEANS. Never narrows to nothing.
   - `hazards.ts` — the switch-in law: entry-hazard damage, modelled ONLY for a switch-in
     preview (see the invariant). One of the three files allowed to import `@smogon/calc`,
     for its type chart and grounding check.
@@ -849,6 +860,10 @@ them until someone adds it.
 | A turn that ended with its holder un-statused rules out Flame Orb AND Toxic Orb — the same silence, at a moment that comes round every turn | ✅ | `core/deductions.ts`, `battle/readState.ts` (`endedTurnUnstatused`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts`, `section.test.ts` |
 | A deduction narrows the candidate roles but never empties them — nor the item pool a chosen role calcs with | ✅ | `core/narrow.ts` (`consistentRoles`, `candidateItems`) | `resolve.test.ts` |
 | ONE rule decides a candidate's item pool, so the block's Items line and its damage can't disagree | ✅ | `core/narrow.ts` (`candidateItems`) | `resolve.test.ts`, `section.test.ts` |
+| Move ORDER rules out a Choice Scarf — the one axis damage can never reveal | ✅ | `core/speedreveal.ts`, `battle/readState.ts` (`mostRecentCleanOrder`) | `speedreveal.test.ts`, `readState.test.ts`, `section.test.ts` |
+| A priority bracket is an ALIBI: any variant whose bracket explains the order survives without its speed being consulted | ✅ | `core/speedreveal.ts` (`bracket`, `UNREADABLE_ABILITIES`) | `speedreveal.test.ts` |
+| A move's priority is read from the CLIENT dex — @smogon/calc's own data zeroes every negative bracket | ✅ | `battle/readState.ts` (`readMoveOrder`) | `readState.test.ts`, `speedreveal.test.ts` |
+| Every log-derived reveal reaches EVERY surface showing that foe's set — one narrowing, applied to the damage, the ⚡ verdict and the Items line alike | ✅ | `section.ts` (`foeReveals`, `narrowCandidate`) | `section.test.ts` |
 | The forme a Pokémon IS and the one it is WEARING differ — only the calc reads the second | ✅ | `battle/readState.ts` (`readLiveForme`), `core/resolve.ts` (`buildResolved`) | `readState.test.ts`, `resolve.test.ts` |
 | A Transformed Pokémon is calculated as the one it COPIED, keeping only its own HP | ✅ | `core/transform.ts`, `section.ts` (`factsReader`) | `transform.test.ts`, `readState.test.ts`, `section.test.ts` |
 | An ability narrows a role only if a SET could have been built with it | ✅ | `core/narrow.ts` (`buildableAbilities`) | `resolve.test.ts` |
@@ -920,7 +935,10 @@ rather than in our code. Run the named check by hand after a Showdown client upd
 
 - **`npm run drift-check`** (a spectator replay) — every client field `readState.ts` reads:
   `stepQueue`/`ident`, `volatiles`, `sideConditions` (Tailwind, and the Spikes layer index),
-  `pseudoWeather`, `battle.dex` (species `abilities`, and the stone→forme map), `gameType`.
+  `pseudoWeather`, `battle.dex` (species `abilities`, the stone→forme map, and `moves` for the
+  PRIORITY bracket — read here rather than from @smogon/calc, whose move data carries no
+  negative priority at all, so drift would put Dragon Tail and Trick Room in the 0 bracket
+  and read a foe that moved second as simply slow), `gameType`.
   Also the `|move|` line's own field layout, because the Choice rule-out reads a `[from]`
   attribute as "the player didn't choose this" — if that convention drifted, every called
   move would read as a second free selection and rule Choice items out FALSELY. And the

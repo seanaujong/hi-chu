@@ -122,7 +122,7 @@ export const scenarioDataItemAbilitySplit = {
  * The client's classes are untyped and cyclic, so the reconstruction casts through
  * `unknown` — the shapes match readState's structural interfaces.
  */
-export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; farStealthRock?: boolean; farSpikes?: number; tentacruelHpPercent?: number; foeDitto?: 'transformed' | 'plain'; foeEmboar?: boolean; ourZoroark?: boolean; tentacruelSubstitute?: 'fresh' | 'dented'; noivernSubstitute?: 'fresh' | 'dented'} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
+export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; farStealthRock?: boolean; farSpikes?: number; tentacruelHpPercent?: number; foeDitto?: 'transformed' | 'plain'; foeEmboar?: boolean; noivernBoosts?: Record<string, number>; foeMovedFirst?: boolean; ourZoroark?: boolean; tentacruelSubstitute?: 'fresh' | 'dented'; noivernSubstitute?: 'fresh' | 'dented'} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
   const sides: ClientSide[] = fixture.battle.sides.map((s, i) => {
     // Tailwind blows on OUR side (index 0) only — the asymmetry is the point: it must
     // double our speed and leave the foe's alone, whichever side a caller orients on.
@@ -157,6 +157,9 @@ export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?
           ? {moveTrack: over.tentacruelMoveTrack.map((m) => [m, 0])}
           : {}),
         ...(over.fullHp ? {hp: p.maxhp} : {}),
+        ...(p.speciesForme === 'Noivern' && over.noivernBoosts !== undefined
+          ? {boosts: over.noivernBoosts}
+          : {}),
         ...(p.speciesForme === 'Noivern' && over.myNoivernHpPercent !== undefined
           ? {hp: Math.round(p.maxhp * over.myNoivernHpPercent)}
           : {}),
@@ -225,8 +228,34 @@ export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?
     weather: fixture.battle.weather,
     pseudoWeather: fixture.battle.pseudoWeather,
     sides,
-    ...(over.tentacruelSubstitute || over.noivernSubstitute
+    // The client's own move dex, which is where a PRIORITY bracket is read from — the calc's
+    // move data carries no negative priority at all. Only the moves these scenarios use.
+    ...(over.foeMovedFirst !== undefined
+      ? {dex: {
+          species: {get: () => undefined},
+          moves: {get: (n: string) => ({
+            'Head Smash': {priority: 0, category: 'Physical', type: 'Rock'},
+            'Draco Meteor': {priority: 0, category: 'Special', type: 'Dragon'},
+          }[n])},
+        }}
+      : {}),
+    ...(over.tentacruelSubstitute || over.noivernSubstitute || over.foeMovedFirst !== undefined
       ? {stepQueue: [
+          // A Speed drop BEFORE the turn we read, so the two are consistent: the reader
+          // refuses an observation with anything speed-relevant after it, and `finalSpeed`
+          // reads the boosts standing now. -1 puts our Noivern at 166 — between Emboar's
+          // Choice Band (157) and its Choice Scarf (235), which is the only arrangement in
+          // which an observed order can tell the two apart at all.
+          ...(over.foeMovedFirst !== undefined
+            ? [
+                '|-unboost|p1a: Noivern|spe|1',
+                '|turn|1',
+                ...(over.foeMovedFirst
+                  ? ['|move|p2a: Emboar|Head Smash|p1a: Noivern', '|move|p1a: Noivern|Draco Meteor|p2a: Emboar']
+                  : ['|move|p1a: Noivern|Draco Meteor|p2a: Emboar', '|move|p2a: Emboar|Head Smash|p1a: Noivern']),
+                '|turn|2',
+              ]
+            : []),
           ...(over.tentacruelSubstitute ? ['|-start|p2a: Tentacruel|Substitute'] : []),
           ...(over.tentacruelSubstitute === 'dented' ? ['|-activate|p2a: Tentacruel|move: Substitute|[damage]'] : []),
           ...(over.noivernSubstitute ? ['|-start|p1a: Noivern|Substitute'] : []),

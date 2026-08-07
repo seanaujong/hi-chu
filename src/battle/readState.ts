@@ -6,7 +6,7 @@
 // `toLiveFacts` is pure and unit-tested with a stub; the navigation helpers are
 // thin and defensive (the client's shape can shift between releases).
 
-import type {FieldFacts, FullStats, LiveFacts, SpeciesData, StatID, StatusName, TerrainName, WeatherName} from '../core/types.js';
+import type {FieldFacts, FullStats, LiveFacts, OrderedMove, SpeciesData, StatID, StatusName, TerrainName, TurnOrder, WeatherName} from '../core/types.js';
 import {isMegaForme} from '../core/facts.js';
 import {multiHitProfile} from '../core/moves.js';
 import type {OwnSideHazards} from '../core/hazards.js';
@@ -89,6 +89,19 @@ export interface ClientDex {
   /** The client dex's items — read to turn a held Mega stone into the forme it unlocks
    *  (`readMegaForme`), the same lookup the client's own tooltip does. */
   readonly items?: {get(name: string): ClientItem | undefined};
+  /** The client dex's moves — read for the PRIORITY bracket a move went in, which
+   *  @smogon/calc's own move data does not carry for any negative bracket. See
+   *  `readMoveOrder`. */
+  readonly moves?: {get(name: string): ClientMove | undefined};
+}
+
+/** The client dex's move record, as much of it as the order law reads. */
+export interface ClientMove {
+  readonly priority?: number;
+  readonly category?: string;
+  readonly type?: string;
+  /** `[numerator, denominator]` when the move drains, absent otherwise. */
+  readonly drain?: readonly number[];
 }
 
 /** The client dex's item record. `megaStone` maps a base species NAME to the Mega forme
@@ -876,6 +889,150 @@ export function mostRecentCleanHit(
       if (found) stale = true;
     }
   }
+  return stale ? undefined : found;
+}
+
+/**
+ * A `-boost`-family / `-sidestart`-family line that could move somebody's SPEED, judged by
+ * what the line itself names. Every other tag in `STATE_CHANGING_TAGS` is treated as
+ * speed-relevant wholesale (a status can be paralysis, an item can be a Scarf, a field can
+ * be Trick Room); these two are singled out because the protocol says which stat and which
+ * condition, and taking them wholesale would throw away most of a real battle. Stealth Rock
+ * going up and an Attack drop are the common cases, and neither moves anybody's Speed.
+ */
+function affectsSpeed(tag: string, parts: readonly string[]): boolean {
+  if (tag === '-boost' || tag === '-unboost' || tag === '-setboost') return parts[3] === 'spe';
+  if (tag === '-sidestart' || tag === '-sideend') return parts.some((p) => p.endsWith('Tailwind'));
+  // A volatile only matters here when it is one of the three that carry a Speed component.
+  // `-start` is otherwise the commonest tag in the log (Substitute, confusion, Leech Seed).
+  if (tag === '-start' || tag === '-end') {
+    const what = toId(parts[3] ?? '');
+    return what.startsWith('quarkdrive') || what.startsWith('protosynthesis') || what === 'slowstart';
+  }
+  return STATE_CHANGING_TAGS.has(tag);
+}
+
+/** Moves that hand somebody else's turn around, so the order they produce is not a speed
+ *  fact about anybody. A turn containing one is discarded whole. */
+const ORDER_BENDING_MOVES = new Set(['afteryou', 'quash', 'instruct']);
+
+/** The client dex's record for one move, as the order law needs it — undefined when the dex
+ *  is absent or the record is not the shape we read, so a caller abstains rather than
+ *  assuming the 0 bracket. */
+function readMoveOrder(battle: ClientBattle, name: string): OrderedMove | undefined {
+  const record = battle.dex?.moves?.get(name);
+  if (!record || typeof record.priority !== 'number') return undefined;
+  const category = typeof record.category === 'string' ? record.category : '';
+  const type = typeof record.type === 'string' ? record.type : '';
+  if (!category || !type) return undefined;
+  return {name, priority: record.priority, category, type, drain: Array.isArray(record.drain)};
+}
+
+/**
+ * The most recent turn whose MOVE ORDER is safe to read as a fact about speed — the third
+ * kind of item reveal, after "did a side effect fire" (`deductions.ts`) and "what number did
+ * a hit deal" (`itemreveal.ts`). Who moved first is a fact about the pair, and our own speed
+ * is exact, so it bounds theirs — which is what rules a Choice Scarf in or out.
+ *
+ * "Safe" is doing a great deal of work, and every condition below exists because getting it
+ * wrong invents a rule-out rather than missing one:
+ *   - BOTH must have used exactly one move that turn. A switch, a sleep, a flinch or a full
+ *     paralysis produces no `|move|` line (or a `|cant|`), and a turn where only one side
+ *     acted says nothing about the other.
+ *   - Neither `|move|` may carry a `[from]`. A called move (Copycat, Dancer, Sleep Talk) is
+ *     not the mon's own ordered action — the same convention the Choice rule-out reads.
+ *   - Nothing may ACTIVATE in the turn. Quick Claw, Quick Draw and Custap Berry all announce
+ *     themselves with `|-activate|`, and each hands its owner a priority bracket it did not
+ *     earn. Rather than enumerate them, any activation at all disqualifies the turn: the
+ *     cost is a few readable turns, and the alternative is a confidently wrong verdict.
+ *   - No After You / Quash / Instruct anywhere in the turn.
+ *   - Nothing speed-relevant may happen DURING the turn, because the order was decided
+ *     before it and the speeds we compare against are read from the state now.
+ *   - …nor SINCE, on either side, which is the same `stale` mechanism `mostRecentCleanHit`
+ *     uses, narrowed to what actually moves a Speed stat (`affectsSpeed`).
+ *   - Neither mon may have left the field since, or the observation is about somebody else.
+ *
+ * What it deliberately does NOT decide is what the order MEANS. Priority brackets, Trick
+ * Room and the foe's own possible speeds all belong to `core/speedreveal.ts`, which judges
+ * them per still-possible set — a Prankster variant explains moving first without being
+ * fast, and only the layer that knows which variants exist can say so.
+ */
+export function mostRecentCleanOrder(
+  battle: ClientBattle,
+  ours: {readonly ident?: string},
+  theirs: {readonly ident?: string},
+): TurnOrder | undefined {
+  const us = identKey(ours.ident);
+  const them = identKey(theirs.ident);
+  if (!us || !them) return undefined;
+
+  let found: TurnOrder | undefined;
+  let stale = false;
+  // Per-turn accumulation: the moves each side made, and whether anything disqualified it.
+  let moves: {who: string; move: string}[] = [];
+  let spoiled = false;
+  // Which slots the pair are standing in. Tracked because a Pokémon LEAVING the field has no
+  // line of its own — the log only ever says somebody else arrived in its slot — so this is
+  // the only way to notice that the observation's subject is gone.
+  const slots = new Map<string, string>();
+
+  const endTurn = (): void => {
+    const ourMove = moves.find((m) => m.who === us);
+    const theirMove = moves.find((m) => m.who === them);
+    if (!spoiled && moves.length === 2 && ourMove && theirMove) {
+      const ours = readMoveOrder(battle, ourMove.move);
+      const theirs = readMoveOrder(battle, theirMove.move);
+      // A move the dex cannot describe leaves the bracket unknown, and an unknown bracket
+      // is not the 0 bracket — the turn goes unread rather than half-read.
+      if (ours && theirs) {
+        found = {ours, theirs, theyMovedFirst: moves[0]!.who === them};
+        stale = false;
+      }
+    }
+    moves = [];
+    spoiled = false;
+  };
+
+  for (const line of battle.stepQueue ?? []) {
+    const parts = line.split('|');
+    const tag = parts[1] ?? '';
+    const who = identKey(parts[2]);
+
+    if (who === us || who === them) {
+      const slot = slotKey(parts[2]);
+      if (slot) slots.set(who, slot);
+    }
+
+    if (tag === 'turn') {
+      endTurn();
+    } else if (tag === 'move') {
+      const move = parts[3] ?? '';
+      if (ORDER_BENDING_MOVES.has(toId(move))) spoiled = true;
+      const called = parts.slice(4).some((p) => p.startsWith('[from]'));
+      if (who === us || who === them) {
+        if (called) spoiled = true;
+        else moves.push({who, move});
+      }
+    } else if (tag === 'cant') {
+      if (who === us || who === them) spoiled = true;
+    } else if (tag === 'switch' || tag === 'drag') {
+      // Either of the pair leaving ends the observation's SUBJECT, not merely its turn — and
+      // so does either of them arriving, which starts a fresh stint with fresh boosts.
+      const slot = slotKey(parts[2]);
+      const replacesOne = slot !== undefined && [...slots.values()].includes(slot);
+      if (who === us || who === them || replacesOne) {
+        found = undefined;
+        stale = false;
+      }
+      spoiled = true;
+    } else if (tag === '-activate') {
+      spoiled = true; // Quick Claw, Quick Draw, Custap — an unearned bracket, always announced
+    } else if (affectsSpeed(tag, parts)) {
+      spoiled = true;
+      if (found) stale = true;
+    }
+  }
+  endTurn();
   return stale ? undefined : found;
 }
 

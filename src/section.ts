@@ -30,16 +30,7 @@ import {
   type MoveKnowledgeRow,
   type SpeedLineModel,
 } from './core/render.js';
-import type {
-  CandidateSet,
-  FieldFacts,
-  LiveFacts,
-  RandbatsData,
-  RandbatsEntry,
-  ResolvedMon,
-  SetVariant,
-  TransformCopy,
-} from './core/types.js';
+import type {CandidateSet, FieldFacts, KnownOption, LiveFacts, RandbatsData, RandbatsEntry, ResolvedMon, SetVariant, TransformCopy} from './core/types.js';
 import {transformCopy} from './core/transform.js';
 import {applySwitchInHazards} from './core/hazards.js';
 import {
@@ -50,6 +41,7 @@ import {
   type HoverTarget,
 } from './core/surfaces.js';
 import {variantsConsistentWithDamage} from './core/itemreveal.js';
+import {variantsConsistentWithOrder} from './core/speedreveal.js';
 import {pickEntry, megaEntryForItem, megaEntriesFor} from './data/lookup.js';
 import {
   toLiveFacts,
@@ -72,6 +64,7 @@ import {
   findOpposingActive,
   findOpposingActives,
   mostRecentCleanHit,
+  mostRecentCleanOrder,
   nearSide,
   detectFormat,
   readFieldFacts,
@@ -92,6 +85,115 @@ const OPEN_FORMAT_NOTE = 'foe EVs/item assumed';
  * attacks, so the variants depend on the move's category.
  */
 type DefenderVariantsFor = (defenderFacts: LiveFacts) => (moveName: string) => readonly SetVariant[];
+
+/**
+ * Everything the battle log reveals about a foe that `narrow.ts` cannot see from the
+ * snapshot — the two per-VARIANT reveals, gathered once per hover and applied in one place.
+ *
+ * They are gathered together because they must be APPLIED together. Each rules out variants
+ * the other cannot: damage magnitude separates a Life Orb from a Choice Band and is blind to
+ * a Choice Scarf (which changes no number at all), while move order separates the Scarf from
+ * the Band and is blind to everything that does not touch Speed. A surface that consulted
+ * one and not the other would contradict a surface that consulted both, on the same tooltip.
+ *
+ * Absent when there is nothing to read — no opposing active to compare against, no field, or
+ * neither observation available — which is the common case and costs nothing.
+ */
+interface FoeReveals {
+  readonly narrow: (variants: readonly SetVariant[]) => readonly SetVariant[];
+}
+
+/**
+ * The one place a foe's still-possible variants are narrowed by the log. EVERY surface that
+ * shows a foe's set goes through it — the ⚡ verdict, the move tooltip's defender fan-out,
+ * the sets view's damage, and the sets view's own Items line — because a rule-out that
+ * reaches some of those and not others is worse than no rule-out at all: it puts a Choice
+ * Scarf on the Items line of a block whose ⚡ line has just declared it impossible.
+ */
+function foeReveals(
+  battle: ClientBattle,
+  foe: ClientPokemon,
+  ourMon: ClientPokemon | null,
+  ourResolved: ResolvedMon | null,
+  field: FieldFacts | undefined,
+  format: {gen: number; doubles: boolean},
+  // Our mon as it stood on the turn the ORDER was observed — a turn that has already been
+  // fought, so a Mega or Tera merely TICKED in the move panel was not in effect for it.
+  // Defaults to `ourResolved` for callers with no preview to strip.
+  ourWhenItHappened: ResolvedMon | null = ourResolved,
+): FoeReveals | undefined {
+  if (!ourMon || !ourResolved || !field) return undefined;
+  // Damage MAGNITUDE (core/itemreveal.ts) — not a side effect firing, but the NUMBER a past
+  // hit dealt. `mostRecentCleanHit` hands back nothing unless it found one safe to compare.
+  const hit = mostRecentCleanHit(battle, foe, ourMon);
+  // Move ORDER (core/speedreveal.ts) — the only reading that separates a Scarf from a Band.
+  const order = mostRecentCleanOrder(battle, ourMon, foe);
+  if (!hit && !order) return undefined;
+  return {
+    narrow: (variants) => {
+      let kept = variants;
+      if (hit) kept = variantsConsistentWithDamage(kept, ourResolved, {gen: format.gen, field, doubles: format.doubles}, hit);
+      if (order && ourWhenItHappened) {
+        kept = variantsConsistentWithOrder(kept, ourWhenItHappened, order, {
+          gen: format.gen,
+          field,
+          // `field` is read with OUR side as the defender, so `defenderTailwind` is ours.
+          // Swapping these silently doubles the wrong Pokémon's Speed.
+          ourTailwind: Boolean(field.defenderTailwind),
+          theirTailwind: Boolean(field.attackerTailwind),
+        });
+      }
+      return kept;
+    },
+  };
+}
+
+/**
+ * The reveals for one foe, built from OUR ACTIVE — whichever of our own Pokémon is hovered.
+ *
+ * That is the whole subtlety of using this on an own-side surface: the matchup view and the
+ * switch menu are about a benched candidate, but the turn that was observed was fought by
+ * whoever was actually standing there. The rule-out it produces is a fact about the FOE's
+ * set, so it applies to every surface that shows that foe — including a ⚡ line inside a
+ * bench mon's block, which would otherwise go on offering an "if Choice Scarf" aside the
+ * foe's own hover had already deleted.
+ */
+function revealsAgainst(
+  battle: ClientBattle,
+  foe: ClientPokemon,
+  data: RandbatsData,
+  format: {gen: number; doubles: boolean},
+  readFacts: FactsReader,
+): FoeReveals | undefined {
+  const ourActive = findOpposingActive(battle, foe);
+  if (!ourActive) return undefined;
+  const ourFacts = ownTruth(battle, ourActive, readFacts(ourActive));
+  const resolved = resolveMon(ourFacts, entryOrMinimal(entryFor(data, ourFacts), ourFacts));
+  return foeReveals(battle, foe, ourActive, resolved, readFieldFacts(battle, ourActive.side), format);
+}
+
+/**
+ * A candidate's displayed options, cut down to what the log-derived reveals leave standing.
+ *
+ * This is the half that makes the choke point a choke point rather than a second filter.
+ * `inferSets` derives the Items and Abilities lines from `narrow.candidateItems`, which sees
+ * only the snapshot — so without this a block would go on advertising a Choice Scarf that
+ * the ⚡ line above it had already ruled out, and the "one rule decides a candidate's item
+ * pool" invariant would hold everywhere except where it matters most.
+ *
+ * Only ever removes, and never removes everything: an option with no surviving variant to
+ * justify it goes, and a candidate whose whole pool would empty is left exactly as it was.
+ */
+function narrowCandidate(candidate: CandidateSet, surviving: readonly SetVariant[]): CandidateSet {
+  if (surviving.length === 0) return candidate;
+  const items = new Set(surviving.map((v) => toId(v.mon.item ?? '')));
+  const abilities = new Set(surviving.map((v) => toId(v.mon.ability ?? '')));
+  const keep = (options: readonly KnownOption[], live: ReadonlySet<string>): readonly KnownOption[] => {
+    const left = options.filter((o) => live.has(toId(o.name)));
+    return left.length > 0 ? left : options;
+  };
+  return {...candidate, items: keep(candidate.items, items), abilities: keep(candidate.abilities, abilities)};
+}
 
 /** Every still-possible set for a foe: the hidden item/ability fan-out, plus any
  *  disguised Zoroark the reveals betray. Move-independent — the same pool answers
@@ -117,7 +219,7 @@ function randbatsVariantsFor(data: RandbatsData): DefenderVariantsFor {
  * passes nothing here, so the ⚡ line is randbats-only by construction rather than by
  * an `if` inside the shared block builder.
  */
-type FoeSpeedVariantsFor = (defenderFacts: LiveFacts) => readonly SetVariant[];
+type FoeSpeedVariantsFor = (foe: ClientPokemon, defenderFacts: LiveFacts) => readonly SetVariant[];
 
 /**
  * Every distinct move a hovered foe could still attack with, paired with the ATTACKER
@@ -668,7 +770,7 @@ function ownMovesSection(
       // The report's move name is dex-resolved, so the id form ("dracometeor") displays right.
       .map((buckets) => ({name: buckets[0]!.report.move, buckets}));
     const speed = foeSpeedVariants
-      ? speedOrderVs(speedAttacker, foeSpeedVariants(defenderFacts), field, format.gen)
+      ? speedOrderVs(speedAttacker, foeSpeedVariants(foe, defenderFacts), field, format.gen)
       : undefined;
     // Incoming reads `ourSide` as the defender — the opposite orientation from `field` above.
     const incomingField = readFieldFacts(battle, ourSide);
@@ -749,7 +851,10 @@ function ownHoverMatchup(
   const speedAttacker = applyMega && megaSpeedApplies(format.gen) ? applyMega(base) : base;
   // Our real item feeds the ⚡ line too: a Scarf we are holding is our own private
   // truth, and showing US our own speed as uncertain would be absurd.
-  const speedFor = (foeFacts: LiveFacts): readonly SetVariant[] => randbatsFoeVariants(data, foeFacts);
+  const speedFor = (foe: ClientPokemon, foeFacts: LiveFacts): readonly SetVariant[] => {
+    const all = randbatsFoeVariants(data, foeFacts);
+    return revealsAgainst(battle, foe, data, format, readFacts)?.narrow(all) ?? all;
+  };
   // Which of the three halves this target carries is the grid's call, not this
   // function's — `core/surfaces.ts` holds both the cells and the reason each empty one is
   // empty (the two withheld here are one law: never show the same number on two
@@ -866,7 +971,10 @@ export function buildSwitchSection(battle: ClientBattle, server: ClientServerPok
       // reason speed belongs on our side of the pair. Its item comes from the private
       // team (an id-form Choice Scarf; the damage layer resolves ids through the dex),
       // and it carries no boosts, because it enters with none.
-      const speedFor = (foeFacts: LiveFacts): readonly SetVariant[] => randbatsFoeVariants(data, foeFacts);
+      const speedFor = (foe: ClientPokemon, foeFacts: LiveFacts): readonly SetVariant[] => {
+        const all = randbatsFoeVariants(data, foeFacts);
+        return revealsAgainst(battle, foe, data, format, readFacts)?.narrow(all) ?? all;
+      };
       // Every switch-menu candidate is, by construction, not yet on the field — which is
       // why the hazard preview here needs no branch at all (`previewsSwitchInHazards` is
       // true for this whole surface), while `ownHoverMatchup`, whose target can be either,
@@ -1370,34 +1478,41 @@ function randbatsPokemonSection(
   // preview, and deliberately the SAME `teraPreviewFor`/`megaPreviewFor` rather than a
   // defensive fork — a Tera that grants STAB on our move is the same Tera that resists
   // theirs, so the two directions must never disagree about which type is active.
-  const defender = ourMon && ourFacts
-    ? applyPreviews(resolveMon(ourFacts, entryOrMinimal(entryFor(data, ourFacts), ourFacts)), [
+  // Our mon WITHOUT the pending previews: the move-order reading describes a turn already
+  // fought, and a Mega or Tera merely ticked in the move panel was not in effect for it.
+  // The damage reading wants the previewed one.
+  const defenderNow = ourMon && ourFacts
+    ? resolveMon(ourFacts, entryOrMinimal(entryFor(data, ourFacts), ourFacts))
+    : null;
+  const defender = defenderNow && ourMon && ourFacts
+    ? applyPreviews(defenderNow, [
         megaPreviewFor(battle, ourMon, megaSelected),
         teraPreviewFor(battle, ourMon, teraSelected, ourFacts),
       ])
     : null;
   const field = ourMon ? readFieldFacts(battle, ourMon.side) : undefined;
-  // Damage MAGNITUDE reveals an item too (core/itemreveal.ts) — the direction the reveal
-  // marks above don't cover: not a side effect firing, but the NUMBER a past hit dealt.
-  // `mostRecentCleanHit` hands back nothing unless it found one safe to compare (a single
-  // hit, no crit, no KO, nothing that would change the calc since), so this is a no-op on
-  // the common hover where no such hit exists.
-  const observedHit = ourMon ? mostRecentCleanHit(battle, pokemon, ourMon) : undefined;
+  // What the LOG reveals about this foe, beyond anything the snapshot shows — the damage a
+  // past hit dealt, and who moved first. Gathered once and applied everywhere below, so the
+  // Items line, the per-move damage and the ⚡ verdict cannot disagree about the same set.
+  // A no-op on the common hover where neither observation is safe to read.
+  const reveals = foeReveals(battle, pokemon, ourMon, defender, field, format, defenderNow);
 
   const blocks: CandidateBlock[] = [];
   for (const s of sources) {
     const variants = resolveVariants(s.facts, s.entry);
-    const narrowed = observedHit && defender && field
-      ? variantsConsistentWithDamage(variants, defender, {gen: format.gen, field, doubles: format.doubles}, observedHit)
-      : variants;
+    const narrowed = reveals ? reveals.narrow(variants) : variants;
     const variantsByRole = defender ? groupByRole(narrowed) : new Map<string, SetVariant[]>();
+    // Grouped separately from the damage map, because the OPTIONS a block advertises must be
+    // cut down even on a surface that shows no damage at all.
+    const survivingByRole = groupByRole(narrowed);
     s.knowledge.candidates.forEach((c) => {
       const shown = withCopiedMoves(c, s.facts);
       const roleVariants = variantsByRole.get(c.name) ?? [];
       const damage = defender && field && roleVariants.length > 0
         ? candidateDamageByMove(roleVariants, defender, shown.moves.map((m) => m.name), format.gen, field, format.doubles)
         : undefined;
-      blocks.push(toBlock(shown, s.species, damage));
+      const cut = reveals ? narrowCandidate(shown, survivingByRole.get(c.name) ?? []) : shown;
+      blocks.push(toBlock(cut, s.species, damage));
     });
   }
   if (blocks.every((b) => b.moves.length === 0)) return '';
@@ -1410,7 +1525,12 @@ function randbatsPokemonSection(
   const speedHtml = shows(target, 'speedLead')
     ? speedSection(
         battle,
-        [...resolveVariants(facts, entry), ...illusionVariants(facts, entry, data)],
+        // The same narrowing the blocks below get: a Scarf the move order has ruled out must
+        // not survive as an "if Choice Scarf" aside over a block that no longer lists it.
+        (() => {
+          const all = [...resolveVariants(facts, entry), ...illusionVariants(facts, entry, data)];
+          return reveals ? reveals.narrow(all) : all;
+        })(),
         findOpposingActives(battle, pokemon),
         data,
         format,

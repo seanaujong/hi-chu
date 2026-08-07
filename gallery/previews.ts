@@ -178,6 +178,22 @@ export const PREVIEWS: readonly Preview[] = [
   ),
   pokemonHover(
     'Foe active',
+    'Scarf or Band — nothing has separated them yet',
+    'Emboar’s one surviving role runs a Choice Band (157 Spe) or a Choice Scarf (235), and our Noivern sits between them at 166. A Scarf changes no damage number, so nothing computed from a past hit can tell the two apart — the verdict has to hedge, and the Items line lists both.',
+    {foeEmboar: true, noivernBoosts: {spe: -1}},
+    'Emboar',
+    scenarioDataWithEmboar,
+  ),
+  pokemonHover(
+    'Foe active',
+    'It moved second, so it is not Scarfed',
+    'One turn where both sides used an ordinary move, and Emboar went second. Only the Band set is slow enough for that — so the aside goes, the Items line drops the Scarf, the damage tightens to one item’s range, and the verdict FLIPS from "they move first" to "you do".',
+    {foeEmboar: true, noivernBoosts: {spe: -1}, foeMovedFirst: false},
+    'Emboar',
+    scenarioDataWithEmboar,
+  ),
+  pokemonHover(
+    'Foe active',
     'A Ditto wearing our own Noivern',
     'Transform copies the target whole and keeps only its own HP, so the calc has to read a body no dex record describes.',
     {foeDitto: 'transformed'},

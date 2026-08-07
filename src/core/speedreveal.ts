@@ -57,7 +57,7 @@ function bracket(move: OrderedMove, ability: string | undefined, terrain: string
   let priority = move.priority;
   if (toId(move.name) === GRASSY_GLIDE && terrain === 'Grassy') priority += 1;
   if (id === PRANKSTER && move.category === 'Status') priority += 1;
-  if (id === TRIAGE && move.drain) priority += 3;
+  if (id === TRIAGE && move.healing) priority += 3;
   return priority;
 }
 

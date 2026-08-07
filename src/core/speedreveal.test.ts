@@ -26,7 +26,7 @@ function mon(over: Partial<ResolvedMon> & {speciesForme: string}): ResolvedMon {
 
 /** A move record in the shape the client dex hands back. */
 function move(over: Partial<OrderedMove> & {name: string}): OrderedMove {
-  return {priority: 0, category: 'Physical', type: 'Normal', drain: false, ...over};
+  return {priority: 0, category: 'Physical', type: 'Normal', healing: false, ...over};
 }
 
 const ctx: OrderContext = {gen: 9, field: noField, ourTailwind: false, theirTailwind: false};

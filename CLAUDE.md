@@ -131,7 +131,8 @@ battle, is the damage right", `fitness/` answers "does this codebase still look 
 CLAUDE.md describes", and someone who only wants the first should never have to read the
 second. `fitness/dependency-boundaries.test.ts` holds the named layering rules,
 `fitness/conventions.test.ts` the rules this file states in prose (a rationale beside every
-typechecker-silencing cast in SHIPPED code, a colocated test for every core module),
+typechecker-silencing cast in SHIPPED code, a colocated test for every core module, a drift
+probe for every client field the reader reads),
 `fitness/invariant-index.test.ts` the claim that every pointer in the table below lands on a
 real file and symbol, and `fitness/store-summary.test.ts` that the store's one-line summary
 says the same thing in all three places it is written. The `.dependency-cruiser.cjs` cruise
@@ -842,6 +843,18 @@ source named in `Pointers` and update `readState.ts` and its tests in lockstep.
 probe lists are hand-maintained, not derived from the source, so a new read is invisible to
 them until someone adds it.
 
+**That obligation is now a check**, and it was written the moment prose proved insufficient:
+the speed-order work added a `battle.dex.moves` read for a move's priority bracket, wrote the
+field into the list below, and never probed it. `fitness/conventions.test.ts` compares the
+client fields `readState.ts` reads against the ones `drift-check.mjs` names, with comments
+stripped from both sides so a note about a field cannot stand in for probing it. It is worth
+knowing what it measured: replayed over history (`npm run fitness-retro`) it fires on exactly
+ONE of the last sixty commits — the one that introduced the gap. Sixty commits of prose held
+the line and the sixty-first did not, which is the whole argument for promoting a want to a
+predicate. Writing the missing probe then found a second defect the same day: the client's
+`Move` class publishes `flags` but NOT `drain`, so the Triage bracket lift read a field that
+was always undefined.
+
 | Invariant | | Reasoning owned by | Checked by |
 |---|---|---|---|
 | `detectFormat` is a discriminated union — surfaces split on `kind`, never on a feed's presence | ✅ | `battle/readState.ts` (`detectFormat`), `section.ts` | `readState.test.ts`, `content.test.ts`, `section.test.ts` |
@@ -908,6 +921,8 @@ them until someone adds it.
 | The committed module graph is TRUE — regenerated and diffed, never hand-maintained | ✅ | `scripts/graph.mjs` | `npm run graph:check` (inside `npm run check`) |
 | A core module is named so the layering rules can SEE it — lowercase letters only, since they match sibling edges lexically | ✅ | `fitness/rules.ts` (`CORE_MODULE`, `unreadableModuleNames`) | `dependency-boundaries.test.ts`, `rules.test.ts` |
 | Every module in `src/core` appears in the Architecture list — adding a file is when a hand-maintained map goes stale, and nothing else notices | ✅ | `fitness/rules.ts` (`docCoverageGaps`) | `conventions.test.ts`, `rules.test.ts` |
+| Every client field the reader reads is NAMED in the drift probe — the one obligation prose alone failed to hold | ✅ | `fitness/rules.ts` (`clientFieldsRead`, `unprobedClientFields`) | `conventions.test.ts`, `rules.test.ts` |
+| A move's priority bracket and its Triage lift are read from fields the client actually EXPOSES — `flags.heal`, never `drain` | ✅ | `battle/readState.ts` (`readMoveOrder`) | `readState.test.ts`, `npm run drift-check` |
 | Each fitness rule is a pure judgement, tested against a violation it must catch — watched failing on every commit, not once by hand | ✅ | `fitness/rules.ts` | `rules.test.ts` |
 | A lexical boundary check reads whole import STATEMENTS, never lines — the rules above are defeated by a line wrap otherwise | ✅ | `fitness/importgraph.ts` (`importStatements`) | `importgraph.test.ts`, `dependency-boundaries.test.ts` |
 | No barrel file — one directory-wide re-export makes "does the core import the shell?" and "who imports `deductions.ts`?" stop having per-module answers | ✅ | `fitness/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |
@@ -946,7 +961,9 @@ rather than in our code. Run the named check by hand after a Showdown client upd
 
 - **`npm run drift-check`** (a spectator replay) — every client field `readState.ts` reads:
   `stepQueue`/`ident`, `volatiles`, `sideConditions` (Tailwind, and the Spikes layer index),
-  `pseudoWeather`, `battle.dex` (species `abilities`, the stone→forme map, and `moves` for the
+  `pseudoWeather`, `battle.dex` (species `abilities`, the stone→forme map, and `moves` — probed
+  at a NEGATIVE bracket on purpose, since that is the half with no second source, plus the
+  `category` and `flags.heal` an ability's bracket lift reads; for the
   PRIORITY bracket — read here rather than from @smogon/calc, whose move data carries no
   negative priority at all, so drift would put Dragon Tail and Trick Room in the 0 bracket
   and read a foe that moved second as simply slow), `gameType`.

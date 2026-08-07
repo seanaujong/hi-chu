@@ -104,8 +104,10 @@ export interface ClientMove {
   readonly priority?: number;
   readonly category?: string;
   readonly type?: string;
-  /** `[numerator, denominator]` when the move drains, absent otherwise. */
-  readonly drain?: readonly number[];
+  /** The move's flag set. `heal` is the one read here — the client's `Move` class exposes
+   *  `flags` but deliberately NOT `drain`, even though its raw data carries it, so `flags`
+   *  is both the only reachable source and the one the sim's own Triage rule tests. */
+  readonly flags?: Readonly<Record<string, unknown>>;
 }
 
 /** The client dex's item record. `megaStone` maps a base species NAME to the Mega forme
@@ -1041,7 +1043,7 @@ function readMoveOrder(battle: ClientBattle, name: string): OrderedMove | undefi
   const category = typeof record.category === 'string' ? record.category : '';
   const type = typeof record.type === 'string' ? record.type : '';
   if (!category || !type) return undefined;
-  return {name, priority: record.priority, category, type, drain: Array.isArray(record.drain)};
+  return {name, priority: record.priority, category, type, healing: record.flags?.['heal'] !== undefined};
 }
 
 /**

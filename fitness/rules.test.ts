@@ -1,9 +1,11 @@
 import {describe, it, expect} from 'vitest';
 import {
+  clientFieldsRead,
   docCoverageGaps,
   importersOf,
   testCoverageGaps,
   unexplainedHatchLines,
+  unprobedClientFields,
   unreadableModuleNames,
 } from './rules.js';
 
@@ -88,5 +90,38 @@ describe('an unexplained escape hatch is caught', () => {
 
   it('ignores a hatch inside a comment — describing one is not doing one', () => {
     expect(unexplainedHatchLines(['// never write `as unknown as` without saying why'])).toEqual([]);
+  });
+});
+
+describe('a client field with no drift probe is caught', () => {
+  it('finds the read the probe file never names', () => {
+    const reader = `
+      const forme = p.volatiles?.formechange?.[1];
+      const roost = p.turnstatuses?.['roost'];
+      const record = battle.dex?.moves?.get(name);
+    `;
+    const probe = `
+      const formechange = mon.volatiles?.formechange;
+      if (mon.turnstatuses?.roost !== undefined) seen.roost = true;
+    `;
+    const read = clientFieldsRead(reader);
+    expect(read).toEqual(['dex.moves', 'turnstatuses.roost', 'volatiles.formechange']);
+    expect(unprobedClientFields(read, clientFieldsRead(probe))).toEqual(['dex.moves']);
+  });
+
+  it('does not let a COMMENT about a field stand in for probing it', () => {
+    // The whole failure this rule exists for was a field written into a prose list and never
+    // probed, so a mention in a comment must not satisfy it either.
+    const probe = `
+      // battle.dex.moves is read for the priority bracket — worth a probe some day.
+      const stone = b.dex?.items?.get?.('charizarditex');
+    `;
+    expect(unprobedClientFields(['dex.moves'], clientFieldsRead(probe))).toEqual(['dex.moves']);
+  });
+
+  it('accepts either access form for the same field', () => {
+    // `volatiles?.substitute` and `volatiles?.['typechange']` are the same kind of read, and
+    // a probe written in the other form is still a probe.
+    expect(unprobedClientFields(clientFieldsRead(`p.volatiles?.['substitute']`), clientFieldsRead('mon.volatiles?.substitute'))).toEqual([]);
   });
 });

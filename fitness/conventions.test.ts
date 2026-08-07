@@ -2,7 +2,14 @@ import {describe, it, expect} from 'vitest';
 import {existsSync, readdirSync, readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {localImports} from './importgraph.js';
-import {HATCH, docCoverageGaps, testCoverageGaps, unexplainedHatchLines} from './rules.js';
+import {
+  HATCH,
+  clientFieldsRead,
+  docCoverageGaps,
+  testCoverageGaps,
+  unexplainedHatchLines,
+  unprobedClientFields,
+} from './rules.js';
 
 /**
  * Rules this project states in prose and, until now, stated ONLY in prose. Its two sibling
@@ -137,6 +144,29 @@ describe('every module in the pure core has a colocated test, or a listed reason
  * the mechanical half of "a new file should trigger a second look": the half a predicate can
  * take, leaving only the judgement to a human.
  */
+describe('every client field the reader reads has a drift probe', () => {
+  // The one obligation CLAUDE.md states in prose and nothing enforced. It is the rule with
+  // the least visible failure in the codebase: these fields are precisely the ones the
+  // typechecker cannot defend, so an unprobed read looks exactly like a probed one right up
+  // until a Showdown client update changes what it answers.
+  it('names every dex API, volatile and turnstatus in scripts/drift-check.mjs', () => {
+    const read = clientFieldsRead(readFileSync('src/battle/readState.ts', 'utf8'));
+    const probed = clientFieldsRead(readFileSync('scripts/drift-check.mjs', 'utf8'));
+    // The reader has to be reading SOMETHING, or the extraction has quietly stopped working
+    // and this rule would pass by finding nothing — the failure mode `importgraph` has had
+    // twice. Named fields, not a count, so the guard cannot rot into a tautology.
+    expect(read).toContain('volatiles.formechange');
+    expect(read).toContain('dex.species');
+    expect(
+      unprobedClientFields(read, probed),
+      'Each client field above is read by readState.ts and named nowhere in drift-check.mjs. ' +
+        'Add a probe there (or to player-check.mjs if it lives behind battle.myPokemon) and ' +
+        'list it under CLAUDE.md → "What only a real browser can guard" — a field the ' +
+        'typechecker cannot defend and no probe watches is one a client update breaks silently.',
+    ).toEqual([]);
+  });
+});
+
 describe('the Architecture section lists the modules that actually exist', () => {
   /** Each `- `name.ts` — …` bullet under `## Architecture`, at any nesting depth. */
   function modulesNamedInArchitecture(): string[] {

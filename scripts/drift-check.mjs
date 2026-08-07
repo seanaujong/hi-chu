@@ -226,6 +226,28 @@ function probeLiveClient() {
     problems.push(`battle.dex.items.get('charizarditex').megaStone = ${JSON.stringify(stone?.megaStone)} (expected {Charizard: "Charizard-Mega-X"})`);
   }
 
+  // The speed-order reveal reads a move's PRIORITY bracket from `battle.dex.moves`, and does
+  // so because @smogon/calc's own move data carries positive brackets and zeroes every
+  // negative one. So the probe is aimed at a NEGATIVE bracket on purpose: that is the half
+  // with no second source, and losing it is the dangerous direction — every -6 move would
+  // read as an ordinary 0, and a foe that moved second behind a Dragon Tail would be filed as
+  // simply slow, ruling out a Choice Scarf it may well be holding.
+  const dragonTail = b.dex?.moves?.get?.('dragontail');
+  if (!dragonTail || dragonTail.priority !== -6) {
+    problems.push(`battle.dex.moves.get('dragontail').priority = ${JSON.stringify(dragonTail?.priority)} (expected -6)`);
+  }
+  // …and the fields that ride alongside it, which decide whether an ABILITY moves the bracket:
+  // `category` for Prankster's status lift, `flags.heal` for Triage's. `flags` rather than
+  // `drain` is not a preference — the client's `Move` class exposes one and not the other,
+  // however much its raw data carries both, and this probe is what established that.
+  const drainPunch = b.dex?.moves?.get?.('drainpunch');
+  if (!drainPunch || drainPunch.category !== 'Physical' || drainPunch.flags?.heal === undefined) {
+    problems.push(
+      `battle.dex.moves.get('drainpunch') = ${JSON.stringify({category: drainPunch?.category, flags: drainPunch?.flags})}` +
+        ' (expected a Physical move flagged heal)',
+    );
+  }
+
   for (const mon of actives) {
     const f = R.toLiveFacts(mon);
     if (typeof mon.ident !== 'string' || !mon.ident.includes(':')) {

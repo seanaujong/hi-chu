@@ -29,7 +29,14 @@ import {dirname, join} from 'node:path';
 // for the REAL rules rather than reimplementing them is the whole point — a retrospective run
 // against a copy of the rules would measure the copy.
 import {importStatements} from '../fitness/importgraph.ts';
-import {docCoverageGaps, importersOf, unexplainedHatchLines, unreadableModuleNames} from '../fitness/rules.ts';
+import {
+  clientFieldsRead,
+  docCoverageGaps,
+  importersOf,
+  unexplainedHatchLines,
+  unprobedClientFields,
+  unreadableModuleNames,
+} from '../fitness/rules.ts';
 
 const arg = (name, fallback) => {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
@@ -72,6 +79,16 @@ const RULES = {
     if (!existsSync(join(core, 'deductions.ts'))) return [];
     const importers = importersOf('deductions', graph);
     return importers.length && importers.join() !== 'narrow' ? importers : [];
+  },
+
+  'client field has a probe': (root) => {
+    const reader = join(root, 'src/battle/readState.ts');
+    const probe = join(root, 'scripts/drift-check.mjs');
+    if (!existsSync(reader) || !existsSync(probe)) return []; // predates one or the other
+    return unprobedClientFields(
+      clientFieldsRead(readFileSync(reader, 'utf8')),
+      clientFieldsRead(readFileSync(probe, 'utf8')),
+    );
   },
 
   'no barrel file': (root) =>

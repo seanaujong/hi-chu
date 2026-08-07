@@ -604,6 +604,34 @@ describe('Roost suspends the user’s Flying type for the turn', () => {
   });
 });
 
+describe('the pinch abilities read the ATTACKER’s own current HP', () => {
+  // Overgrow/Blaze/Torrent/Swarm (×1.5 on their own type at ≤ 1/3 HP) and Defeatist
+  // (×0.5 at ≤ 1/2) are the only abilities gated on the ATTACKER's remaining HP, and the
+  // calc implements every one of them — but reads `attacker.curHP()`, which defaults to
+  // full. So the failure they guard against is not an approximation: an unset curHP pins
+  // the attacker at full health and none of the five can ever fire.
+  const target = mon({speciesForme: 'Skarmory'});
+  // Greninja's max HP on this spread is exactly 306, so the threshold falls on a whole
+  // HP point (102) and the boundary can be asserted without rounding ambiguity.
+  const ninja = (hpPercent: number) => mon({speciesForme: 'Greninja', ability: 'Torrent', hpPercent});
+
+  it('is dormant above a third of max HP and armed at exactly a third', () => {
+    expect(calcDamage(ninja(0.4), target, 'Surf').total.max).toBe(153);
+    expect(calcDamage(ninja(1 / 3), target, 'Surf').total.max).toBe(229);
+  });
+
+  it('boosts only the ability’s own type — a Torrent Greninja’s Dark Pulse is untouched', () => {
+    const pinched = calcDamage(ninja(0.3), target, 'Dark Pulse').total.max;
+    expect(pinched).toBe(calcDamage(ninja(1), target, 'Dark Pulse').total.max);
+  });
+
+  it('cuts as well as boosts — Defeatist halves at half HP (Archeops’ max is 312)', () => {
+    const archeops = (hpPercent: number) => mon({speciesForme: 'Archeops', ability: 'Defeatist', hpPercent});
+    expect(calcDamage(archeops(0.6), target, 'Rock Slide').total.max).toBe(97);
+    expect(calcDamage(archeops(0.5), target, 'Rock Slide').total.max).toBe(49);
+  });
+});
+
 describe('Rage Fist scales its power with the ATTACKER’s own hits taken (a calc gap, like multi-hit)', () => {
   // @smogon/calc's own move data lists Rage Fist as a flat bp: 50 — it has no notion of
   // `timesAttacked` at all. Pinned against a direct @smogon/calc run with the same

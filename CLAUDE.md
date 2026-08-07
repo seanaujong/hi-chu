@@ -188,6 +188,13 @@ minute), not real play.pokemonshowdown.com accounts — see the invariants secti
 `myPokemon` bullet. `.github/workflows/e2e.yml` still runs the same two live checks on
 demand (`gh workflow run e2e.yml`) for probing a specific format outside the release flow.
 
+**The version number is a judgement, and deriving it from the commit count is not on the
+table.** Keeping a derived `z` in the repo needs CI to commit it to protected `main`, and that
+commit changes the very count that produced it — a loop with no fixed point. So the number
+stays hand-chosen (patch for a fix, minor when a player reads something new off the tooltip),
+and it is the AUDIT that is automated instead: `release-status` and `release-drift.yml` say a
+release is DUE, never what to call it.
+
 Bump the version FIRST — `release.yml` releases whatever's already in the files, it doesn't
 write them. **`npm run release-bump <major|minor|patch|X.Y.Z>`** does the whole bump:
 `npm version` still writes `package.json`/`package-lock.json`, and the script adds the
@@ -576,9 +583,10 @@ a known gap in the doubles support (see "What the ◐ rows do NOT cover"), not a
 bug, but don't reason from "it's redundant here" without checking the doubles case.
 
 ### Rules that govern every surface
-Cross-cutting, so they live here once rather than being restated per-cell. Each has a full
-invariant bullet under `Conventions & invariants`, named below; this list is the map, not a
-replacement for them.
+Cross-cutting, so they live here once rather than being restated per-cell. Every rule a check
+enforces names its full invariant bullet under `Conventions & invariants`; this list is the
+map, not a replacement for them. The information budget is the one entry no check enforces —
+it is a design constraint held at review.
 
 - **Set inference needs a pool, damage doesn't.** The ⚡ verdict, `Incoming:`, sets/mirror,
   Illusion and Pain Split are randbats-only; the damage surfaces run in both formats. See
@@ -604,6 +612,14 @@ replacement for them.
   rule-out is an inference from something that did not happen, so one that kills every role
   is likelier to be the inference failing than the species being impossible. See *A
   deduction narrows the candidate roles but never empties them*.
+- **The hover has an information budget.** A tooltip is read mid-turn in a second or two, so
+  the scarce resource is the reader's attention, not the space on screen. Add few new facts,
+  and — the harder half — no new KINDS of fact: a row that behaves unlike every row above it
+  costs more than its own line, because it makes the whole panel need re-reading. So prefer
+  unifying cases to branching the display; when a new state looks like it needs a line of its
+  own, look first for the phrasing that covers it and the existing case at once. The
+  Substitute count is the worked example — one "2 hits to break", rather than a bracketed
+  range or a single-hit/multi-hit fork.
 
 ## Architecture — where to make a change
 A **pure core + thin browser shell**. Dependencies point one way: the shell uses the
@@ -762,6 +778,10 @@ picture and not in this list, this list is the thing that's wrong.
     bundled output wired in as the extension's background service worker + content script.
     `DEVELOPMENT_TEAM` in `project.pbxproj` is deliberately left uncommitted — every
     contributor sets their own free Personal Team via Xcode's Signing & Capabilities tab.
+  - **Distribution is the Mac App Store, not a notarized Developer ID build.** Developer ID
+    needs the same $99/yr Apple Developer Program membership, so it buys no cost avoidance —
+    only less discoverability. Enrolment is deliberately deferred until the Xcode/Safari
+    tooling matures, and nothing in the Chrome pipeline is blocked on it.
   - Verification is manual only, on principle: Safari only registers a signed, launched
     extension, and WebDriver-based automation (`safaridriver`, and Apple's own Safari MCP
     server) is structurally blind to Safari extensions by design — confirmed directly, not

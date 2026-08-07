@@ -12,6 +12,7 @@ import {
   tookEntryHazardDamage,
   switchedIntoStealthRockUnharmed,
   usedDifferentMovesSinceSwitchIn,
+  mostRecentCleanOrder,
   switchedInWithoutAnnouncingBalloon,
   endedTurnUnstatused,
   readOwnItem,
@@ -581,6 +582,98 @@ describe('switchedIntoStealthRockUnharmed (confirms Heavy-Duty Boots)', () => {
   it('respects Stealth Rock being spun/Defogged away before the switch', () => {
     const log = [SR, '|-sideend|p2: Player|Stealth Rock|[from] move: Rapid Spin', '|switch|p2a: Corviknight|Corviknight, M|100/100', '|turn|3'];
     expect(switchedIntoStealthRockUnharmed(withLog(log), corv)).toBe(false);
+  });
+});
+
+describe('mostRecentCleanOrder (who moved first, when that is safe to read)', () => {
+  // The client dex is the priority source — @smogon/calc's move data zeroes every negative
+  // bracket, so reading it there would put Dragon Tail in the 0 bracket with Tackle.
+  const DEX: Record<string, {priority: number; category: string; type: string; drain?: number[]}> = {
+    Tackle: {priority: 0, category: 'Physical', type: 'Normal'},
+    'Shadow Ball': {priority: 0, category: 'Special', type: 'Ghost'},
+    'Aqua Jet': {priority: 1, category: 'Physical', type: 'Water'},
+    'Dragon Tail': {priority: -6, category: 'Physical', type: 'Dragon'},
+    'Drain Punch': {priority: 0, category: 'Physical', type: 'Fighting', drain: [1, 2]},
+  };
+  const withLog = (stepQueue: string[]): ClientBattle =>
+    ({
+      gen: 9,
+      tier: '[Gen 9] Random Battle',
+      sides: [],
+      stepQueue,
+      dex: {species: {get: () => undefined}, moves: {get: (n: string) => DEX[n]}},
+    } as unknown as ClientBattle);
+  const us = clientMon({ident: 'p1: Noivern'});
+  const them = clientMon({ident: 'p2: Gholdengo'});
+  const OURS = '|move|p1a: Noivern|Tackle|p2a: Gholdengo';
+  const THEIRS = '|move|p2a: Gholdengo|Shadow Ball|p1a: Noivern';
+
+  it('reads the order, with each move’s bracket attached', () => {
+    const got = mostRecentCleanOrder(withLog(['|turn|1', THEIRS, OURS, '|turn|2']), us, them);
+    expect(got?.theyMovedFirst).toBe(true);
+    expect(got?.theirs).toEqual({name: 'Shadow Ball', priority: 0, category: 'Special', type: 'Ghost', drain: false});
+    expect(got?.ours.name).toBe('Tackle');
+  });
+
+  it('reads the other order too', () => {
+    expect(mostRecentCleanOrder(withLog(['|turn|1', OURS, THEIRS, '|turn|2']), us, them)?.theyMovedFirst).toBe(false);
+  });
+
+  it('takes the MOST RECENT readable turn', () => {
+    const log = ['|turn|1', THEIRS, OURS, '|turn|2', OURS, THEIRS, '|turn|3'];
+    expect(mostRecentCleanOrder(withLog(log), us, them)?.theyMovedFirst).toBe(false);
+  });
+
+  it('declines a turn where only one of them moved', () => {
+    expect(mostRecentCleanOrder(withLog(['|turn|1', OURS, '|turn|2']), us, them)).toBeUndefined();
+  });
+
+  it('declines a turn where one of them could not move at all', () => {
+    const log = ['|turn|1', THEIRS, '|cant|p1a: Noivern|par', '|turn|2'];
+    expect(mostRecentCleanOrder(withLog(log), us, them)).toBeUndefined();
+  });
+
+  it('declines a CALLED move — it is not the mon’s own ordered action', () => {
+    const called = '|move|p2a: Gholdengo|Shadow Ball|p1a: Noivern|[from]Copycat';
+    expect(mostRecentCleanOrder(withLog(['|turn|1', called, OURS, '|turn|2']), us, them)).toBeUndefined();
+  });
+
+  it('declines a turn where anything ACTIVATED — Quick Claw and friends always announce', () => {
+    const log = ['|turn|1', '|-activate|p2a: Gholdengo|item: Quick Claw', THEIRS, OURS, '|turn|2'];
+    expect(mostRecentCleanOrder(withLog(log), us, them)).toBeUndefined();
+  });
+
+  it('declines a turn that contains After You', () => {
+    const log = ['|turn|1', '|move|p2a: Gholdengo|After You|p1a: Noivern', THEIRS, OURS, '|turn|2'];
+    expect(mostRecentCleanOrder(withLog(log), us, them)).toBeUndefined();
+  });
+
+  it('declines when a SPEED boost lands after the reading — the comparison has moved', () => {
+    const log = ['|turn|1', THEIRS, OURS, '|turn|2', '|-boost|p2a: Gholdengo|spe|1'];
+    expect(mostRecentCleanOrder(withLog(log), us, them)).toBeUndefined();
+  });
+
+  it('survives a boost to something OTHER than Speed, and a hazard going up', () => {
+    // The precision that makes this readable at all: taking every -boost and -sidestart
+    // wholesale would throw away most real turns, since an Attack drop and a Stealth Rock
+    // are both common and neither moves anybody's Speed.
+    const log = ['|turn|1', THEIRS, OURS, '|turn|2', '|-unboost|p1a: Noivern|atk|1', '|-sidestart|p1: Sean|move: Stealth Rock'];
+    expect(mostRecentCleanOrder(withLog(log), us, them)?.theyMovedFirst).toBe(true);
+  });
+
+  it('declines when Tailwind goes up after the reading', () => {
+    const log = ['|turn|1', THEIRS, OURS, '|turn|2', '|-sidestart|p2: Foe|move: Tailwind'];
+    expect(mostRecentCleanOrder(withLog(log), us, them)).toBeUndefined();
+  });
+
+  it('declines once either of them has LEFT the field', () => {
+    const log = ['|turn|1', THEIRS, OURS, '|turn|2', '|switch|p2a: Corviknight|Corviknight, M|100/100'];
+    expect(mostRecentCleanOrder(withLog(log), us, them)).toBeUndefined();
+  });
+
+  it('declines a move the dex cannot describe — an unknown bracket is not the 0 bracket', () => {
+    const unknown = '|move|p2a: Gholdengo|Mystery Move|p1a: Noivern';
+    expect(mostRecentCleanOrder(withLog(['|turn|1', unknown, OURS, '|turn|2']), us, them)).toBeUndefined();
   });
 });
 

@@ -346,6 +346,35 @@ export interface SetKnowledge {
   readonly uncertainReason?: string;
 }
 
+// --- Move order, as the speed-order reveal reads it -------------------------
+
+/**
+ * One move as the ORDER law needs to see it: its bracket, plus the two facts an ability can
+ * move that bracket by (Prankster lifts a status move, Triage lifts a draining one).
+ *
+ * Priority comes from the CLIENT's dex rather than @smogon/calc's, and that is not a layering
+ * preference — the calc's move data carries positive priorities and zeroes every negative
+ * one, because nothing in a damage calculator ever orders two moves. Reading it there would
+ * put Dragon Tail, Roar, Teleport, Focus Punch and Trick Room in the 0 bracket, and a foe
+ * that moved second because of a -6 move would read as simply slow. The client's dex is
+ * Showdown's own, which is why its move tooltips can show a priority at all.
+ */
+export interface OrderedMove {
+  readonly name: string;
+  readonly priority: number;
+  readonly category: string;
+  readonly type: string;
+  /** Whether the move drains — the flag Triage's +3 keys on. */
+  readonly drain: boolean;
+}
+
+/** One turn's worth of ordering evidence: who moved, with what, and in which order. */
+export interface TurnOrder {
+  readonly ours: OrderedMove;
+  readonly theirs: OrderedMove;
+  readonly theyMovedFirst: boolean;
+}
+
 // --- Resolved set fed to the calc ------------------------------------------
 
 /**

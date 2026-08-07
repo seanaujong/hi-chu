@@ -671,6 +671,27 @@ describe('move order rules out a Choice Scarf, through the whole live pipeline',
     expect(theySecond).not.toContain('Choice Scarf');
   });
 
+  it('reaches the OWN-hover matchup block’s ⚡ line, not only the foe’s own hover', () => {
+    // The gap this nearly shipped with: the observation is about our ACTIVE against their
+    // active, but the rule-out it produces is a fact about the FOE's set — so it has to
+    // reach every surface that shows that foe, including a ⚡ line inside one of OUR blocks.
+    // Without it, hovering Emboar says "not Scarfed" while hovering our own Noivern still
+    // offers "if Choice Scarf" about the same Pokémon on the same turn.
+    const ownHover = (over: Record<string, unknown>): string => {
+      const {battle: b, active: a} = loadBattle({
+        foeEmboar: true,
+        noivernBoosts: {spe: -1},
+        myNoivernItem: 'heavydutyboots',
+        myNoivernMoves: ['dracometeor', 'flamethrower', 'hurricane', 'roost'],
+        ...over,
+      });
+      return buildPokemonSection(b, a('Noivern'), dataWithEmboar);
+    };
+    expect(ownHover({})).toContain('if Choice Band');
+    expect(ownHover({foeMovedFirst: false})).not.toContain('<small>if ');
+    expect(ownHover({foeMovedFirst: false})).toContain('166 vs 157');
+  });
+
   it('tightens the DAMAGE by the same rule-out, so no surface disagrees', () => {
     expect(unread).toContain('Head Smash</b> (112.4–198.5%)'); // both items, one wide range
     expect(theyFirst).toContain('Head Smash</b> (112.4–132.8%)'); // Scarf only

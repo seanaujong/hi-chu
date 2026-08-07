@@ -24,7 +24,7 @@
 // which is exactly the wait this file exists to delete.
 
 import {buildMoveSection, buildPokemonSection, buildSwitchSection} from '../src/section.js';
-import {loadBattle, scenarioData, scenarioDataItemAbilitySplit, scenarioDataTwinRoles, scenarioDataWithDitto, scenarioDataWithEmboar, scenarioDataWithGreninja} from '../src/scenario.js';
+import {loadBattle, scenarioData, scenarioDataItemAbilitySplit, scenarioDataTwinRoles, scenarioDataWithCharizard, scenarioDataWithDitto, scenarioDataWithEmboar, scenarioDataWithGreninja} from '../src/scenario.js';
 
 // Re-exported so the gallery can style its panels with the very stylesheet the extension
 // injects, rather than a copy of it that could drift.
@@ -207,6 +207,22 @@ export const PREVIEWS: readonly Preview[] = [
     {foeGreninja: 'converted'},
     'Greninja',
     scenarioDataWithGreninja,
+  ),
+  pokemonHover(
+    'Foe active',
+    'Out of Blaze range',
+    'The same Charizard on 40% of its HP, above the one-third line. Read this beside the preview below: it is the control, and the only thing that differs between the two is the number on the HP bar.',
+    {foeCharizardHpPercent: 0.4},
+    'Charizard',
+    scenarioDataWithCharizard,
+  ),
+  pokemonHover(
+    'Foe active',
+    'In Blaze range',
+    'The same Charizard on 20% of its HP. Blaze is its only ability, so nothing had to be revealed for this to be true — every Fire line above is worth half as much again, and a chip-damaged sweeper is exactly when a player stops expecting that.',
+    {foeCharizardHpPercent: 0.2},
+    'Charizard',
+    scenarioDataWithCharizard,
   ),
   pokemonHover(
     'Foe active',

@@ -819,7 +819,12 @@ status move and stops there), gen 9's once-per-switch-in Protean/Libero (it stil
 gen 6-8 rule, which grants STAB to every move the holder owns), and unknown species/items. A third kind hides between those two and
 is the easiest to ship by accident: the calc answering EXACTLY what we asked, where the asking
 itself was wrong. Requesting one hit of a multi-hit move is that — the calc then reads it as a
-single-hit move and applies the Tera 60 BP floor. Our *product* is not a calc gap: the
+single-hit move and applies the Tera 60 BP floor. So is leaving the ATTACKER's `curHP` unset:
+the calc's default is full health, which is a real answer to a question about a full-health
+attacker, and it silently disarms every ability that reads its own holder's remaining HP.
+This kind shows no error and no missing feature — only a number that is quietly wrong — so
+the tell is always a calc INPUT we never supplied, never a calc output that looked odd.
+Our *product* is not a calc gap: the
 variant/deduction information game and the Illusion species fix are cases where the calc
 computed correctly and we chose what to ask it.
 
@@ -844,6 +849,7 @@ them until someone adds it.
 | `assume.ts` reuses the `buildResolved` WRITER but never the `narrow` matcher | ✅ | `core/assume.ts`, `core/resolve.ts` | `resolve.test.ts` |
 | OUR OWN side is exact in open formats — server finals via a solved equivalent spread | ✅ | `core/damage.ts` (`spreadForFinalStats`), `battle/readState.ts` (`serverStats`) | `damage.test.ts`, `readState.test.ts` |
 | Delegate damage interactions to the calc; never hand-apply status/ability modifiers | ◐ | `core/damage.ts` | `damage.test.ts` |
+| Delegation only works on the state we hand over — the ATTACKER's own current HP arms the four pinch abilities and Defeatist | ✅ | `core/damage.ts` (`calcDamage`) | `damage.test.ts` |
 | `teraType` is set only when Tera is ACTIVE — previewed on the move tooltip (attacker) and a foe hover's damage into us (defender) | ✅ | `section.ts` (`PreviewOverlay`, `teraPreviewFor`, `applyPreviews`), `core/resolve.ts` | `section.test.ts`, `resolve.test.ts`, `readState.test.ts` |
 | A ticked Mega box previews OUR active mon's Mega forme — offence, Speed from gen 7, and defence | ✅ | `section.ts` (`megaPreviewFor`, `megaSpeedApplies`), `battle/readState.ts` (`readMegaForme`) | `section.test.ts`, `readState.test.ts` |
 | A pending Tera/Mega preview carries NO speed caveat — both resolve ahead of every move | ✅ | `section.ts` (`applyPreviews`) | `section.test.ts` |

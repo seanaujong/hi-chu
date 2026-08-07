@@ -81,6 +81,30 @@ export const scenarioDataWithGreninja = {
   },
 } as unknown as RandbatsData;
 
+/**
+ * The same feed plus Charizard's real gen9 randbats entry, verbatim from the live feed.
+ *
+ * Brought along for the one property nothing in the captured battle has: an ability that
+ * reads its OWN holder's remaining HP. Blaze is the whole entry's only ability and both
+ * roles carry a Fire move, so a Charizard sitting at or under a third of its HP is a state
+ * where every Fire line in the sets view is worth half as much again — and one that is a
+ * pure function of a number already on the HP bar, so nothing has to be revealed for it to
+ * be true. Of the 509 gen9 randbats species 18 carry a pinch ability, several of them
+ * common (Volcarona, Primarina, Swampert, Venusaur); Charizard is simply the clearest.
+ */
+export const scenarioDataWithCharizard = {
+  ...(scenarioData as object),
+  Charizard: {
+    level: 85,
+    abilities: ['Blaze'],
+    items: ['Heavy-Duty Boots'],
+    roles: {
+      'Setup Sweeper': {abilities: ['Blaze'], items: ['Heavy-Duty Boots'], teraTypes: ['Dragon', 'Ground'], moves: ['Dragon Dance', 'Earthquake', 'Flare Blitz', 'Outrage', 'Swords Dance']},
+      'Fast Attacker': {abilities: ['Blaze'], items: ['Heavy-Duty Boots'], teraTypes: ['Dragon', 'Fire', 'Ground'], moves: ['Earthquake', 'Flamethrower', 'Focus Blast', 'Hurricane', 'Will-O-Wisp']},
+    },
+  },
+} as unknown as RandbatsData;
+
 /** The captured Tentacruel entry, as the shape this file has to reach into to grow a role. */
 type FeedEntry = {roles: Record<string, {moves: readonly string[]}>};
 const tentacruel = (scenarioData as unknown as Record<string, FeedEntry>)['Tentacruel'] as FeedEntry;
@@ -145,7 +169,7 @@ export const scenarioDataItemAbilitySplit = {
  * The client's classes are untyped and cyclic, so the reconstruction casts through
  * `unknown` — the shapes match readState's structural interfaces.
  */
-export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; farStealthRock?: boolean; farSpikes?: number; tentacruelHpPercent?: number; foeDitto?: 'transformed' | 'plain'; foeEmboar?: boolean; foeGreninja?: 'unspent' | 'converted'; noivernBoosts?: Record<string, number>; foeMovedFirst?: boolean; ourZoroark?: boolean; tentacruelSubstitute?: 'fresh' | 'dented'; noivernSubstitute?: 'fresh' | 'dented'} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
+export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; farStealthRock?: boolean; farSpikes?: number; tentacruelHpPercent?: number; foeDitto?: 'transformed' | 'plain'; foeEmboar?: boolean; foeCharizardHpPercent?: number; foeGreninja?: 'unspent' | 'converted'; noivernBoosts?: Record<string, number>; foeMovedFirst?: boolean; ourZoroark?: boolean; tentacruelSubstitute?: 'fresh' | 'dented'; noivernSubstitute?: 'fresh' | 'dented'} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
   const sides: ClientSide[] = fixture.battle.sides.map((s, i) => {
     // Tailwind blows on OUR side (index 0) only — the asymmetry is the point: it must
     // double our speed and leave the foe's alone, whichever side a caller orients on.
@@ -240,6 +264,18 @@ export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?
       ...(converted ? {volatiles: {typechange: ['typechange', 'Ice']}} : {}),
     };
     (sides[1]!.active as (ClientPokemon | null)[])[0] = greninja as unknown as ClientPokemon;
+  }
+  // Swap the foe active for a Charizard on `foeCharizardHpPercent` of its HP. Blaze is its
+  // only ability, so no set has to be narrowed for the boost to apply — the HP bar alone
+  // decides it, which makes this the state that moves a damage number without a single new
+  // reveal. Take it under a third to arm the ability and over to disarm it.
+  if (over.foeCharizardHpPercent !== undefined) {
+    const maxhp = 271;
+    const charizard = {
+      speciesForme: 'Charizard', level: 85, maxhp, hp: Math.round(maxhp * over.foeCharizardHpPercent),
+      status: '', boosts: {}, terastallized: '', ident: 'p2: Charizard', side: sides[1], item: '', moveTrack: [],
+    };
+    (sides[1]!.active as (ClientPokemon | null)[])[0] = charizard as unknown as ClientPokemon;
   }
   // Swap the foe active for a Ditto — plain, or Transformed into our Noivern. The client
   // records a transform as TWO volatiles: the target's own Pokemon object, and the same

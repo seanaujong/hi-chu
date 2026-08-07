@@ -580,10 +580,17 @@ export function calcDamage(
 ): DamageReport {
   // gen originates from the live battle (a plain number); calc wants its 1-9 union.
   const gen = Generations.get((options.gen ?? 9) as GenerationNum);
-  const atk = buildPokemon(gen, attacker);
+  // Build each side twice: once to learn its max HP, once with the real current HP.
+  // BOTH sides need it, for different mechanics. The defender's arms Multiscale,
+  // Sap Sipper-style abilities and the KO math; the ATTACKER's arms the abilities that
+  // read their own holder's remaining HP — the four pinch abilities (Overgrow, Blaze,
+  // Torrent, Swarm: x1.5 on their type at <= 1/3) and Defeatist (x0.5 at <= 1/2). The
+  // calc implements all five and gates every one of them on `attacker.curHP()`, so
+  // leaving it unset does not merely approximate them — it silently pins the attacker at
+  // full health and they can never fire.
+  const attackerMaxHP = buildPokemon(gen, attacker).maxHP();
+  const atk = buildPokemon(gen, attacker, currentHP(attackerMaxHP, attacker.hpPercent));
 
-  // Build the defender twice: once to learn its max HP, once with the real current HP
-  // (curHP changes Multiscale, Sap Sipper-style abilities, and KO math).
   const maxHP = buildPokemon(gen, defender).maxHP();
   const remainingHP = currentHP(maxHP, defender.hpPercent);
   const def = buildPokemon(gen, defender, remainingHP);
@@ -606,7 +613,7 @@ export function calcDamage(
   const callback = damageCallback(dexMove.name);
   if (callback) {
     const dealt = connects(gen, atk, def, moveName, field)
-      ? callback({attacker: currentHP(atk.maxHP(), attacker.hpPercent), defender: remainingHP})
+      ? callback({attacker: atk.curHP(), defender: remainingHP})
       : 0;
     // The extras carry no nHKO ladder, and `nhkoTurns` is ignored rather than honoured.
     // `koLadder` re-applies the SAME damage every turn, which is the one assumption a

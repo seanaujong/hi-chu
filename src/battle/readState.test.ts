@@ -2,6 +2,9 @@ import {describe, it, expect} from 'vitest';
 import {
   toLiveFacts,
   readLiveForme,
+  readLiveTypes,
+  readRoosting,
+  proteanAlreadyFired,
   readTransformTarget,
   readSpeciesData,
   readSubstitute,
@@ -119,6 +122,52 @@ describe('toLiveFacts', () => {
       volatiles: {formechange: ['formechange', 'Palafin-Hero']},
     });
     expect(readLiveForme(palafin)).toBeUndefined();
+  });
+
+  it('reads a live retype from the typechange volatile, not from speciesForme', () => {
+    // The client flattens every retype trigger into this one volatile, joined on "/".
+    const greninja = clientMon({speciesForme: 'Greninja', volatiles: {typechange: ['typechange', 'Ice']}});
+    expect(readLiveTypes(greninja)).toEqual(['Ice']);
+    const f = toLiveFacts(greninja);
+    expect(f.liveTypes).toEqual(['Ice']); // what the calc must see
+    expect(f.speciesForme).toBe('Greninja'); // what the set is still published under
+    const dual = clientMon({volatiles: {typechange: ['typechange', 'Fire/Flying']}});
+    expect(readLiveTypes(dual)).toEqual(['Fire', 'Flying']);
+  });
+
+  it('has no live types when nothing retyped the Pokémon', () => {
+    expect(readLiveTypes(clientMon())).toBeUndefined();
+    expect(readLiveTypes(clientMon({volatiles: {}}))).toBeUndefined();
+    expect(toLiveFacts(clientMon()).liveTypes).toBeUndefined();
+  });
+
+  it('lets a TERA override the retype, exactly as the client’s own getTypes does', () => {
+    // The client refuses to record a typechange on a terastallized Pokémon at all, and
+    // returns the Tera type outright. `teraType` already carries that to the calc, so a
+    // stale pre-Tera retype here would be two mechanisms arguing over one Pokémon.
+    const tera = clientMon({terastallized: 'Water', volatiles: {typechange: ['typechange', 'Ice']}});
+    expect(readLiveTypes(tera)).toBeUndefined();
+  });
+
+  it('takes `typeadd` only alongside a typechange — alone it is an ADDITION we cannot read', () => {
+    // Forest's Curse adds Ghost to whatever the species already is, so reading the volatile
+    // as a replacement would make a Corviknight pure Ghost. This reader has no species
+    // record to add to, so it declines rather than guess.
+    expect(readLiveTypes(clientMon({volatiles: {typeadd: ['typeadd', 'Ghost']}}))).toBeUndefined();
+    const both = clientMon({volatiles: {typechange: ['typechange', 'Water'], typeadd: ['typeadd', 'Ghost']}});
+    expect(readLiveTypes(both)).toEqual(['Water', 'Ghost']);
+  });
+
+  it('reads Roost from turnstatuses, which the client wipes at end of turn', () => {
+    // A TURNSTATUS rather than a volatile, and that is the mechanic rather than a detail:
+    // the grounding expires with the turn and leaves no `-end` line to read.
+    expect(readRoosting(clientMon({turnstatuses: {roost: ['roost']}}))).toBe(true);
+    expect(readRoosting(clientMon())).toBe(false);
+    expect(readRoosting(clientMon({turnstatuses: {}}))).toBe(false);
+    // A different single-turn effect is not Roost.
+    expect(readRoosting(clientMon({turnstatuses: {protect: ['protect']}}))).toBe(false);
+    expect(toLiveFacts(clientMon({turnstatuses: {roost: ['roost']}})).roosting).toBe(true);
+    expect(toLiveFacts(clientMon()).roosting).toBeUndefined();
   });
 
   it('reads the Transform target straight out of the volatile', () => {
@@ -674,6 +723,44 @@ describe('mostRecentCleanOrder (who moved first, when that is safe to read)', ()
   it('declines a move the dex cannot describe — an unknown bracket is not the 0 bracket', () => {
     const unknown = '|move|p2a: Gholdengo|Mystery Move|p1a: Noivern';
     expect(mostRecentCleanOrder(withLog(['|turn|1', unknown, OURS, '|turn|2']), us, them)).toBeUndefined();
+  });
+});
+
+describe('proteanAlreadyFired (gen 9 fires Protean/Libero once per switch-in)', () => {
+  const withLog = (stepQueue: string[]): ClientBattle =>
+    ({gen: 9, tier: '[Gen 9] Random Battle', sides: [], stepQueue} as unknown as ClientBattle);
+  const greninja = clientMon({ident: 'p2: Greninja'});
+  const IN = '|switch|p2a: Greninja|Greninja, M|100/100';
+  const CONVERT = '|-start|p2a: Greninja|typechange|Ice|[from] ability: Protean';
+
+  it('is true once the log shows the ability converting this Pokémon', () => {
+    expect(proteanAlreadyFired(withLog([IN, '|move|p2a: Greninja|Ice Beam|p1a: Chansey', CONVERT]), greninja)).toBe(true);
+  });
+
+  it('is false before it has fired — the next move still converts and still gets STAB', () => {
+    expect(proteanAlreadyFired(withLog([IN, '|turn|2']), greninja)).toBe(false);
+  });
+
+  it('reads the ATTRIBUTION, so a retype from somewhere else does not spend the ability', () => {
+    // Soak on an unspent Protean holder. Reading `typechange`'s mere presence would call the
+    // ability spent and quietly drop a STAB the next move genuinely gets.
+    const soaked = '|-start|p2a: Greninja|typechange|Water|[from] move: Soak';
+    expect(proteanAlreadyFired(withLog([IN, soaked]), greninja)).toBe(false);
+  });
+
+  it('resets when the Pokémon leaves — and leaving has no line of its own', () => {
+    // The log never says a Pokémon switched OUT, only that somebody else arrived in its
+    // slot. Miss that and the flag outlives the stint it belongs to.
+    const replaced = [IN, CONVERT, '|switch|p2a: Corviknight|Corviknight, M|100/100'];
+    expect(proteanAlreadyFired(withLog(replaced), greninja)).toBe(false);
+    // …and coming back in starts a fresh, unspent stint.
+    expect(proteanAlreadyFired(withLog([...replaced, IN]), greninja)).toBe(false);
+    expect(proteanAlreadyFired(withLog([...replaced, IN, CONVERT]), greninja)).toBe(true);
+  });
+
+  it('ignores another Pokémon’s conversion', () => {
+    const theirs = '|-start|p1a: Cinderace|typechange|Fire|[from] ability: Libero';
+    expect(proteanAlreadyFired(withLog([IN, theirs]), greninja)).toBe(false);
   });
 });
 

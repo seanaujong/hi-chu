@@ -58,6 +58,29 @@ export const scenarioDataWithEmboar = {
   },
 } as unknown as RandbatsData;
 
+/**
+ * The same feed plus Greninja's real gen9 randbats entry, verbatim from the live feed.
+ *
+ * Brought along for Protean, which nothing in the captured battle has and which is the one
+ * ability that rewrites the Pokémon's own TYPES mid-battle. Greninja is Water/Dark, its
+ * moves span four types, and gen 9 lets the ability fire once per switch-in — so the same
+ * Pokémon reads completely differently before and after that one moment, in both
+ * directions at once (what its moves get STAB on, and what the whole type chart does to
+ * it). No other mechanic in the format moves that many numbers off one log line.
+ */
+export const scenarioDataWithGreninja = {
+  ...(scenarioData as object),
+  Greninja: {
+    level: 80,
+    abilities: ['Protean'],
+    items: ['Choice Specs', 'Life Orb'],
+    roles: {
+      Wallbreaker: {abilities: ['Protean'], items: ['Life Orb'], teraTypes: ['Poison'], moves: ['Grass Knot', 'Gunk Shot', 'Hydro Pump', 'Ice Beam', 'Spikes', 'U-turn']},
+      'Fast Attacker': {abilities: ['Protean'], items: ['Choice Specs', 'Life Orb'], teraTypes: ['Dark', 'Poison', 'Water'], moves: ['Dark Pulse', 'Grass Knot', 'Gunk Shot', 'Hydro Pump', 'Ice Beam', 'Toxic Spikes', 'U-turn']},
+    },
+  },
+} as unknown as RandbatsData;
+
 /** The captured Tentacruel entry, as the shape this file has to reach into to grow a role. */
 type FeedEntry = {roles: Record<string, {moves: readonly string[]}>};
 const tentacruel = (scenarioData as unknown as Record<string, FeedEntry>)['Tentacruel'] as FeedEntry;
@@ -122,7 +145,7 @@ export const scenarioDataItemAbilitySplit = {
  * The client's classes are untyped and cyclic, so the reconstruction casts through
  * `unknown` — the shapes match readState's structural interfaces.
  */
-export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; farStealthRock?: boolean; farSpikes?: number; tentacruelHpPercent?: number; foeDitto?: 'transformed' | 'plain'; foeEmboar?: boolean; noivernBoosts?: Record<string, number>; foeMovedFirst?: boolean; ourZoroark?: boolean; tentacruelSubstitute?: 'fresh' | 'dented'; noivernSubstitute?: 'fresh' | 'dented'} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
+export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; farStealthRock?: boolean; farSpikes?: number; tentacruelHpPercent?: number; foeDitto?: 'transformed' | 'plain'; foeEmboar?: boolean; foeGreninja?: 'unspent' | 'converted'; noivernBoosts?: Record<string, number>; foeMovedFirst?: boolean; ourZoroark?: boolean; tentacruelSubstitute?: 'fresh' | 'dented'; noivernSubstitute?: 'fresh' | 'dented'} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
   const sides: ClientSide[] = fixture.battle.sides.map((s, i) => {
     // Tailwind blows on OUR side (index 0) only — the asymmetry is the point: it must
     // double our speed and leave the foe's alone, whichever side a caller orients on.
@@ -201,6 +224,23 @@ export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?
     };
     (sides[1]!.active as (ClientPokemon | null)[])[0] = emboar as unknown as ClientPokemon;
   }
+  // Swap the foe active for a Greninja, either side of the one moment Protean fires. Both
+  // states are the SAME Pokémon on the same turn count — the only difference is whether the
+  // log carries the conversion, which is exactly the difference a player has to read off the
+  // type bar and which every number on the tooltip depends on.
+  if (over.foeGreninja) {
+    const converted = over.foeGreninja === 'converted';
+    const greninja = {
+      speciesForme: 'Greninja', level: 80, hp: 238, maxhp: 238, status: '', boosts: {},
+      terastallized: '', ident: 'p2: Greninja', side: sides[1], item: '',
+      // Protean reveals itself by firing — the `[from]` on its own typechange line is what
+      // the client remembers it from — so an unspent one is genuinely still unknown.
+      ...(converted ? {baseAbility: 'Protean', ability: 'Protean'} : {}),
+      moveTrack: converted ? [['Ice Beam', 0]] : [],
+      ...(converted ? {volatiles: {typechange: ['typechange', 'Ice']}} : {}),
+    };
+    (sides[1]!.active as (ClientPokemon | null)[])[0] = greninja as unknown as ClientPokemon;
+  }
   // Swap the foe active for a Ditto — plain, or Transformed into our Noivern. The client
   // records a transform as TWO volatiles: the target's own Pokemon object, and the same
   // `formechange` an ordinary forme change uses. It also copies the target's tracked moves
@@ -239,8 +279,14 @@ export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?
           }[n])},
         }}
       : {}),
-    ...(over.tentacruelSubstitute || over.noivernSubstitute || over.foeMovedFirst !== undefined
+    ...(over.tentacruelSubstitute || over.noivernSubstitute || over.foeMovedFirst !== undefined || over.foeGreninja
       ? {stepQueue: [
+          ...(over.foeGreninja ? ['|switch|p2a: Greninja|Greninja, M|238/238'] : []),
+          // The ATTRIBUTION is the fact, not the retype: `proteanAlreadyFired` reads this
+          // `[from]` to tell a spent ability from a Soak that merely moved the types.
+          ...(over.foeGreninja === 'converted'
+            ? ['|move|p2a: Greninja|Ice Beam|p1a: Noivern', '|-start|p2a: Greninja|typechange|Ice|[from] ability: Protean']
+            : []),
           // A Speed drop BEFORE the turn we read, so the two are consistent: the reader
           // refuses an observation with anything speed-relevant after it, and `finalSpeed`
           // reads the boosts standing now. -1 puts our Noivern at 166 — between Emboar's

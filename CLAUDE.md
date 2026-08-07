@@ -815,7 +815,8 @@ test you haven't seen fail isn't protecting anything yet.
 should arguably handle and doesn't — is ours to own, and each one is a row below: the
 multi-hit hit-count model, the item id→name quirk, the nHKO ladder, Pain Split, Rage Fist,
 variable-power multi-hit, damage-callback moves, Substitute (its move table has one as a 0-BP
-status move and stops there), and unknown species/items. A third kind hides between those two and
+status move and stops there), gen 9's once-per-switch-in Protean/Libero (it still applies the
+gen 6-8 rule, which grants STAB to every move the holder owns), and unknown species/items. A third kind hides between those two and
 is the easiest to ship by accident: the calc answering EXACTLY what we asked, where the asking
 itself was wrong. Requesting one hit of a multi-hit move is that — the calc then reads it as a
 single-hit move and applies the Tera 60 BP floor. Our *product* is not a calc gap: the
@@ -865,6 +866,10 @@ them until someone adds it.
 | A move's priority is read from the CLIENT dex — @smogon/calc's own data zeroes every negative bracket | ✅ | `battle/readState.ts` (`readMoveOrder`) | `readState.test.ts`, `speedreveal.test.ts` |
 | Every log-derived reveal reaches EVERY surface showing that foe's set — one narrowing, applied to the damage, the ⚡ verdict and the Items line alike | ✅ | `section.ts` (`foeReveals`, `narrowCandidate`) | `section.test.ts` |
 | The forme a Pokémon IS and the one it is WEARING differ — only the calc reads the second | ✅ | `battle/readState.ts` (`readLiveForme`), `core/resolve.ts` (`buildResolved`) | `readState.test.ts`, `resolve.test.ts` |
+| The types a Pokémon IS and the ones it was BUILT with differ too — a retype drives the calc, never set inference | ✅ | `battle/readState.ts` (`readLiveTypes`), `core/damage.ts` (`speciesOverrides`, `NEUTRAL_TYPE`) | `readState.test.ts`, `damage.test.ts`, `section.test.ts` |
+| A retype reaching the calc is PADDED to two slots — `overrides` merges element-wise, so a mono-type array cannot shorten a dual-type species | ✅ | `core/damage.ts` (`NEUTRAL_TYPE`, `retypedSlots`) | `damage.test.ts` |
+| Roost suspends the user's Flying type for the turn — applied where the forme's real types are known, never where the flag is read | ✅ | `battle/readState.ts` (`readRoosting`), `core/damage.ts` (`roosted`) | `readState.test.ts`, `damage.test.ts` |
+| Protean/Libero grant STAB only until they FIRE — gen 9 converts once per switch-in, where the calc still models gens 6-8 | ✅ | `core/damage.ts` (`calcAbility`), `battle/readState.ts` (`proteanAlreadyFired`) | `damage.test.ts`, `readState.test.ts`, `section.test.ts` |
 | A Transformed Pokémon is calculated as the one it COPIED, keeping only its own HP | ✅ | `core/transform.ts`, `section.ts` (`factsReader`) | `transform.test.ts`, `readState.test.ts`, `section.test.ts` |
 | An ability narrows a role only if a SET could have been built with it | ✅ | `core/narrow.ts` (`buildableAbilities`) | `resolve.test.ts` |
 | A disguised Zoroark surfaces as its own candidate, never a corrupted one | ✅ | `core/illusion.ts`, `section.ts` (`illusionVariants`) | `illusion.test.ts`, `variants.test.ts`, `render.test.ts` |
@@ -951,7 +956,16 @@ rather than in our code. Run the named check by hand after a Showdown client upd
   marker, and losing it would only take the deduction permanently (and silently) quiet, but
   the `|-status|` line's layout is read in the DANGEROUS direction — the rule turns on there
   being no status at that moment, so an ident or status id that moved would leave a visibly
-  burned Pokémon looking clean and rule out the very orb that had just fired. And
+  burned Pokémon looking clean and rule out the very orb that had just fired. And `turnstatuses`, which is where Roost's
+  one-turn grounding lives — a table the client WIPES at end of turn, so unlike every other
+  read here it is only ever visible mid-turn and its absence proves nothing; the
+  `|-singleturn|…|move: Roost` line is probed alongside it as the durable trace. And
+  `volatiles.typechange`, whose
+  `'/'`-joined payload is a Pokémon's real types — read in the DANGEROUS direction, since a
+  layout change would leave a converted Greninja calculated as Water/Dark and call a Psychic
+  move safe into something no longer immune to it — together with the `[from]` on its own
+  `|-start|` line, which is what separates a spent Protean from a Soak that merely moved the
+  types. And
   `volatiles.substitute` (presence only — the client never tracks the doll's HP, which is why
   we derive its size), `side.pokemon` (the roster, the only place a Shed Tail's maker can
   still be found once using it took them off the field), and the `|-start|…|Substitute` and

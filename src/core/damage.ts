@@ -136,16 +136,66 @@ type SpeciesOverrides = NonNullable<State.Pokemon['overrides']>;
  * The calc deep-merges `overrides` onto the dex record, so handing it base stats alone
  * leaves types and weight canonical.
  */
+/**
+ * The calc's own neutral type, and the only way to express a MONO-type retype through
+ * `overrides`.
+ *
+ * `overrides` is deep-merged onto the dex record ELEMENT-WISE, arrays included, so handing
+ * a two-type species a one-type array does not shorten it: `['Ice']` merged over
+ * `['Water', 'Dark']` is `['Ice', 'Dark']`, and the merge survives the clone `calculate()`
+ * makes of both mons. The result is a Pokémon that is somehow half of what it used to be —
+ * a Protean'd Greninja still immune to Psychic, and taking Close Combat at 4x rather than
+ * 2x, which is worse than the bug this whole read exists to fix.
+ *
+ * `'???'` is the calc's own typeless placeholder, and its column in TYPE_CHART is 1 for
+ * every real attacking type in every generation it ships (verified across gens 3-9, not
+ * assumed). So padding the second slot with it leaves exactly one type doing any work.
+ */
+const NEUTRAL_TYPE = '???';
+
+/** A live retype as the calc must receive it: exactly two slots, the spare one neutral. */
+function retypedSlots(types: readonly string[]): string[] {
+  return types.length >= 2 ? [...types] : [...types, NEUTRAL_TYPE];
+}
+
+/**
+ * Roost, applied to whatever types the Pokémon really has: its Flying is suspended for the
+ * rest of the turn, so a roosting Corviknight is pure Steel and a roosting Gliscor pure
+ * Ground — which stops being immune to the Earthquake the player is hovering.
+ *
+ * Applied HERE, and not where the flag is read, because it is a subtraction from a type list
+ * nobody upstream has: the forme actually standing there decides it, and only this function
+ * (which already resolves that forme against the dex) knows what that is. A Pokémon with no
+ * Flying to lose is left exactly alone, matching the client, and a PURE Flying one falls back
+ * to Normal — the sim's own rule for a Pokémon that would otherwise have no type at all.
+ */
+function roosted(types: readonly string[]): readonly string[] {
+  if (!types.includes('Flying')) return types;
+  const left = types.filter((t) => t !== 'Flying');
+  return left.length > 0 ? left : ['Normal'];
+}
+
 function speciesOverrides(gen: Gen, mon: ResolvedMon): {overrides: SpeciesOverrides} | Record<string, never> {
-  const dexLacksSpecies = gen.species.get(toID(mon.speciesForme)) === undefined;
-  const data = mon.speciesOverride ?? (dexLacksSpecies ? mon.speciesData : undefined);
-  if (!data) return {};
+  const dexRecord = gen.species.get(toID(mon.speciesForme));
+  const data = mon.speciesOverride ?? (dexRecord === undefined ? mon.speciesData : undefined);
+  // The types the Pokémon is standing there with, before Roost: a live retype if one is
+  // running, else whichever record the calc would have used anyway.
+  const standing = mon.types ?? data?.types ?? dexRecord?.types;
+  // Cast: battle-sourced type strings; the calc wants its TypeName tuple (same as teraType).
+  const effective = standing && (mon.types || (mon.roosting && roosted(standing) !== standing))
+    ? (retypedSlots(mon.roosting ? roosted(standing) : standing) as unknown as NonNullable<SpeciesOverrides['types']>)
+    : undefined;
+  // An effective type list wins over the record either way, and it is applied ALONE when
+  // there is no species data to sit beside — the calc deep-merges `overrides` onto its own
+  // dex entry, so `{types}` on its own leaves base stats and weight exactly as the record has
+  // them. That is the whole reason a retype needs no species fallback of its own.
+  if (!data) return effective ? {overrides: {types: effective}} : {};
   const {baseStats, types, weightkg} = data;
   return {
     overrides: {
       baseStats,
-      // Cast: battle-sourced type strings; the calc wants its TypeName tuple (same as teraType).
-      types: types as unknown as NonNullable<SpeciesOverrides['types']>,
+      // Cast, both arms: battle-sourced type strings; the calc wants its TypeName tuple.
+      types: effective ?? (types as unknown as NonNullable<SpeciesOverrides['types']>),
       ...(weightkg !== undefined ? {weightkg} : {}),
     },
   };
@@ -176,6 +226,32 @@ function knownItem(gen: Gen, item: string | undefined): string | undefined {
 function knownAbility(gen: Gen, ability: string | undefined): string | undefined {
   if (ability === undefined) return undefined;
   return gen.abilities.get(toID(ability))?.name;
+}
+
+const PROTEAN_ABILITIES = new Set(['protean', 'libero']);
+
+/**
+ * Protean/Libero, dropped once they have already fired — a calc gap, and one that hides
+ * because the calc is not wrong so much as a generation out of date.
+ *
+ * `getStabMod` grants their STAB to whatever move it is handed whenever the attacker has
+ * the ability and is not terastallized, which is exactly right for gens 6-8: there they
+ * convert on EVERY move, so the move being calculated always matches the user's type. Gen
+ * 9 fires them once per switch-in (`sim/data/abilities.ts` guards on
+ * `this.effectState.protean`), after which the types are frozen and an ordinary
+ * type-matching check is the whole rule. Leaving the ability on past that point claims
+ * STAB for every move a Greninja owns for the rest of its stint.
+ *
+ * Dropping the ability outright is safe precisely because the spent version does nothing:
+ * gen-9 Protean and Libero have no residual effect, no defensive side, and no interaction
+ * the calc reads them for beyond this one. The acquired types arrive separately, through
+ * `speciesOverrides`, so a move that really does match still gets its STAB by the ordinary
+ * route — which is why a Greninja that turned Ice keeps full STAB on Freeze-Dry and loses
+ * it on everything else.
+ */
+function calcAbility(gen: Gen, mon: ResolvedMon): string | undefined {
+  if (mon.proteanSpent && mon.ability !== undefined && PROTEAN_ABILITIES.has(toID(mon.ability))) return undefined;
+  return knownAbility(gen, mon.ability);
 }
 
 const STAT_IDS: readonly StatID[] = ['hp', 'atk', 'def', 'spa', 'spd', 'spe'];
@@ -308,7 +384,7 @@ function solvedSpread(gen: Gen, mon: ResolvedMon): ReturnType<typeof spreadForFi
  *  Exported for core/speed.ts, which reads the same Pokemon's effective Speed. */
 export function buildPokemon(gen: Gen, mon: ResolvedMon, curHP?: number): Pokemon {
   const item = knownItem(gen, mon.item);
-  const ability = knownAbility(gen, mon.ability);
+  const ability = calcAbility(gen, mon);
   // Exact server-reported finals win over the assumed spread — expressed as an
   // equivalent spread because that's the only form that survives calculate()'s clone.
   const solved = solvedSpread(gen, mon);

@@ -24,7 +24,7 @@
 // which is exactly the wait this file exists to delete.
 
 import {buildMoveSection, buildPokemonSection, buildSwitchSection} from '../src/section.js';
-import {loadBattle, scenarioData, scenarioDataItemAbilitySplit, scenarioDataTwinRoles, scenarioDataWithDitto, scenarioDataWithEmboar} from '../src/scenario.js';
+import {loadBattle, scenarioData, scenarioDataItemAbilitySplit, scenarioDataTwinRoles, scenarioDataWithDitto, scenarioDataWithEmboar, scenarioDataWithGreninja} from '../src/scenario.js';
 
 // Re-exported so the gallery can style its panels with the very stylesheet the extension
 // injects, rather than a copy of it that could drift.
@@ -191,6 +191,22 @@ export const PREVIEWS: readonly Preview[] = [
     {foeEmboar: true, noivernBoosts: {spe: -1}, foeMovedFirst: false},
     'Emboar',
     scenarioDataWithEmboar,
+  ),
+  pokemonHover(
+    'Foe active',
+    'Protean, still unspent',
+    'Greninja has not moved yet, so whatever it throws will convert it and arrive with STAB — every line here is boosted, and correctly so. Read it against the preview below: same Pokémon, same turn, one log line apart.',
+    {foeGreninja: 'unspent'},
+    'Greninja',
+    scenarioDataWithGreninja,
+  ),
+  pokemonHover(
+    'Foe active',
+    'Protean, already converted',
+    'It used Ice Beam, so it IS Ice now and gen 9 will not let the ability fire again this stint. Ice Beam alone reads the same; everything else has lost its STAB, and Hydro Pump has gone from a stated KO to a hit our Noivern lives through. Nothing but the type bar says so on screen.',
+    {foeGreninja: 'converted'},
+    'Greninja',
+    scenarioDataWithGreninja,
   ),
   pokemonHover(
     'Foe active',

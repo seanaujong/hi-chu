@@ -20,6 +20,7 @@ export function liveFacts(over: Partial<LiveFacts> = {}): LiveFacts {
     usedDifferentMovesSinceSwitchIn: false,
     switchedInWithoutAnnouncingBalloon: false,
     endedTurnUnstatused: false,
+    proteanAlreadyFired: false,
     timesAttacked: 0,
     ...over,
   };

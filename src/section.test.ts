@@ -13,7 +13,7 @@
 import {describe, it, expect} from 'vitest';
 import {buildMoveSection, buildPokemonSection, buildSwitchSection} from './section.js';
 import type {ClientBattle, ClientPokemon, ClientSide} from './battle/readState.js';
-import {loadBattle, scenarioData as data, scenarioDataWithDitto, scenarioDataWithEmboar as dataWithEmboar, scenarioDataWithGreninja as dataWithGreninja, scenarioDataTwinRoles} from './scenario.js';
+import {loadBattle, scenarioData as data, scenarioDataTwinRoles, scenarioDataWithCharizard as dataWithCharizard, scenarioDataWithDitto, scenarioDataWithEmboar as dataWithEmboar, scenarioDataWithGreninja as dataWithGreninja} from './scenario.js';
 import type {RandbatsData} from './core/types.js';
 import {HOVER_TARGETS, SECTION_NAMES, shows, type HoverTarget, type SectionName} from './core/surfaces.js';
 
@@ -732,6 +732,34 @@ describe('a Protean foe, either side of the moment it converts', () => {
     // Pump leaves our Noivern alive with room to spare.
     expect(unspent).toContain('108–128.1%');
     expect(converted).not.toContain('108–128.1%');
+  });
+});
+
+describe('a foe in Blaze range, through the whole live pipeline', () => {
+  // The seam test for the attacker's own current HP. `damage.test.ts` proves the calc
+  // applies Blaze once it is told the attacker is hurt; this proves the HP bar actually
+  // gets there — client object → readState → resolve → calcDamage — on the path where the
+  // FOE is the attacker. A number that is right in the core and never reaches a hover is
+  // the same bug from the player's side.
+  const zardFire = (hpPercent: number): string => {
+    const {battle: b, active: a} = loadBattle({foeCharizardHpPercent: hpPercent});
+    return buildPokemonSection(b, a('Charizard'), dataWithCharizard);
+  };
+
+  it('boosts every Fire line once the HP bar drops under a third, and nothing else', () => {
+    const healthy = zardFire(0.4);
+    const pinched = zardFire(0.2);
+    // Blaze is Charizard's only randbats ability, so no reveal narrows anything here —
+    // the HP bar alone is the difference between these two hovers.
+    expect(healthy).toContain('Flare Blitz (21.9–25.9%)');
+    expect(pinched).toContain('Flare Blitz (32.5–38.3%)');
+    expect(healthy).toContain('Flamethrower (19.7–23.7%)');
+    expect(pinched).toContain('Flamethrower (29.6–35%)');
+    // The type gate, at the surface: Charizard's non-Fire moves read identically in both.
+    for (const untouched of ['Earthquake (48.9–57.7%)', 'Outrage (29.2–34.7%)', 'Focus Blast (35.4–42%)']) {
+      expect(healthy).toContain(untouched);
+      expect(pinched).toContain(untouched);
+    }
   });
 });
 

@@ -868,6 +868,7 @@ them until someone adds it.
 | The forme a Pokémon IS and the one it is WEARING differ — only the calc reads the second | ✅ | `battle/readState.ts` (`readLiveForme`), `core/resolve.ts` (`buildResolved`) | `readState.test.ts`, `resolve.test.ts` |
 | The types a Pokémon IS and the ones it was BUILT with differ too — a retype drives the calc, never set inference | ✅ | `battle/readState.ts` (`readLiveTypes`), `core/damage.ts` (`speciesOverrides`, `NEUTRAL_TYPE`) | `readState.test.ts`, `damage.test.ts`, `section.test.ts` |
 | A retype reaching the calc is PADDED to two slots — `overrides` merges element-wise, so a mono-type array cannot shorten a dual-type species | ✅ | `core/damage.ts` (`NEUTRAL_TYPE`, `retypedSlots`) | `damage.test.ts` |
+| Roost suspends the user's Flying type for the turn — applied where the forme's real types are known, never where the flag is read | ✅ | `battle/readState.ts` (`readRoosting`), `core/damage.ts` (`roosted`) | `readState.test.ts`, `damage.test.ts` |
 | Protean/Libero grant STAB only until they FIRE — gen 9 converts once per switch-in, where the calc still models gens 6-8 | ✅ | `core/damage.ts` (`calcAbility`), `battle/readState.ts` (`proteanAlreadyFired`) | `damage.test.ts`, `readState.test.ts`, `section.test.ts` |
 | A Transformed Pokémon is calculated as the one it COPIED, keeping only its own HP | ✅ | `core/transform.ts`, `section.ts` (`factsReader`) | `transform.test.ts`, `readState.test.ts`, `section.test.ts` |
 | An ability narrows a role only if a SET could have been built with it | ✅ | `core/narrow.ts` (`buildableAbilities`) | `resolve.test.ts` |
@@ -955,7 +956,11 @@ rather than in our code. Run the named check by hand after a Showdown client upd
   marker, and losing it would only take the deduction permanently (and silently) quiet, but
   the `|-status|` line's layout is read in the DANGEROUS direction — the rule turns on there
   being no status at that moment, so an ident or status id that moved would leave a visibly
-  burned Pokémon looking clean and rule out the very orb that had just fired. And `volatiles.typechange`, whose
+  burned Pokémon looking clean and rule out the very orb that had just fired. And `turnstatuses`, which is where Roost's
+  one-turn grounding lives — a table the client WIPES at end of turn, so unlike every other
+  read here it is only ever visible mid-turn and its absence proves nothing; the
+  `|-singleturn|…|move: Roost` line is probed alongside it as the durable trace. And
+  `volatiles.typechange`, whose
   `'/'`-joined payload is a Pokémon's real types — read in the DANGEROUS direction, since a
   layout change would leave a converted Greninja calculated as Water/Dark and call a Psychic
   move safe into something no longer immune to it — together with the `[from]` on its own

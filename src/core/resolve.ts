@@ -94,6 +94,7 @@ export function buildResolved(
     // types really on the field, and the set is still the one the species was built from.
     ...(facts.liveTypes ? {types: facts.liveTypes} : {}),
     ...(facts.proteanAlreadyFired ? {proteanSpent: true} : {}),
+    ...(facts.roosting ? {roosting: true} : {}),
     level: facts.level || entry.level,
     nature: role?.nature ?? RANDBATS_NATURE,
     evs: fillStats(RANDBATS_BASE_EVS, role?.evs ?? entry.evs),
@@ -192,7 +193,7 @@ function variantSignature(m: ResolvedMon): string {
     m.speciesForme, m.level, m.nature, m.evs, m.ivs,
     m.ability ?? null, m.item ?? null, m.status ?? null, m.boosts, m.hpPercent,
     m.teraType ?? null, m.terastallized, m.knownStats ?? null, m.speciesOverride ?? null,
-    m.types?.join('/') ?? null, m.proteanSpent ?? false,
+    m.types?.join('/') ?? null, m.proteanSpent ?? false, m.roosting ?? false,
   ]);
 }
 

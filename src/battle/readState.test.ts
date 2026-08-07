@@ -3,6 +3,7 @@ import {
   toLiveFacts,
   readLiveForme,
   readLiveTypes,
+  readRoosting,
   proteanAlreadyFired,
   readTransformTarget,
   readSpeciesData,
@@ -155,6 +156,18 @@ describe('toLiveFacts', () => {
     expect(readLiveTypes(clientMon({volatiles: {typeadd: ['typeadd', 'Ghost']}}))).toBeUndefined();
     const both = clientMon({volatiles: {typechange: ['typechange', 'Water'], typeadd: ['typeadd', 'Ghost']}});
     expect(readLiveTypes(both)).toEqual(['Water', 'Ghost']);
+  });
+
+  it('reads Roost from turnstatuses, which the client wipes at end of turn', () => {
+    // A TURNSTATUS rather than a volatile, and that is the mechanic rather than a detail:
+    // the grounding expires with the turn and leaves no `-end` line to read.
+    expect(readRoosting(clientMon({turnstatuses: {roost: ['roost']}}))).toBe(true);
+    expect(readRoosting(clientMon())).toBe(false);
+    expect(readRoosting(clientMon({turnstatuses: {}}))).toBe(false);
+    // A different single-turn effect is not Roost.
+    expect(readRoosting(clientMon({turnstatuses: {protect: ['protect']}}))).toBe(false);
+    expect(toLiveFacts(clientMon({turnstatuses: {roost: ['roost']}})).roosting).toBe(true);
+    expect(toLiveFacts(clientMon()).roosting).toBeUndefined();
   });
 
   it('reads the Transform target straight out of the volatile', () => {

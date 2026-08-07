@@ -47,6 +47,10 @@ export interface ClientPokemon {
    *  `formechange: ['formechange', 'Meloetta-Pirouette']` and
    *  `transform: ['transform', targetPokemon, shiny, gender, targetLevel]`. */
   readonly volatiles?: Readonly<Record<string, readonly unknown[] | undefined>>;
+  /** Effects lasting only the CURRENT turn, keyed by id. Separate from `volatiles` because
+   *  the client clears the whole table at end of turn — which is exactly what makes Roost's
+   *  grounding last one turn and no longer (see `readRoosting`). */
+  readonly turnstatuses?: Readonly<Record<string, unknown>>;
 }
 
 export interface ClientSide {
@@ -280,6 +284,28 @@ export function readLiveTypes(p: ClientPokemon): readonly string[] | undefined {
 }
 
 /**
+ * Is this Pokémon ROOSTING — grounded for the rest of this turn, and so not Flying?
+ *
+ * Roost heals, and pays for it by suspending the user's Flying type until the end of the
+ * turn: a Corviknight that roosts is pure Steel while it does, and a Gliscor pure Ground.
+ * That is a defensive change worth a lot — the Corviknight stops resisting Ground entirely
+ * and the Gliscor stops being immune to it — and it lands on precisely the turn a player is
+ * hovering to decide what to throw at a Pokémon that just healed.
+ *
+ * A TURNSTATUS, not a volatile, and the distinction is the mechanic: the client wipes the
+ * whole `turnstatuses` table at the end of every turn, which is what makes the grounding
+ * expire on its own with no `-end` line to read. `|-singleturn|<mon>|move: Roost` sets it,
+ * and the client only sets it for a Pokémon that HAS Flying to lose.
+ *
+ * Reported as a bare fact rather than as types, because the types it applies to belong to
+ * the resolved forme — see `core/damage.ts`'s `speciesOverrides`, which is the one place
+ * that knows what the Pokémon standing there actually is.
+ */
+export function readRoosting(p: ClientPokemon): boolean {
+  return p.turnstatuses?.['roost'] !== undefined;
+}
+
+/**
  * The Pokémon this one has TRANSFORMED into, or undefined. The client keeps the target's
  * live `Pokemon` object right in the volatile — `['transform', target, shiny, gender,
  * level]` — so the copy can be read with exactly the machinery every other Pokémon on the
@@ -381,6 +407,7 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, spe
     .filter((name) => name.length > 0);
   const liveForme = readLiveForme(p);
   const liveTypes = readLiveTypes(p);
+  const roosting = readRoosting(p);
 
   // `?? {}` because the client does not always have it — see the `boosts` field's own note.
   // An absent boost table means "no boosts", which is the honest reading and the common case.
@@ -404,6 +431,7 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, spe
     speciesForme: p.speciesForme,
     ...(liveForme ? {liveForme} : {}),
     ...(liveTypes ? {liveTypes} : {}),
+    ...(roosting ? {roosting: true} : {}),
     level: p.level,
     hpPercent: p.maxhp > 0 ? p.hp / p.maxhp : 1,
     boosts,

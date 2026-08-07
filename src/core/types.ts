@@ -121,6 +121,10 @@ export interface LiveFacts {
    * `speciesForme` and never this.
    */
   readonly liveTypes?: readonly string[];
+  /** True while this Pokémon is grounded by Roost — its Flying type suspended until the end
+   *  of the turn. Carried as a flag rather than folded into `liveTypes`, because which types
+   *  it removes depends on the forme actually standing there. */
+  readonly roosting?: boolean;
   /** Client-dex base data for `speciesForme` — see `SpeciesData`. */
   readonly speciesData?: SpeciesData;
   readonly level: number;
@@ -435,6 +439,9 @@ export interface ResolvedMon {
    * otherwise hand STAB to every move — see `damage.ts`'s `knownAbility`.
    */
   readonly proteanSpent?: boolean;
+  /** True while Roost has this Pokémon's Flying type suspended — see `damage.ts`'s
+   *  `speciesOverrides`, which applies it to whichever types the forme really has. */
+  readonly roosting?: boolean;
   readonly level: number;
   readonly nature: string;
   readonly evs: FullStats;

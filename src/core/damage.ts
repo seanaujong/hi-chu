@@ -158,24 +158,44 @@ function retypedSlots(types: readonly string[]): string[] {
   return types.length >= 2 ? [...types] : [...types, NEUTRAL_TYPE];
 }
 
+/**
+ * Roost, applied to whatever types the Pokémon really has: its Flying is suspended for the
+ * rest of the turn, so a roosting Corviknight is pure Steel and a roosting Gliscor pure
+ * Ground — which stops being immune to the Earthquake the player is hovering.
+ *
+ * Applied HERE, and not where the flag is read, because it is a subtraction from a type list
+ * nobody upstream has: the forme actually standing there decides it, and only this function
+ * (which already resolves that forme against the dex) knows what that is. A Pokémon with no
+ * Flying to lose is left exactly alone, matching the client, and a PURE Flying one falls back
+ * to Normal — the sim's own rule for a Pokémon that would otherwise have no type at all.
+ */
+function roosted(types: readonly string[]): readonly string[] {
+  if (!types.includes('Flying')) return types;
+  const left = types.filter((t) => t !== 'Flying');
+  return left.length > 0 ? left : ['Normal'];
+}
+
 function speciesOverrides(gen: Gen, mon: ResolvedMon): {overrides: SpeciesOverrides} | Record<string, never> {
-  const dexLacksSpecies = gen.species.get(toID(mon.speciesForme)) === undefined;
-  const data = mon.speciesOverride ?? (dexLacksSpecies ? mon.speciesData : undefined);
+  const dexRecord = gen.species.get(toID(mon.speciesForme));
+  const data = mon.speciesOverride ?? (dexRecord === undefined ? mon.speciesData : undefined);
+  // The types the Pokémon is standing there with, before Roost: a live retype if one is
+  // running, else whichever record the calc would have used anyway.
+  const standing = mon.types ?? data?.types ?? dexRecord?.types;
   // Cast: battle-sourced type strings; the calc wants its TypeName tuple (same as teraType).
-  const retyped = mon.types
-    ? (retypedSlots(mon.types) as unknown as NonNullable<SpeciesOverrides['types']>)
+  const effective = standing && (mon.types || (mon.roosting && roosted(standing) !== standing))
+    ? (retypedSlots(mon.roosting ? roosted(standing) : standing) as unknown as NonNullable<SpeciesOverrides['types']>)
     : undefined;
-  // A live retype wins over the record either way, and it is applied ALONE when there is no
-  // species data to sit beside — the calc deep-merges `overrides` onto its own dex entry, so
-  // `{types}` on its own leaves base stats and weight exactly as the record has them. That is
-  // the whole reason a retype needs no species fallback of its own.
-  if (!data) return retyped ? {overrides: {types: retyped}} : {};
+  // An effective type list wins over the record either way, and it is applied ALONE when
+  // there is no species data to sit beside — the calc deep-merges `overrides` onto its own
+  // dex entry, so `{types}` on its own leaves base stats and weight exactly as the record has
+  // them. That is the whole reason a retype needs no species fallback of its own.
+  if (!data) return effective ? {overrides: {types: effective}} : {};
   const {baseStats, types, weightkg} = data;
   return {
     overrides: {
       baseStats,
       // Cast, both arms: battle-sourced type strings; the calc wants its TypeName tuple.
-      types: retyped ?? (types as unknown as NonNullable<SpeciesOverrides['types']>),
+      types: effective ?? (types as unknown as NonNullable<SpeciesOverrides['types']>),
       ...(weightkg !== undefined ? {weightkg} : {}),
     },
   };

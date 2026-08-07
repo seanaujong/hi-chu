@@ -78,7 +78,7 @@ function probeLiveClient() {
   // Which of the rarer client shapes this replay actually exercised — a random replay
   // usually has no transformed or forme-changed Pokémon, and a probe that never fired is
   // not a probe that passed. Reported, not failed on.
-  const seen = {formeChange: false, transform: false, calledMove: false, balloonAnnounce: false, statusLine: false, substitute: false, shedTail: false, typeChange: false, proteanLine: false};
+  const seen = {formeChange: false, transform: false, calledMove: false, balloonAnnounce: false, statusLine: false, substitute: false, shedTail: false, typeChange: false, proteanLine: false, roost: false};
 
   const format = R.detectFormat(b);
   if (!format || format.kind !== 'randbats' || !/^gen\d+random/.test(format.formatId)) {
@@ -195,6 +195,17 @@ function probeLiveClient() {
       if (parts.some((p) => p === '[from] ability: Protean' || p === '[from] ability: Libero')) seen.proteanLine = true;
     }
   }
+  // `|-singleturn|<ident>|move: Roost` is what sets the turnstatus the grounding is read
+  // from. Probed for layout only: by the time a replay is parsed to its end the table has
+  // been wiped, so the line is the only durable trace that the mechanic occurred at all.
+  for (const line of (b.stepQueue || []).filter((l) => typeof l === 'string' && l.startsWith('|-singleturn|'))) {
+    const parts = line.split('|');
+    if (typeof parts[2] !== 'string' || !parts[2].includes(':') || !parts[3]) {
+      problems.push(`|-singleturn| line not in "|-singleturn|<ident>|<effect>" shape: ${JSON.stringify(line)}`);
+      break;
+    }
+    if (parts[3] === 'move: Roost') seen.roost = true;
+  }
   // `|-activate|<ident>|move: Substitute|[damage]` is the other half: the `[damage]` tag is
   // the ONLY thing separating a hit the doll absorbed from a status move it merely blocked.
   for (const line of (b.stepQueue || []).filter((l) => typeof l === 'string' && l.startsWith('|-activate|'))) {
@@ -283,6 +294,18 @@ function probeLiveClient() {
         }
       }
       seen.typeChange = true;
+    }
+    // Roost lives in `turnstatuses`, a table the client wipes at end of turn — so unlike every
+    // other read here it is only ever visible mid-turn, and its absence proves nothing. The
+    // shape contract is that the table exists and is an object; when a replay actually catches
+    // one standing, check the reader agrees.
+    if (mon.turnstatuses !== undefined && (typeof mon.turnstatuses !== 'object' || mon.turnstatuses === null)) {
+      problems.push(`${f.speciesForme || '?'}.turnstatuses = ${JSON.stringify(mon.turnstatuses)} (expected an object)`);
+    } else if (mon.turnstatuses?.roost !== undefined) {
+      if (!R.readRoosting(mon)) {
+        problems.push(`readRoosting(${f.speciesForme || '?'}) missed a roost the turnstatus plainly shows`);
+      }
+      seen.roost = true;
     }
     // A Substitute is PRESENCE only — the client adds a bare `['substitute']` tuple and never
     // tracks the doll's HP. That is why the size is derived rather than read, and why this
@@ -388,6 +411,9 @@ async function main() {
     // Greninja or a Cinderace in it, which converts on its very first move.
     console.log(`  typechange: volatile ${seen.typeChange ? 'SEEN — checked' : 'absent (not exercised)'}, ` +
       `Protean/Libero attribution ${seen.proteanLine ? 'SEEN — checked' : 'absent (not exercised)'}`);
+    // Roost, whose turnstatus is wiped at end of turn — so a replay parsed to its end shows
+    // the `|-singleturn|` line and rarely the table entry. Either half counts as exercised.
+    console.log(`  Roost: ${seen.roost ? 'SEEN — checked' : 'absent (not exercised)'}`);
     // And for the Substitute, whose hit count depends on both the volatile and the log lines.
     // Shed Tail is the rarer half by far — to exercise it, pick a replay with a Cyclizar or
     // an Orthworm in it.

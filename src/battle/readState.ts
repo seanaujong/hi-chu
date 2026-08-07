@@ -177,6 +177,7 @@ export interface BehaviorSignals {
   readonly usedDifferentMovesSinceSwitchIn?: boolean;
   readonly switchedInWithoutAnnouncingBalloon?: boolean;
   readonly endedTurnUnstatused?: boolean;
+  readonly proteanAlreadyFired?: boolean;
   readonly timesAttacked?: number;
   readonly substitute?: SubstituteReading;
 }
@@ -241,6 +242,41 @@ export function readLiveForme(p: ClientPokemon): string | undefined {
   const forme = p.volatiles?.formechange?.[1];
   if (typeof forme !== 'string' || forme.length === 0) return undefined;
   return forme === p.speciesForme ? undefined : forme;
+}
+
+/**
+ * The types this Pokémon is standing there as, when a retype has moved them off the
+ * species' own — the client's own `getTypes()` law, `volatiles.typechange` first.
+ *
+ * The retype is one mechanic with many triggers, which is why this reads the VOLATILE and
+ * not any of them: Protean/Libero convert the user to the move it is about to throw, Soak
+ * and Reflect Type are moves that do it to somebody else, Burn Up and Double Shock burn a
+ * type away, and Camouflage/Conversion pick one off the field or the moveset. The client
+ * flattens every one into the same `['typechange', 'Ice']` — or `'Fire/Flying'`, joined —
+ * so one read covers all of them and a new trigger costs nothing.
+ *
+ * `typeadd` (Forest's Curse, Trick-or-Treat) rides along only when a typechange is already
+ * standing, and that asymmetry is deliberate rather than an omission. It is an ADDITIVE
+ * volatile: on its own it means "the species' own types, plus Ghost", so reading it here
+ * would need the species record this function does not have and must not reach for — a
+ * bare `['typeadd', 'Ghost']` read as a replacement would turn a Corviknight into a pure
+ * Ghost and quadruple every Ground move into it. Alone it is therefore skipped, which
+ * costs the added type's extra weakness and keeps every other type honest. Both moves are
+ * absent from randbats entirely, so the case this declines is one no supported format rolls.
+ *
+ * Undefined once TERASTALLIZED, matching the client exactly: `getTypes` returns the Tera
+ * type outright and the `-start` handler refuses to record a typechange on a
+ * terastallized Pokémon at all. The calc reaches the same answer by its own route
+ * (`teraType` already rides on the ResolvedMon), so handing it a stale pre-Tera retype
+ * here would be two mechanisms arguing over one Pokémon's types.
+ */
+export function readLiveTypes(p: ClientPokemon): readonly string[] | undefined {
+  if (p.terastallized) return undefined;
+  const changed = p.volatiles?.['typechange']?.[1];
+  if (typeof changed !== 'string' || changed.length === 0) return undefined;
+  const added = p.volatiles?.['typeadd']?.[1];
+  const types = [...changed.split('/'), ...(typeof added === 'string' ? [added] : [])].filter((t) => t.length > 0);
+  return types.length > 0 ? types : undefined;
 }
 
 /**
@@ -344,6 +380,7 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, spe
     .map(([name]) => name)
     .filter((name) => name.length > 0);
   const liveForme = readLiveForme(p);
+  const liveTypes = readLiveTypes(p);
 
   // `?? {}` because the client does not always have it — see the `boosts` field's own note.
   // An absent boost table means "no boosts", which is the honest reading and the common case.
@@ -366,6 +403,7 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, spe
   const facts: LiveFacts = {
     speciesForme: p.speciesForme,
     ...(liveForme ? {liveForme} : {}),
+    ...(liveTypes ? {liveTypes} : {}),
     level: p.level,
     hpPercent: p.maxhp > 0 ? p.hp / p.maxhp : 1,
     boosts,
@@ -377,6 +415,7 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, spe
     usedDifferentMovesSinceSwitchIn: signals.usedDifferentMovesSinceSwitchIn ?? false,
     switchedInWithoutAnnouncingBalloon: signals.switchedInWithoutAnnouncingBalloon ?? false,
     endedTurnUnstatused: signals.endedTurnUnstatused ?? false,
+    proteanAlreadyFired: signals.proteanAlreadyFired ?? false,
     timesAttacked: signals.timesAttacked ?? 0,
     ...(asStatus(p.status) ? {status: asStatus(p.status)!} : {}),
     ...(p.terastallized ? {teraType: p.terastallized} : {}),
@@ -644,6 +683,55 @@ export function switchedInWithoutAnnouncingBalloon(battle: ClientBattle, mon: {r
     }
   }
   return false;
+}
+
+/**
+ * Has Protean or Libero ALREADY converted this Pokémon during its current stint?
+ *
+ * Gen 9 fires them once per switch-in and not again — `sim/data/abilities.ts` guards on
+ * `if (this.effectState.protean) return;` and `effectState` dies with the stint — where
+ * gens 6-8 fired them on every move. @smogon/calc still models the older rule, granting
+ * STAB to whatever move it is handed whenever the attacker has the ability, so this is
+ * the fact that tells a correct assumption from a stale one: BEFORE it fires, the move
+ * being hovered really will convert the user and really does get STAB; after, the types
+ * are frozen and only a move matching them is boosted.
+ *
+ * Read from the log rather than from the presence of `typechange`, and the difference is
+ * a real case rather than a scruple: Soak or Reflect Type can set that volatile on a
+ * Protean holder whose own ability has NOT fired yet, and reading the volatile alone
+ * would call the ability spent and quietly drop a STAB the next move genuinely gets. The
+ * sim names the source on the line it emits — `|-start|<mon>|typechange|Ice|[from]
+ * ability: Protean` — so the attribution is there to be read.
+ *
+ * Scoped to the current stint, like the Choice rule-out and for the same reason: the flag
+ * resets on switch-out, so a Greninja that converted, pivoted and came back is unspent
+ * again, and a scan over the whole log would say otherwise for the rest of the battle.
+ */
+export function proteanAlreadyFired(battle: ClientBattle, mon: {readonly ident?: string}): boolean {
+  const me = identKey(mon.ident);
+  if (!me) return false;
+  let fired = false;
+  let mySlot: string | undefined;
+  for (const line of battle.stepQueue ?? []) {
+    const parts = line.split('|');
+    const tag = parts[1] ?? '';
+    if (tag === 'switch' || tag === 'drag') {
+      // Both directions end the stint, and the way OUT is the one with no line of its own:
+      // the log never says a Pokémon left, only that somebody else arrived in its slot. Miss
+      // that and the flag survives the switch it dies with, muting a genuine STAB for the
+      // rest of the battle.
+      if (identKey(parts[2]) === me) {
+        fired = false;
+        mySlot = slotKey(parts[2]);
+      } else if (mySlot !== undefined && slotKey(parts[2]) === mySlot) {
+        fired = false;
+      }
+    } else if (tag === '-start' && identKey(parts[2]) === me && parts[3] === 'typechange') {
+      const from = toId(parts.find((part) => part.startsWith('[from]')) ?? '');
+      if (from === 'fromabilityprotean' || from === 'fromabilitylibero') fired = true;
+    }
+  }
+  return fired;
 }
 
 /** A `-fieldstart`/`-fieldend` line naming Misty Terrain, which blocks status outright. */
@@ -1046,6 +1134,7 @@ export function readBehaviors(battle: ClientBattle, mon: ClientPokemon): Behavio
     usedDifferentMovesSinceSwitchIn: usedDifferentMovesSinceSwitchIn(battle, mon),
     switchedInWithoutAnnouncingBalloon: switchedInWithoutAnnouncingBalloon(battle, mon),
     endedTurnUnstatused: endedTurnUnstatused(battle, mon),
+    proteanAlreadyFired: proteanAlreadyFired(battle, mon),
     timesAttacked: timesAttacked(battle, mon),
     ...(substitute ? {substitute} : {}),
   };
@@ -1224,6 +1313,9 @@ export function serverPokemonFacts(p: ClientServerPokemon, battle?: ClientBattle
     // about it could ever speak — the same reason the Boots signals are hard-coded here.
     switchedInWithoutAnnouncingBalloon: false,
     endedTurnUnstatused: false,
+    // A switch CANDIDATE is off the field, and Protean's once-per-stint flag dies there —
+    // so whatever it converted into last time it was out, it comes back in unspent.
+    proteanAlreadyFired: false,
     timesAttacked: battle ? timesAttacked(battle, {ident: p.ident}) : 0,
     ...(status ? {status} : {}),
     ...(p.terastallized ? {teraType: p.terastallized} : {}),

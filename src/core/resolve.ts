@@ -90,6 +90,10 @@ export function buildResolved(
     // reading `facts.speciesForme` and only this one, calc-facing, prefers the live forme.
     speciesForme: facts.liveForme ?? facts.speciesForme,
     ...(facts.speciesData ? {speciesData: facts.speciesData} : {}),
+    // A retype is the same story as the live forme one line up: the calc must see the
+    // types really on the field, and the set is still the one the species was built from.
+    ...(facts.liveTypes ? {types: facts.liveTypes} : {}),
+    ...(facts.proteanAlreadyFired ? {proteanSpent: true} : {}),
     level: facts.level || entry.level,
     nature: role?.nature ?? RANDBATS_NATURE,
     evs: fillStats(RANDBATS_BASE_EVS, role?.evs ?? entry.evs),
@@ -188,6 +192,7 @@ function variantSignature(m: ResolvedMon): string {
     m.speciesForme, m.level, m.nature, m.evs, m.ivs,
     m.ability ?? null, m.item ?? null, m.status ?? null, m.boosts, m.hpPercent,
     m.teraType ?? null, m.terastallized, m.knownStats ?? null, m.speciesOverride ?? null,
+    m.types?.join('/') ?? null, m.proteanSpent ?? false,
   ]);
 }
 

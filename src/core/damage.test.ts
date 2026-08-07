@@ -523,6 +523,46 @@ describe('Guts negates burn (the bug the baseline gets wrong)', () => {
   });
 });
 
+describe('a live retype (Protean, Soak, Reflect Type) — the types on the field, not the record', () => {
+  const blissey = mon({speciesForme: 'Blissey'});
+  // Greninja is Water/Dark. Protean converts it to whatever it throws; after Ice Beam it is
+  // pure Ice, and gen 9 does not let the ability fire again that stint.
+  const unspent = mon({speciesForme: 'Greninja', ability: 'Protean'});
+  const iced = mon({speciesForme: 'Greninja', ability: 'Protean', types: ['Ice'], proteanSpent: true});
+
+  it('while UNSPENT, every move gets STAB — the one about to fire is what converts the user', () => {
+    // The calc's own gen-6-8 model, which is also gen 9's correct answer for the first move
+    // of a stint. Nothing here should change: the fix must not cost the case already right.
+    expect(calcDamage(unspent, blissey, 'Surf').total.max).toBe(93);
+    expect(calcDamage(unspent, blissey, 'Freeze-Dry').total.max).toBe(73); // off-type, still boosted
+  });
+
+  it('once SPENT, only a move matching the ACQUIRED type keeps STAB', () => {
+    expect(calcDamage(iced, blissey, 'Freeze-Dry').total.max).toBe(73); // Ice matches — unchanged
+    expect(calcDamage(iced, blissey, 'Surf').total.max).toBe(62); // Water is gone
+    expect(calcDamage(iced, blissey, 'Dark Pulse').total.max).toBe(56); // so is Dark
+  });
+
+  it('replaces the type chart coming IN too, not only the STAB going out', () => {
+    // Dark walls Psychic outright and pure Ice does not, so this one reads 0 vs a real number
+    // rather than a ratio — the clearest possible statement that the defensive half applies.
+    const alakazam = mon({speciesForme: 'Alakazam'});
+    expect(calcDamage(alakazam, unspent, 'Psychic').total.max).toBe(0);
+    expect(calcDamage(alakazam, iced, 'Psychic').total.max).toBe(189);
+  });
+
+  it('leaves exactly ONE type doing the work — `overrides` merges element-wise', () => {
+    // The trap `NEUTRAL_TYPE` exists for: a bare ['Ice'] merged onto Greninja's own
+    // ['Water', 'Dark'] is ['Ice', 'Dark'], which is not a Pokémon that has ever existed.
+    // Close Combat separates them — 2x into pure Ice, 4x into Ice/Dark — so this fails
+    // loudly if the padding is ever dropped, where a same-effectiveness pair would not.
+    const machamp = mon({speciesForme: 'Machamp'});
+    expect(calcDamage(machamp, iced, 'Close Combat').total.max).toBe(506);
+    const bothTypes = mon({...iced, types: ['Ice', 'Dark']});
+    expect(calcDamage(machamp, bothTypes, 'Close Combat').total.max).toBe(1012);
+  });
+});
+
 describe('Rage Fist scales its power with the ATTACKER’s own hits taken (a calc gap, like multi-hit)', () => {
   // @smogon/calc's own move data lists Rage Fist as a flat bp: 50 — it has no notion of
   // `timesAttacked` at all. Pinned against a direct @smogon/calc run with the same

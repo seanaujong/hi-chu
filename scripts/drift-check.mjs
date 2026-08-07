@@ -78,7 +78,7 @@ function probeLiveClient() {
   // Which of the rarer client shapes this replay actually exercised — a random replay
   // usually has no transformed or forme-changed Pokémon, and a probe that never fired is
   // not a probe that passed. Reported, not failed on.
-  const seen = {formeChange: false, transform: false, calledMove: false, balloonAnnounce: false, statusLine: false, substitute: false, shedTail: false};
+  const seen = {formeChange: false, transform: false, calledMove: false, balloonAnnounce: false, statusLine: false, substitute: false, shedTail: false, typeChange: false, proteanLine: false};
 
   const format = R.detectFormat(b);
   if (!format || format.kind !== 'randbats' || !/^gen\d+random/.test(format.formatId)) {
@@ -183,6 +183,17 @@ function probeLiveClient() {
       seen.substitute = true;
       if (parts.some((p) => p === '[from] move: Shed Tail')) seen.shedTail = true;
     }
+    // A retype's own line. Its payload is the Pokémon's real types, '/'-joined, and its
+    // `[from]` is what tells a SPENT Protean from a Soak that merely moved the types — so
+    // both halves are read, and both are read in the dangerous direction: a layout change
+    // would leave a converted Greninja calculated as the species it stopped being.
+    if (parts[3] === 'typechange') {
+      seen.typeChange = true;
+      if (typeof parts[4] !== 'string' || !parts[4] || !/^[A-Za-z?]+(\/[A-Za-z?]+)*$/.test(parts[4])) {
+        problems.push(`|-start| typechange payload is not a '/'-joined type list: ${JSON.stringify(line)}`);
+      }
+      if (parts.some((p) => p === '[from] ability: Protean' || p === '[from] ability: Libero')) seen.proteanLine = true;
+    }
   }
   // `|-activate|<ident>|move: Substitute|[damage]` is the other half: the `[damage]` tag is
   // the ONLY thing separating a hit the doll absorbed from a status move it merely blocked.
@@ -256,6 +267,22 @@ function probeLiveClient() {
         problems.push(`readLiveForme(${f.speciesForme || '?'}) missed the formechange volatile ${JSON.stringify(formechange[1])}`);
       }
       seen.formeChange = true;
+    }
+    // A retype rides on a volatile exactly as the live forme does, and carries the types
+    // '/'-joined in the same slot. Checked against the reader so a payload shape change
+    // cannot pass silently.
+    const typechange = mon.volatiles?.typechange;
+    if (typechange !== undefined) {
+      if (typeof typechange[1] !== 'string' || !typechange[1]) {
+        problems.push(`${f.speciesForme || '?'}.volatiles.typechange = ${JSON.stringify(typechange)} (expected ['typechange', 'Ice'])`);
+      } else if (!mon.terastallized) {
+        const read = R.readLiveTypes(mon);
+        if (!read || read.join('/') !== typechange[1].split('/').concat(
+          typeof mon.volatiles?.typeadd?.[1] === 'string' ? [mon.volatiles.typeadd[1]] : []).join('/')) {
+          problems.push(`readLiveTypes(${f.speciesForme || '?'}) = ${JSON.stringify(read)} but the volatile says ${JSON.stringify(typechange[1])}`);
+        }
+      }
+      seen.typeChange = true;
     }
     // A Substitute is PRESENCE only — the client adds a bare `['substitute']` tuple and never
     // tracks the doll's HP. That is why the size is derived rather than read, and why this
@@ -357,6 +384,10 @@ async function main() {
     // Ursaluna in it, which announces the orb on the same line.
     console.log(`  |upkeep| lines: present, |-status| layout ` +
       `${seen.statusLine ? 'SEEN — checked' : 'absent (not exercised)'}`);
+    // The retype pair. A random replay often has neither — to exercise them, pick one with a
+    // Greninja or a Cinderace in it, which converts on its very first move.
+    console.log(`  typechange: volatile ${seen.typeChange ? 'SEEN — checked' : 'absent (not exercised)'}, ` +
+      `Protean/Libero attribution ${seen.proteanLine ? 'SEEN — checked' : 'absent (not exercised)'}`);
     // And for the Substitute, whose hit count depends on both the volatile and the log lines.
     // Shed Tail is the rarer half by far — to exercise it, pick a replay with a Cyclizar or
     // an Orthworm in it.

@@ -13,7 +13,7 @@
 import {describe, it, expect} from 'vitest';
 import {buildMoveSection, buildPokemonSection, buildSwitchSection} from './section.js';
 import type {ClientBattle, ClientPokemon, ClientSide} from './battle/readState.js';
-import {loadBattle, scenarioData as data, scenarioDataWithDitto, scenarioDataWithEmboar as dataWithEmboar, scenarioDataTwinRoles} from './scenario.js';
+import {loadBattle, scenarioData as data, scenarioDataWithDitto, scenarioDataWithEmboar as dataWithEmboar, scenarioDataWithGreninja as dataWithGreninja, scenarioDataTwinRoles} from './scenario.js';
 import type {RandbatsData} from './core/types.js';
 import {HOVER_TARGETS, SECTION_NAMES, shows, type HoverTarget, type SectionName} from './core/surfaces.js';
 
@@ -696,6 +696,42 @@ describe('move order rules out a Choice Scarf, through the whole live pipeline',
     expect(unread).toContain('Head Smash</b> (112.4–198.5%)'); // both items, one wide range
     expect(theyFirst).toContain('Head Smash</b> (112.4–132.8%)'); // Scarf only
     expect(theySecond).toContain('Head Smash</b> (168.6–198.5%)'); // Band only
+  });
+});
+
+describe('a Protean foe, either side of the moment it converts', () => {
+  // The seam test for a live retype: client volatile → readState → resolve → calcDamage,
+  // over the exact two states a player has to tell apart. Both are the same Greninja on the
+  // same turn; the only difference is whether the log carries its conversion.
+  const setsFor = (state: 'unspent' | 'converted'): string => {
+    const {battle: b, active: a} = loadBattle({foeGreninja: state});
+    return buildPokemonSection(b, a('Greninja'), dataWithGreninja);
+  };
+  const unspent = setsFor('unspent');
+  const converted = setsFor('converted');
+
+  it('keeps every move boosted while the ability is UNSPENT — the next one converts it', () => {
+    // Gen 9 fires Protean on the first move of the stint whatever that move is, so until it
+    // does, every option really would arrive with STAB. @smogon/calc's own model agrees here.
+    expect(unspent).toContain('Hydro Pump (108–128.1%)');
+    expect(unspent).toContain('Dark Pulse (39.8–53.6%)');
+    expect(unspent).toContain('Ice Beam (21.9–25.9%)');
+  });
+
+  it('once it has converted, only the matching move keeps STAB', () => {
+    // Ice Beam is what fired it, so Ice Beam alone reads identically across the two — it is
+    // marked revealed here, which is why the name and its range are not adjacent.
+    expect(converted).toContain('Ice Beam</b> (21.9–25.9%)');
+    expect(converted).toContain('Hydro Pump (72.3–85.4%)');
+    expect(converted).toContain('Dark Pulse (26.6–35.8%)');
+  });
+
+  it('turns a claimed guaranteed KO back into a survivable hit', () => {
+    // The reason this is worth a test rather than a percentage: over 100% is a KO the
+    // tooltip states outright, and a player switches on it. The converted Greninja's Hydro
+    // Pump leaves our Noivern alive with room to spare.
+    expect(unspent).toContain('108–128.1%');
+    expect(converted).not.toContain('108–128.1%');
   });
 });
 

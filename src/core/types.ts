@@ -109,6 +109,18 @@ export interface LiveFacts {
    * reads this one in preference.
    */
   readonly liveForme?: string;
+  /**
+   * The types actually standing there, when a retype (Protean/Libero, Soak, Reflect Type,
+   * Burn Up, Conversion) has moved them off the species' own. Absent for the overwhelming
+   * majority of Pokémon, which are simply their own types.
+   *
+   * The same split as `liveForme`, and for the same reason: the CALC must see the types
+   * really on the field — they decide STAB going out and the whole type chart coming in —
+   * while set INFERENCE must not. A Greninja that turned Ice is still running a Greninja
+   * set out of the Greninja feed entry, so `narrow`, `knowledge` and the feed lookup read
+   * `speciesForme` and never this.
+   */
+  readonly liveTypes?: readonly string[];
   /** Client-dex base data for `speciesForme` — see `SpeciesData`. */
   readonly speciesData?: SpeciesData;
   readonly level: number;
@@ -196,6 +208,14 @@ export interface LiveFacts {
    * downstream against the role's ability pool, so this stays a raw fact.
    */
   readonly endedTurnUnstatused: boolean;
+  /**
+   * True once the log shows Protean or Libero having ALREADY converted this Pokémon during
+   * its current stint. Gen 9 fires them once per switch-in; @smogon/calc still models the
+   * gen 6-8 rule and grants STAB to any move an owner throws, so this is what separates a
+   * correct assumption from a stale one — see `battle/readState.ts`'s `proteanAlreadyFired`
+   * for why it is read from the log's `[from]` attribution rather than from `liveTypes`.
+   */
+  readonly proteanAlreadyFired: boolean;
   /**
    * How many times the battle log shows this Pokémon TAKING a direct move hit — RAGE
    * FIST's power scales with it (`min(350, 50 + 50×timesAttacked)`), the sim's own
@@ -404,6 +424,17 @@ export interface ResolvedMon {
    * own dex has the species.)
    */
   readonly speciesOverride?: SpeciesData;
+  /**
+   * The types actually standing there, when a retype has moved them off the species'
+   * record. The calc-facing half of `LiveFacts.liveTypes` — set inference never sees it.
+   */
+  readonly types?: readonly string[];
+  /**
+   * True when Protean/Libero has ALREADY converted this Pokémon this stint, so the ability
+   * is spent and grants nothing further. @smogon/calc models the gen 6-8 rule and would
+   * otherwise hand STAB to every move — see `damage.ts`'s `knownAbility`.
+   */
+  readonly proteanSpent?: boolean;
   readonly level: number;
   readonly nature: string;
   readonly evs: FullStats;

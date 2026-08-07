@@ -637,12 +637,12 @@ describe('switchedIntoStealthRockUnharmed (confirms Heavy-Duty Boots)', () => {
 describe('mostRecentCleanOrder (who moved first, when that is safe to read)', () => {
   // The client dex is the priority source — @smogon/calc's move data zeroes every negative
   // bracket, so reading it there would put Dragon Tail in the 0 bracket with Tackle.
-  const DEX: Record<string, {priority: number; category: string; type: string; drain?: number[]}> = {
+  const DEX: Record<string, {priority: number; category: string; type: string; flags?: Record<string, number>}> = {
     Tackle: {priority: 0, category: 'Physical', type: 'Normal'},
     'Shadow Ball': {priority: 0, category: 'Special', type: 'Ghost'},
     'Aqua Jet': {priority: 1, category: 'Physical', type: 'Water'},
     'Dragon Tail': {priority: -6, category: 'Physical', type: 'Dragon'},
-    'Drain Punch': {priority: 0, category: 'Physical', type: 'Fighting', drain: [1, 2]},
+    'Drain Punch': {priority: 0, category: 'Physical', type: 'Fighting', flags: {heal: 1}},
   };
   const withLog = (stepQueue: string[]): ClientBattle =>
     ({
@@ -657,10 +657,20 @@ describe('mostRecentCleanOrder (who moved first, when that is safe to read)', ()
   const OURS = '|move|p1a: Noivern|Tackle|p2a: Gholdengo';
   const THEIRS = '|move|p2a: Gholdengo|Shadow Ball|p1a: Noivern';
 
+  it('reads a healing move from `flags.heal`, the only source the client exposes', () => {
+    // The client's `Move` class publishes `flags` and deliberately not `drain`, however much
+    // its raw data carries both — so reading `drain` came back undefined for every move and
+    // Triage's +3 could never fire. `flags.heal` is also the condition the sim's own Triage
+    // actually tests, so the reachable field and the correct one turn out to be the same.
+    const log = ['|turn|1', '|move|p2a: Gholdengo|Drain Punch|p1a: Noivern', OURS, '|turn|2'];
+    expect(mostRecentCleanOrder(withLog(log), us, them)?.theirs.healing).toBe(true);
+    expect(mostRecentCleanOrder(withLog(['|turn|1', THEIRS, OURS, '|turn|2']), us, them)?.theirs.healing).toBe(false);
+  });
+
   it('reads the order, with each move’s bracket attached', () => {
     const got = mostRecentCleanOrder(withLog(['|turn|1', THEIRS, OURS, '|turn|2']), us, them);
     expect(got?.theyMovedFirst).toBe(true);
-    expect(got?.theirs).toEqual({name: 'Shadow Ball', priority: 0, category: 'Special', type: 'Ghost', drain: false});
+    expect(got?.theirs).toEqual({name: 'Shadow Ball', priority: 0, category: 'Special', type: 'Ghost', healing: false});
     expect(got?.ours.name).toBe('Tackle');
   });
 

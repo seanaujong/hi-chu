@@ -388,8 +388,10 @@ export interface OrderedMove {
   readonly priority: number;
   readonly category: string;
   readonly type: string;
-  /** Whether the move drains — the flag Triage's +3 keys on. */
-  readonly drain: boolean;
+  /** Whether the move HEALS — `flags.heal`, which is the condition Triage's +3 actually
+   *  tests (`sim/data/abilities.ts`: `if (move?.flags['heal'])`). Not the same as draining:
+   *  Recover and Roost carry it too, and Triage lifts them just as it lifts Drain Punch. */
+  readonly healing: boolean;
 }
 
 /** One turn's worth of ordering evidence: who moved, with what, and in which order. */

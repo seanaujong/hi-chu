@@ -100,3 +100,54 @@ export function unexplainedHatchLines(lines: readonly string[]): number[] {
     return explained ? [] : [i + 1];
   });
 }
+
+/** Source with its comment lines removed, so a field a docblock merely MENTIONS is not
+ *  mistaken for one the code reads — nor for one the drift probe actually checks. */
+function withoutComments(source: string): string {
+  return source
+    .split('\n')
+    .filter((line) => !/^\s*(\/\/|\/\*|\*)/.test(line))
+    .join('\n');
+}
+
+/**
+ * The client fields a file READS, in the form a drift probe has to name them: the keys hung
+ * off the untyped client bags whose shape nothing in TypeScript can defend.
+ *
+ * Three families, because those are the three the client hands us untyped: `battle.dex.<api>`,
+ * `pokemon.volatiles.<id>` and `pokemon.turnstatuses.<id>`. Both access forms count —
+ * `volatiles?.substitute` and `volatiles?.['typechange']` are the same read.
+ */
+export function clientFieldsRead(source: string): string[] {
+  const found = new Set<string>();
+  for (const m of withoutComments(source).matchAll(
+    /\b(dex|volatiles|turnstatuses)\??\.(?:\[['"]([A-Za-z]+)['"]\]|([A-Za-z]+))/g,
+  )) {
+    const key = m[2] ?? m[3];
+    if (key && key !== 'get') found.add(`${m[1]}.${key}`);
+  }
+  return [...found].sort();
+}
+
+/**
+ * Client fields one file reads that the other never names — the probe obligation, as a
+ * predicate.
+ *
+ * CLAUDE.md states it in prose: reading a client field `readState.ts` doesn't already read
+ * OBLIGES a probe in `scripts/drift-check.mjs`. Nothing enforced it, and the first change to
+ * test that was the speed-order work — which added a `battle.dex.moves` read for a move's
+ * priority bracket, wrote the field into CLAUDE.md's probe list, and never probed it.
+ *
+ * The failure is silent by construction: the reads needing a probe are exactly the ones the
+ * typechecker cannot see, so a missing probe is indistinguishable from a covered one until a
+ * client update quietly changes an answer. That is also why this rule earns its keep where a
+ * hand-maintained list does not — the list in CLAUDE.md was updated and the probe still wasn't.
+ *
+ * A NAME, not a real assertion, is what this can check. drift-check's whole job is naming
+ * fields, so a mention in its CODE is good evidence, and comments are stripped from both
+ * sides so a note about a field cannot stand in for probing it. It catches the case that
+ * actually happens — a field nobody thought about — not a deliberately hollow probe.
+ */
+export function unprobedClientFields(read: readonly string[], probed: readonly string[]): string[] {
+  return read.filter((field) => !probed.includes(field)).sort();
+}

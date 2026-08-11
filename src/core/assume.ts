@@ -12,7 +12,8 @@
 //
 // Pure: no DOM, no network, no @smogon/calc.
 
-import type {LiveFacts, RandbatsEntry, RandbatsRole, SetVariant} from './types.js';
+import type {DefenderVariantsFor, LiveFacts, RandbatsEntry, RandbatsRole, SetVariant} from './types.js';
+import {moveCategory} from './damage.js';
 import {buildResolved, dedupeVariants} from './resolve.js';
 
 /** The damage categories that have a defensive axis to invest against. */
@@ -61,4 +62,33 @@ export function assumeDefenderVariants(facts: LiveFacts, slant: MoveSlant): SetV
     }
   }
   return dedupeVariants(variants);
+}
+
+/**
+ * This module's own `DefenderVariantsFor` adapter: bracketing spreads × dex abilities,
+ * chosen per move CATEGORY, and memoised so a tooltip full of physical moves brackets once.
+ *
+ * Status moves (Pain Split included) get none — with the foe's max HP itself assumed there
+ * is no honest number to show — and neither does a move outside the calc's dex, where no
+ * line beats a wrong one.
+ */
+export function openVariantsFor(gen: number): DefenderVariantsFor {
+  return (facts) => {
+    const bySlant = new Map<MoveSlant, SetVariant[]>();
+    return (moveName) => {
+      let category;
+      try {
+        category = moveCategory(gen, moveName);
+      } catch {
+        return [];
+      }
+      if (category === 'Status') return [];
+      let variants = bySlant.get(category);
+      if (!variants) {
+        variants = assumeDefenderVariants(facts, category);
+        bySlant.set(category, variants);
+      }
+      return variants;
+    };
+  };
 }

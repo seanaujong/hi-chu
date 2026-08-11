@@ -11,16 +11,14 @@
 //   buildPokemonSection — a Pokémon hover: the still-possible sets (narrowed by reveals),
 //     with damage numbers attached when the hovered mon is the opponent's.
 
-import {finalStatsOf, moveCategory, painSplit, speciesBody} from './core/damage.js';
+import {finalStatsOf, painSplit, speciesBody} from './core/damage.js';
 import {resolveMon, resolveVariants} from './core/resolve.js';
-import {assumeDefenderVariants, type MoveSlant} from './core/assume.js';
+import {openVariantsFor} from './core/assume.js';
 import {inferSets} from './core/knowledge.js';
 import {type DamageBucket} from './core/variants.js';
 import {candidateDamageByMove, incomingDamageBuckets, moveDamageBuckets, type DamageContext} from './core/variantdamage.js';
 import {compareSpeed, finalSpeed, speedBuckets, type SpeedOrder} from './core/speed.js';
-import {illusionSuspects, type IllusionSuspect} from './core/illusion.js';
 import {strengthSap} from './core/strengthsap.js';
-import {buildableAbilities} from './core/narrow.js';
 import {
   renderMoveSection,
   renderNotes,
@@ -33,7 +31,7 @@ import {
   type MoveKnowledgeRow,
   type SpeedLineModel,
 } from './core/render.js';
-import type {CandidateSet, FieldFacts, IsStatusMove, KnownOption, LiveFacts, RandbatsData, RandbatsEntry, ResolvedMon, SetVariant, TransformCopy} from './core/types.js';
+import type {CandidateSet, DefenderVariantsFor, FieldFacts, IncomingMovesFor, KnownOption, LiveFacts, RandbatsData, RandbatsEntry, ResolvedMon, SetVariant, TransformCopy} from './core/types.js';
 import {transformCopy} from './core/transform.js';
 import {applySwitchInHazards} from './core/hazards.js';
 import {
@@ -44,7 +42,16 @@ import {
   type HoverTarget,
 } from './core/surfaces.js';
 import {hasObservation, narrowByLog, type LogObservations, type RevealFrame} from './core/reveals.js';
-import {pickEntry, megaEntryForItem, megaEntriesFor} from './data/lookup.js';
+import {
+  entryFor,
+  entryOrMinimal,
+  illusionVariants,
+  megaCandidatesFor,
+  randbatsFoeVariants,
+  randbatsIncomingMovesFor,
+  randbatsVariantsFor,
+  suspectsFor,
+} from './data/suppliers.js';
 import {
   toLiveFacts,
   readBehaviors,
@@ -80,14 +87,6 @@ import {
 /** The one honesty caveat an open-format tooltip carries — appended ONCE per tooltip
  *  (never per foe section), naming exactly what the numbers assume. */
 const OPEN_FORMAT_NOTE = 'foe EVs/item assumed';
-
-/**
- * The still-possible defending sets for one move, per foe — the seam the two format
- * kinds plug into. Randbats closes over the feed (every foe's variants are the same
- * whatever we throw at them); open formats bracket the spread on the axis THIS move
- * attacks, so the variants depend on the move's category.
- */
-type DefenderVariantsFor = (defenderFacts: LiveFacts) => (moveName: string) => readonly SetVariant[];
 
 /**
  * Everything the battle log reveals about a foe that `narrow.ts` cannot see from the
@@ -237,21 +236,7 @@ function narrowCandidate(candidate: CandidateSet, surviving: readonly SetVariant
   return {...candidate, items: keep(candidate.items, items), abilities: keep(candidate.abilities, abilities)};
 }
 
-/** Every still-possible set for a foe: the hidden item/ability fan-out, plus any
- *  disguised Zoroark the reveals betray. Move-independent — the same pool answers
- *  "how hard does it get hit" and "how fast is it". */
-function randbatsFoeVariants(data: RandbatsData, facts: LiveFacts): readonly SetVariant[] {
-  const entry = entryFor(data, facts);
-  return [...resolveVariants(facts, entryOrMinimal(entry, facts)), ...illusionVariants(facts, entry, data)];
-}
 
-/** The feed-driven supplier: every still-possible set, identical for every move. */
-function randbatsVariantsFor(data: RandbatsData): DefenderVariantsFor {
-  return (facts) => {
-    const variants = randbatsFoeVariants(data, facts);
-    return () => variants;
-  };
-}
 
 /**
  * The pool a foe's possible SPEEDS are read from, for the ⚡ line in the matchup
@@ -263,71 +248,7 @@ function randbatsVariantsFor(data: RandbatsData): DefenderVariantsFor {
  */
 type FoeSpeedVariantsFor = (foe: ClientPokemon, defenderFacts: LiveFacts) => readonly SetVariant[];
 
-/**
- * Every distinct move a hovered foe could still attack with, paired with the ATTACKER
- * variants (role × item/ability fan-out) that could carry it — the mirror of
- * `DefenderVariantsFor`. There, a fixed move fans out over hidden DEFENDER sets; here, a
- * fixed defender (the mon this tooltip is about) fans out over hidden ATTACKER sets, one
- * entry per still-possible move. `known` marks a move the foe has actually used, the same
- * ✓ the sets view already carries. Randbats-only for the same reason as
- * `FoeSpeedVariantsFor`: an assumed spread has no move pool to enumerate, so an open
- * format supplies nothing here rather than branching inside the shared block builder.
- */
-type IncomingMovesFor = (
-  foeFacts: LiveFacts,
-) => readonly {readonly move: string; readonly known: boolean; readonly variants: readonly SetVariant[]}[];
 
-/** The feed-driven supplier: the sets view's own per-role move knowledge, crossed with
- *  `resolveVariants`' full item/ability fan-out — aligned by ROLE NAME, the same
- *  alignment `groupByRole` uses for the sets view's own per-candidate damage. Never a
- *  set's first-guessed item: hidden Life Orb/Choice item splits an incoming line into
- *  labelled outcomes exactly like the move tooltip's defender side. */
-function randbatsIncomingMovesFor(data: RandbatsData, isStatusMove: IsStatusMove): IncomingMovesFor {
-  return (foeFacts) => {
-    const entry = entryFor(data, foeFacts);
-    if (!entry) return [];
-    const knowledge = inferSets(foeFacts, entry, isStatusMove);
-    const variants = resolveVariants(foeFacts, entry);
-    const seen = new Map<string, {known: boolean; roles: Set<string>}>();
-    for (const c of knowledge.candidates) {
-      for (const m of c.moves) {
-        const cur = seen.get(m.name) ?? {known: false, roles: new Set<string>()};
-        cur.known = cur.known || m.known;
-        cur.roles.add(c.name);
-        seen.set(m.name, cur);
-      }
-    }
-    return [...seen.entries()].map(([move, {known, roles}]) => ({
-      move,
-      known,
-      variants: variants.filter((v) => roles.has(v.role)),
-    }));
-  };
-}
-
-/** The assumption-driven supplier: bracketing spreads × dex abilities (assume.ts),
- *  chosen per move category. Status moves (Pain Split included) get none — with the
- *  foe's max HP itself assumed, there is no honest number to show. */
-function openVariantsFor(gen: number): DefenderVariantsFor {
-  return (facts) => {
-    const bySlant = new Map<MoveSlant, SetVariant[]>();
-    return (moveName) => {
-      let category: ReturnType<typeof moveCategory>;
-      try {
-        category = moveCategory(gen, moveName);
-      } catch {
-        return []; // a move outside the calc's dex — no line beats a wrong one
-      }
-      if (category === 'Status') return [];
-      let variants = bySlant.get(category);
-      if (!variants) {
-        variants = assumeDefenderVariants(facts, category);
-        bySlant.set(category, variants);
-      }
-      return variants;
-    };
-  };
-}
 
 /** All of one Pokémon's live facts: the snapshot, the log-derived behaviours, and the
  *  client dex's species data (the calc's fallback for formes its own dex lacks). */
@@ -462,16 +383,7 @@ function toId(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-/** A defender entry when the feed doesn't cover it: facts only, default spread. */
-function entryOrMinimal(entry: RandbatsEntry | undefined, facts: LiveFacts): RandbatsEntry {
-  return entry ?? {level: facts.level, abilities: [], items: []};
-}
 
-/** The mon's set entry: the Mega set when it holds a Mega stone (it's running that set even
- *  before it evolves — see `megaEntryForItem`), otherwise the forme's own entry. */
-function entryFor(data: RandbatsData, facts: LiveFacts): RandbatsEntry | undefined {
-  return megaEntryForItem(data, facts.item) ?? pickEntry(data, facts.speciesForme);
-}
 
 /**
  * The viewer's OWN item for their active, as a display name the calc honours — read from
@@ -663,56 +575,9 @@ function applyPreviews(base: ResolvedMon, previews: readonly (PreviewOverlay | u
   return previews.reduce((mon, apply) => (apply ? apply(mon) : mon), base);
 }
 
-/**
- * If a revealed move betrays that the defender might be a disguised Zoroark (see
- * illusion.ts), a resolution of that Zoroark as an extra defender — so the move tooltip
- * shows a second "vs Zoroark-Hisui" damage line rather than one confidently-wrong number.
- * One representative set per suspect (not the full item fan-out) keeps the extra line to
- * a single, clearly-labelled bucket. Its own species/level drive the calc.
- */
-function illusionVariants(defenderFacts: LiveFacts, defenderEntry: RandbatsEntry | undefined, data: RandbatsData): SetVariant[] {
-  // The suspect is a DIFFERENT species than shown, so the shown forme's dex data
-  // (facts.speciesData) must not ride along into the Zoroark's resolution.
-  const {speciesData: _shownFormes, transformedInto: _notItsCopy, ...publicFacts} = defenderFacts;
-  return suspectsFor(defenderFacts, defenderEntry, data).map(({species, entry}) => ({
-    mon: resolveMon({...publicFacts, speciesForme: species, level: entry.level}, entry),
-    role: species,
-  }));
-}
 
-/**
- * Every species THIS format's feed could build with Illusion — the only ones able to wear
- * a disguise. Derived from the feed itself (`buildableAbilities`, the same pool law role
- * narrowing already uses) rather than a hardcoded species list, so a mod with a different —
- * or no — Illusion holder needs no code change here.
- */
-function illusionHolders(data: RandbatsData): IllusionSuspect[] {
-  return Object.keys(data)
-    .map((species): IllusionSuspect | null => {
-      const entry = pickEntry(data, species);
-      return entry && buildableAbilities(entry).has('illusion') ? {species, entry} : null;
-    })
-    .filter((x): x is IllusionSuspect => x !== null);
-}
 
-/** The species the hovered mon might secretly be, given the feed's Illusion holders. */
-function suspectsFor(facts: LiveFacts, entry: RandbatsEntry | undefined, data: RandbatsData): IllusionSuspect[] {
-  return illusionSuspects(facts, entry, illusionHolders(data));
-}
 
-/**
- * The Mega forme(s) this Pokémon might still evolve into (Champions), while a held Mega
- * stone remains genuinely possible: nothing about the item has been revealed yet. A
- * revealed item either already resolved to the Mega set (`entryFor`'s own
- * `megaEntryForItem` check) or rules Mega out entirely — and a LOST item (`prevItem` set)
- * rules it out too, since Mega Evolution needs the stone in hand. `megaEntriesFor` finds
- * every still-possible Mega entry for the species; each becomes its own candidate source,
- * exactly like an Illusion suspect, so the sets view lists it instead of silently dropping it.
- */
-function megaCandidatesFor(facts: LiveFacts, data: RandbatsData): readonly {forme: string; entry: RandbatsEntry}[] {
-  if (facts.item !== undefined || facts.prevItem !== undefined) return [];
-  return megaEntriesFor(data, facts.speciesForme);
-}
 
 /**
  * The ⚡ speed-order line(s) for a hovered FOE: one per our active (one in singles,
@@ -1406,7 +1271,7 @@ function randbatsPokemonSection(
       const f: LiveFacts = {...shownFacts, speciesForme: species, level: e.level};
       return {facts: f, entry: e, species: species as string | undefined, knowledge: inferSets(f, e, isStatusMove)};
     }),
-    ...megaCandidatesFor(facts, data).map(({forme, entry: e}) => {
+    ...megaCandidatesFor(data, facts).map(({forme, entry: e}) => {
       const {transformedInto: _notItsCopy, ...shownFacts} = facts;
       const f: LiveFacts = {...shownFacts, speciesForme: forme, level: e.level};
       return {facts: f, entry: e, species: undefined as string | undefined, knowledge: inferSets(f, e, isStatusMove)};

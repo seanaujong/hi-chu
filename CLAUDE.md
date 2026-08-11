@@ -642,6 +642,11 @@ picture and not in this list, this list is the thing that's wrong.
 - `src/core/` — pure: no DOM, no network, unit-tested. All the interesting logic lives here.
   - `multihit.ts` — the probability law (hit-count PMFs + convolution → KO%/expected).
   - `damage.ts` — wraps `@smogon/calc`; builds the calc `Field` from `FieldFacts`.
+  - `calcinternals.ts` — the unpublished-surface seam: the two functions the calc
+    implements but its index does not export (`getFinalSpeed`, `isGrounded`), bound
+    against types WE declare in the package's own public vocabulary. Computes nothing.
+    It exists so the one edge semver does not cover lives in one named place, which
+    `dependency-boundaries.test.ts` then pins (see the invariant).
   - `speed.ts` — the speed-order law: effective Speed per still-possible set (delegated
     to the calc's `getFinalSpeed`), distinct outcomes bucketed like damage, Trick Room
     flipping the who-moves-first verdict (an order inversion, never a stat change).
@@ -957,6 +962,7 @@ was always undefined.
 | Speed order: arithmetic delegated, ORDER owned, a fact about the PAIR | ✅ | `core/speed.ts`, `section.ts` (`speedSection`, `ownMovesSection`) | `speed.test.ts`, `render.test.ts`, `section.test.ts` |
 | An "if …" aside exists to CONTRADICT the ⚡ verdict — a set reaching the same answer is dropped, so no asides means the verdict holds under EVERY still-possible set | ✅ | `core/render.ts` (`speedLine`) | `render.test.ts` |
 | Unburden's ×2 Speed is armed via an explicit `abilityOn` flag, not inferred from `item` | ✅ | `core/resolve.ts` (`buildResolved`), `core/damage.ts` (`buildPokemon`) | `resolve.test.ts`, `speed.test.ts` |
+| A package is reached past its PUBLISHED surface from ONE module, against a contract stated in that package's public types | ✅ | `core/calcinternals.ts` | `dependency-boundaries.test.ts`, `npm run typecheck` |
 | The fetch/reason/render split is a checked import graph, not just a description | ✅ | `fitness/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |
 | Every behavioural deduction is reached through `narrow.ts` — nothing else imports `deductions.ts` | ✅ | `fitness/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |
 | `facts.ts` stays a leaf (and `types.ts` a true one), so no layer depends on a sibling for shared vocabulary | ✅ | `fitness/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |
@@ -1056,7 +1062,10 @@ rather than in our code. Run the named check by hand after a Showdown client upd
 - `README.md` — full architecture, diagrams, install steps. (Known limitations are the ◐
   rows in the invariant index, not a README section.)
 - `docs/architecture-graph.md` — the generated module graph: which file imports which, as of
-  the last `npm run graph`. Read it to find your way around; read the Architecture section
+  the last `npm run graph`. Third-party packages are NAMED in a table there rather than drawn
+  as boxes, because a specifier is a fact about this source where the resolved path is a fact
+  about one machine's disk — drawn, that path made the committed file differ between a normal
+  checkout and a worktree, passing `graph:check` locally and failing it in CI. Read it to find your way around; read the Architecture section
   above to learn what the layers MEAN. Never edit it by hand — CI regenerates and diffs it.
 - `docs/chrome-web-store-listing.md` — the store listing copy OF RECORD: description,
   privacy-practice answers, host-permission justification, reviewer test instructions,

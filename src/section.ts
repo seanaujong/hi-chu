@@ -42,16 +42,15 @@ import {
   type HoverTarget,
 } from './core/surfaces.js';
 import {hasObservation, narrowByLog, type LogObservations, type RevealFrame} from './core/reveals.js';
+import {feedSource, megaCandidatesFor} from './data/suppliers.js';
 import {
-  entryFor,
   entryOrMinimal,
-  illusionVariants,
-  megaCandidatesFor,
-  randbatsFoeVariants,
-  randbatsIncomingMovesFor,
-  randbatsVariantsFor,
+  foeVariants as stillPossibleSets,
   suspectsFor,
-} from './data/suppliers.js';
+  illusionVariants,
+  incomingMovesFor as incomingMovesSupplier,
+  variantsFor,
+} from './core/possibilities.js';
 import {
   toLiveFacts,
   readBehaviors,
@@ -125,7 +124,7 @@ function exactOwnAttacker(
   facts: LiveFacts,
   data: RandbatsData,
 ): ResolvedMon | null {
-  const entry = entryFor(data, facts);
+  const entry = feedSource(data).entryFor(facts);
   if (!entry) return null;
   const item = ownItemName(battle, mon, entry);
   if (!item) return null;
@@ -206,7 +205,7 @@ function revealsAgainst(
   const ourActive = findOpposingActive(battle, foe);
   if (!ourActive) return undefined;
   const ourFacts = ownTruth(battle, ourActive, readFacts(ourActive));
-  const resolved = resolveMon(ourFacts, entryOrMinimal(entryFor(data, ourFacts), ourFacts));
+  const resolved = resolveMon(ourFacts, entryOrMinimal(feedSource(data).entryFor(ourFacts), ourFacts));
   return foeReveals(
     battle, foe, ourActive, resolved, readFieldFacts(battle, ourActive.side), format,
     resolved, exactOwnAttacker(battle, ourActive, ourFacts, data),
@@ -277,7 +276,7 @@ type ExactResolver = (facts: LiveFacts) => ResolvedMon | undefined;
 function exactResolver(data: RandbatsData | null): ExactResolver {
   return (facts) => {
     if (!data) return undefined;
-    const entry = entryFor(data, facts);
+    const entry = feedSource(data).entryFor(facts);
     return entry ? resolveMon(facts, entry) : undefined;
   };
 }
@@ -599,7 +598,7 @@ function speedSection(
   if (foeVariants.length === 0) return '';
   const lines = ourActives.map((our): SpeedLineModel => {
     const publicFacts = ownTruth(battle, our, readFacts(our));
-    const ourEntry = entryFor(data, publicFacts);
+    const ourEntry = feedSource(data).entryFor(publicFacts);
     const realItem = ourEntry ? ownItemName(battle, our, ourEntry) : undefined;
     const ourFacts = realItem ? {...publicFacts, item: realItem} : publicFacts;
     // A ticked Mega changes our effective Speed for the verdict — but only from gen 7
@@ -742,7 +741,7 @@ function ownHoverMatchup(
 ): string {
   const moves = readOwnMoves(battle, pokemon);
   const facts = ownTruth(battle, pokemon, publicFacts);
-  const entry = entryFor(data, facts);
+  const entry = feedSource(data).entryFor(facts);
   if (!moves || !entry || facts.hpPercent <= 0) return '';
   // Your Pokémon, your damage: your real item and ability beat the set's assumed ones
   // (same principle as buildMoveSection's attacker).
@@ -766,7 +765,7 @@ function ownHoverMatchup(
   // Our real item feeds the ⚡ line too: a Scarf we are holding is our own private
   // truth, and showing US our own speed as uncertain would be absurd.
   const speedFor = (foe: ClientPokemon, foeFacts: LiveFacts): readonly SetVariant[] => {
-    const all = randbatsFoeVariants(data, foeFacts);
+    const all = stillPossibleSets(feedSource(data), foeFacts);
     return revealsAgainst(battle, foe, data, format, readFacts)?.narrow(all) ?? all;
   };
   // Which of the three halves this target carries is the grid's call, not this
@@ -775,13 +774,13 @@ function ownHoverMatchup(
   // surfaces). Hazards ride on the same underlying fact, so they read from it too rather
   // than from a second copy of "is this mon on the field".
   const previewsHazards = previewsSwitchInHazards(target);
-  const incomingMovesFor = shows(target, 'incoming') ? randbatsIncomingMovesFor(data, statusMoveReader(battle)) : undefined;
+  const incomingMovesFor = shows(target, 'incoming') ? incomingMovesSupplier(feedSource(data), statusMoveReader(battle)) : undefined;
   const ownHazards = previewsHazards ? readOwnHazards(pokemon.side) : {stealthRock: false, spikesLayers: 0};
   const switchInAttacker = previewsHazards ? applySwitchInHazards(attacker, ownHazards, format.gen) : attacker;
   const hazardFaints = previewsHazards && switchInAttacker.hpPercent <= 0;
   const outgoingMoves = shows(target, 'outgoing') ? moves : [];
   return ownMovesSection(
-    battle, pokemon.side, switchInAttacker, outgoingMoves, format, readFacts, randbatsVariantsFor(data), speedFor,
+    battle, pokemon.side, switchInAttacker, outgoingMoves, format, readFacts, variantsFor(feedSource(data)), speedFor,
     speedAttacker, hazardFaints ? undefined : incomingMovesFor, hazardFaints,
   );
 }
@@ -817,7 +816,7 @@ function foeSwitchInDamage(
   const moves = readOwnMoves(battle, ourActive);
   if (!moves) return ''; // spectating — no private moveset to read
   const ourFacts = ownTruth(battle, ourActive, readFacts(ourActive));
-  const ourEntry = entryFor(data, ourFacts);
+  const ourEntry = feedSource(data).entryFor(ourFacts);
   if (!ourEntry) return '';
   const realItem = ownItemName(battle, ourActive, ourEntry);
   const realAbility = ownAbilityName(battle, ourActive, ourEntry);
@@ -830,7 +829,7 @@ function foeSwitchInDamage(
   const applyTera = teraPreviewFor(battle, ourActive, teraSelected, ourFacts);
   const attacker = applyPreviews(base, [applyMega, applyTera]);
 
-  const foeVariants = randbatsFoeVariants(data, foeFacts);
+  const foeVariants = stillPossibleSets(feedSource(data), foeFacts);
   if (foeVariants.length === 0) return '';
   const hazards = readOwnHazards(hoveredFoe.side); // THEIR side's hazards chip THEM on the way in
   const switchedIn = foeVariants.map((v) => ({...v, mon: applySwitchInHazards(v.mon, hazards, format.gen)}));
@@ -875,7 +874,7 @@ export function buildSwitchSection(battle: ClientBattle, server: ClientServerPok
   switch (format.kind) {
     case 'randbats': {
       if (!data) return ''; // the feed is still warming — same silence as before it loads
-      const entry = entryFor(data, facts);
+      const entry = feedSource(data).entryFor(facts);
       if (!entry) return '';
       // The id-form item narrows the role fine (pools compare by id) and the damage layer
       // resolves it to the dex name for the calc — no pool mapping needed here.
@@ -886,7 +885,7 @@ export function buildSwitchSection(battle: ClientBattle, server: ClientServerPok
       // team (an id-form Choice Scarf; the damage layer resolves ids through the dex),
       // and it carries no boosts, because it enters with none.
       const speedFor = (foe: ClientPokemon, foeFacts: LiveFacts): readonly SetVariant[] => {
-        const all = randbatsFoeVariants(data, foeFacts);
+        const all = stillPossibleSets(feedSource(data), foeFacts);
         return revealsAgainst(battle, foe, data, format, readFacts)?.narrow(all) ?? all;
       };
       // Every switch-menu candidate is, by construction, not yet on the field — which is
@@ -896,10 +895,10 @@ export function buildSwitchSection(battle: ClientBattle, server: ClientServerPok
       const ownHazards = readOwnHazards(ourSide);
       const switchInAttacker = applySwitchInHazards(attacker, ownHazards, format.gen);
       const hazardFaints = switchInAttacker.hpPercent <= 0;
-      const incomingMovesFor = shows(target, 'incoming') ? randbatsIncomingMovesFor(data, statusMoveReader(battle)) : undefined;
+      const incomingMovesFor = shows(target, 'incoming') ? incomingMovesSupplier(feedSource(data), statusMoveReader(battle)) : undefined;
       return ownMovesSection(
         battle, ourSide, switchInAttacker, shows(target, 'outgoing') ? moves : [], format, readFacts,
-        randbatsVariantsFor(data), speedFor,
+        variantsFor(feedSource(data)), speedFor,
         switchInAttacker, hazardFaints ? undefined : incomingMovesFor, hazardFaints,
       );
     }
@@ -992,7 +991,7 @@ export function buildMoveSection(
   switch (format.kind) {
     case 'randbats': {
       if (!data) return ''; // the feed is still warming — same silence as before it loads
-      const attackerEntry = entryFor(data, publicFacts);
+      const attackerEntry = feedSource(data).entryFor(publicFacts);
       if (!attackerEntry) return '';
       // Your move, your damage: prefer your REAL item and ability over the set's assumed
       // first pick, so a Heavy-Duty Boots Iron Bundle isn't calculated as Choice Specs, and
@@ -1071,7 +1070,7 @@ function moveVsFoe(
   label: boolean,
 ): string {
   const defenderFacts = readFacts(defenderMon);
-  const defenderEntry = entryFor(data, defenderFacts);
+  const defenderEntry = feedSource(data).entryFor(defenderFacts);
   const targetLabel = label ? defenderFacts.speciesForme : undefined;
 
   // Pain Split deals no damage — it averages both mons' HP — so @smogon/calc has nothing to
@@ -1085,7 +1084,7 @@ function moveVsFoe(
   // still-possible sets and let identical outcomes collapse back to one bucket.
   const defenderVariants = [
     ...resolveVariants(defenderFacts, entryOrMinimal(defenderEntry, defenderFacts)),
-    ...illusionVariants(defenderFacts, defenderEntry, data),
+    ...illusionVariants(defenderFacts, defenderEntry, feedSource(data)),
   ];
 
   // Strength Sap deals no damage either — it siphons the target's Attack as HP, so the
@@ -1248,7 +1247,7 @@ function randbatsPokemonSection(
   teraSelected: boolean,
   readFacts: FactsReader,
 ): string {
-  const entry = entryFor(data, facts);
+  const entry = feedSource(data).entryFor(facts);
   if (!entry) return ''; // not a tracked randbats Pokémon
 
   // The client's dex, as the one capability `inferSets` needs from outside the pure core:
@@ -1264,7 +1263,7 @@ function randbatsPokemonSection(
   // is still the same Pokémon, just a set living under a different feed entry.
   const sources = [
     {facts, entry, species: undefined as string | undefined, knowledge: shown},
-    ...suspectsFor(facts, entry, data).map(({species, entry: e}) => {
+    ...suspectsFor(facts, entry, feedSource(data)).map(({species, entry: e}) => {
       // A suspected Zoroark is a different Pokémon: neither the shown forme's dex data nor
       // any Transform copy belongs to it.
       const {transformedInto: _notItsCopy, ...shownFacts} = facts;
@@ -1301,7 +1300,7 @@ function randbatsPokemonSection(
   // so `foeReveals` takes this one, while the DISPLAYED damage below takes the previewed
   // `defender`, which is a claim about the turn to come.
   const defenderNow = ourMon && ourFacts
-    ? resolveMon(ourFacts, entryOrMinimal(entryFor(data, ourFacts), ourFacts))
+    ? resolveMon(ourFacts, entryOrMinimal(feedSource(data).entryFor(ourFacts), ourFacts))
     : null;
   const defender = defenderNow && ourMon && ourFacts
     ? applyPreviews(defenderNow, [
@@ -1350,7 +1349,7 @@ function randbatsPokemonSection(
         // The same narrowing the blocks below get: a Scarf the move order has ruled out must
         // not survive as an "if Choice Scarf" aside over a block that no longer lists it.
         (() => {
-          const all = [...resolveVariants(facts, entry), ...illusionVariants(facts, entry, data)];
+          const all = [...resolveVariants(facts, entry), ...illusionVariants(facts, entry, feedSource(data))];
           return reveals ? reveals.narrow(all) : all;
         })(),
         findOpposingActives(battle, pokemon),

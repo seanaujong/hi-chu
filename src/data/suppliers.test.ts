@@ -1,115 +1,62 @@
 import {describe, it, expect} from 'vitest';
-import {
-  entryFor,
-  entryOrMinimal,
-  illusionVariants,
-  megaCandidatesFor,
-  randbatsFoeVariants,
-  randbatsIncomingMovesFor,
-  randbatsVariantsFor,
-} from './suppliers.js';
+import {feedSource, megaCandidatesFor} from './suppliers.js';
 import {liveFacts} from '../core/sets.testfixtures.js';
 import type {RandbatsData} from '../core/types.js';
 
+// Real feed shapes, including the two irregularities this file exists to absorb: a Mega
+// forme keyed IRREGULARLY (drops "Eternal"), and an entry reachable only by its stone.
 const feed = {
-  Weavile: {
-    level: 78,
-    abilities: ['Pressure'],
-    items: ['Choice Band', 'Heavy-Duty Boots'],
-    roles: {'Fast Attacker': {abilities: ['Pressure'], items: ['Choice Band', 'Heavy-Duty Boots'], moves: ['Icicle Crash', 'Knock Off']}},
-  },
-  Zoroark: {
-    level: 84,
-    abilities: ['Illusion'],
-    items: ['Choice Specs'],
-    roles: {'Fast Attacker': {abilities: ['Illusion'], items: ['Choice Specs'], moves: ['Dark Pulse', 'Sludge Bomb']}},
-  },
-  Blissey: {level: 50, abilities: ['Natural Cure'], items: ['Leftovers']},
-  Gardevoir: {level: 84, abilities: ['Trace'], items: ['Gardevoirite']},
-  'Gardevoir-Mega': {level: 80, abilities: ['Pixilate'], items: ['Gardevoirite']},
+  Weavile: {level: 78, abilities: ['Pressure'], items: ['Choice Band']},
+  Zoroark: {level: 84, abilities: ['Illusion'], items: ['Choice Specs']},
+  'Floette-Eternal': {level: 52, abilities: ['Flower Veil'], items: ['Choice Scarf']},
+  'Floette-Mega': {level: 48, abilities: ['Flower Veil'], items: ['Floettite']},
 } as unknown as RandbatsData;
 
-const isStatusMove = (name: string) => name === 'Nasty Plot';
+describe('feedSource.entryFor', () => {
+  it('resolves by species key', () => {
+    expect(feedSource(feed).entryFor(liveFacts({speciesForme: 'Weavile'}))?.level).toBe(78);
+  });
 
-describe('entryFor / entryOrMinimal', () => {
-  it('finds a species entry, and falls back to a minimal one the calc can still use', () => {
-    const known = liveFacts({speciesForme: 'Weavile', level: 78});
-    expect(entryFor(feed, known)?.level).toBe(78);
+  it('follows a held Mega stone to the MEGA forme, whose key does not follow from the name', () => {
+    // The Pokémon's real set is the Mega one; reading the base forme's would calculate the
+    // wrong stats for something about to change shape. Core never learns this happened.
+    const holding = liveFacts({speciesForme: 'Floette-Eternal', item: 'Floettite'});
+    expect(feedSource(feed).entryFor(holding)?.level).toBe(48);
+    const bare = liveFacts({speciesForme: 'Floette-Eternal'});
+    expect(feedSource(feed).entryFor(bare)?.level).toBe(52);
+  });
 
-    const stranger = liveFacts({speciesForme: 'Notamon', level: 61});
-    expect(entryFor(feed, stranger)).toBeUndefined();
-    // The fallback carries the LIVE level — a default spread, not a default Pokémon.
-    expect(entryOrMinimal(undefined, stranger)).toEqual({level: 61, abilities: [], items: []});
+  it('has no entry for a species the feed does not cover', () => {
+    expect(feedSource(feed).entryFor(liveFacts({speciesForme: 'Notamon'}))).toBeUndefined();
   });
 });
 
-describe('randbatsVariantsFor — the feed-driven DefenderVariantsFor', () => {
-  it('hands back the same pool whatever move is asked about', () => {
-    // The property that separates it from the open-format adapter, whose variants depend on
-    // the move's category: a feed knows the sets outright, so the move is irrelevant.
-    const forFacts = randbatsVariantsFor(feed)(liveFacts({speciesForme: 'Weavile', level: 78}));
-    expect(forFacts('Icicle Crash')).toBe(forFacts('Knock Off'));
+describe('feedSource.allEntries', () => {
+  it('hands over the whole roster, unfiltered — the filtering is core’s', () => {
+    expect(feedSource(feed).allEntries().map((e) => e.species).sort())
+      .toEqual(['Floette-Eternal', 'Floette-Mega', 'Weavile', 'Zoroark']);
   });
 
-  it('fans a hidden item out into one variant per possibility', () => {
-    const variants = randbatsFoeVariants(feed, liveFacts({speciesForme: 'Weavile', level: 78}));
-    expect(variants.map((v) => v.mon.item).sort()).toEqual(['Choice Band', 'Heavy-Duty Boots']);
-  });
-
-  it('collapses to the revealed item once it is known', () => {
-    const variants = randbatsFoeVariants(feed, liveFacts({speciesForme: 'Weavile', level: 78, item: 'Choice Band'}));
-    expect(variants.map((v) => v.mon.item)).toEqual(['Choice Band']);
-  });
-});
-
-describe('illusionVariants', () => {
-  it('adds the suspected Zoroark as ITS OWN species, at ITS OWN level', () => {
-    // A Weavile that has used a move only Zoroark's sets carry. The suspect must resolve as
-    // Zoroark — not as a Weavile wearing Zoroark's moves.
-    const facts = liveFacts({speciesForme: 'Weavile', level: 78, revealedMoves: ['Sludge Bomb']});
-    const suspects = illusionVariants(facts, entryFor(feed, facts), feed);
-    expect(suspects.map((v) => [v.role, v.mon.speciesForme, v.mon.level])).toEqual([['Zoroark', 'Zoroark', 84]]);
-  });
-
-  it('suspects nothing when the moves fit the species on screen', () => {
-    const facts = liveFacts({speciesForme: 'Weavile', level: 78, revealedMoves: ['Icicle Crash']});
-    expect(illusionVariants(facts, entryFor(feed, facts), feed)).toEqual([]);
+  it('enumerates once per source, not once per call', () => {
+    // Core asks for this inside a per-hover filter; normalising the roster every time would
+    // be a cost with nothing to show for it.
+    const source = feedSource(feed);
+    expect(source.allEntries()).toBe(source.allEntries());
   });
 });
 
 describe('megaCandidatesFor', () => {
-  const base = liveFacts({speciesForme: 'Gardevoir', level: 84});
+  const base = liveFacts({speciesForme: 'Floette-Eternal', level: 52});
 
   it('offers the Mega forme while the item is still unknown', () => {
-    // Stated first so the rule-outs below mean something: without this the empty results
-    // could just as well be a feed with no Mega in it.
-    expect(megaCandidatesFor(feed, base).map((m) => m.forme)).toEqual(['Gardevoir-Mega']);
+    // Stated first so the rule-outs below mean something: without it, an empty result could
+    // just as well be a feed with no Mega in it.
+    expect(megaCandidatesFor(feed, base).map((m) => m.forme)).toEqual(['Floette-Mega']);
   });
 
   it('rules the evolution out once the item is settled, either way', () => {
     // A revealed item that is not a stone, and an item already lost, both close the door.
     expect(megaCandidatesFor(feed, {...base, item: 'Leftovers'})).toEqual([]);
     expect(megaCandidatesFor(feed, {...base, prevItem: 'Leftovers'})).toEqual([]);
-  });
-});
-
-describe('randbatsIncomingMovesFor — the feed-driven IncomingMovesFor', () => {
-  it('pairs each still-possible move with the variants that could carry it', () => {
-    const incoming = randbatsIncomingMovesFor(feed, isStatusMove)(liveFacts({speciesForme: 'Weavile', level: 78}));
-    expect(incoming.map((i) => i.move).sort()).toEqual(['Icicle Crash', 'Knock Off']);
-    // Both items are still live, so every move carries the full fan-out rather than a
-    // first-guessed representative.
-    expect(incoming.every((i) => i.variants.length === 2)).toBe(true);
-  });
-
-  it('marks a move the foe has actually used as known', () => {
-    const facts = liveFacts({speciesForme: 'Weavile', level: 78, revealedMoves: ['Knock Off']});
-    const incoming = randbatsIncomingMovesFor(feed, isStatusMove)(facts);
-    expect(incoming.find((i) => i.move === 'Knock Off')?.known).toBe(true);
-    expect(incoming.find((i) => i.move === 'Icicle Crash')?.known).toBe(false);
-  });
-
-  it('supplies nothing for a species the feed does not cover', () => {
-    expect(randbatsIncomingMovesFor(feed, isStatusMove)(liveFacts({speciesForme: 'Notamon'}))).toEqual([]);
   });
 });

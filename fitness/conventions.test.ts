@@ -89,6 +89,9 @@ const UNTESTED_BY_DESIGN: Readonly<Record<string, string>> = {
   'moves.ts': 'data tables — exercised end to end by damage.test.ts',
   'facts.ts': 'tiny shared readings of LiveFacts — covered by resolve.test.ts',
   'narrow.ts': 'the evidence law — covered by resolve.test.ts',
+  'calcinternals.ts':
+    'bindings only — the assertion IS the type annotation, so tsc is its test; what the ' +
+    'bound functions DO is pinned by speed.test.ts and hazards.test.ts',
 };
 
 /** The pure core's own modules — not their tests, not the fixture builder beside them. */

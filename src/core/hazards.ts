@@ -26,7 +26,7 @@
 // Explicit v1 cuts, not oversights: Toxic Spikes (poisons at end of turn — it doesn't
 // change whether the mon survives the next hit), G-Max Steelsurge (Dynamax-only), and
 // forced grounding from Gravity / Ingrain / Smack Down.
-import {isGrounded} from '@smogon/calc/dist/mechanics/util';
+import {groundedOn} from './calcinternals.js';
 import {Field, Generations, TYPE_CHART, type GenerationNum} from '@smogon/calc';
 import {buildPokemon} from './damage.js';
 import type {ResolvedMon} from './types.js';
@@ -57,7 +57,7 @@ export function computeHazardFraction(mon: ResolvedMon, hazards: OwnSideHazards,
   const stealthRockFraction = hazards.stealthRock ? rockEffectiveness / 8 : 0;
 
   const layers = Math.max(0, Math.min(SPIKES_FRACTION.length - 1, hazards.spikesLayers));
-  const spikesFraction = layers > 0 && isGrounded(pokemon, new Field({})) ? SPIKES_FRACTION[layers]! : 0;
+  const spikesFraction = layers > 0 && groundedOn(pokemon, new Field({})) ? SPIKES_FRACTION[layers]! : 0;
 
   return stealthRockFraction + spikesFraction;
 }

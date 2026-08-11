@@ -10,11 +10,27 @@ import {CORE_MODULE, importersOf, unreadableModuleNames} from './rules.js';
  * comment ("Pure: no DOM, no network, no @smogon/calc"), but that was only ever a
  * convention until this test. Widening this list is a deliberate, reviewed edit here,
  * not a silent import creeping in somewhere else. `hazards.ts` earned its place the same
- * way `speed.ts` did: a law that needs the calc's own type chart and grounding check
- * (`isGrounded`, deep-imported from calc internals exactly like `speed.ts`'s
- * `getFinalSpeed`), not something `damage.ts`'s existing exports cover.
+ * way `speed.ts` did: a law that needs the calc's own type chart, not something
+ * `damage.ts`'s existing exports cover. `calcinternals.ts` is here for a different reason
+ * than the other three — it computes nothing, and exists precisely to be the one module
+ * that touches the package's UNPUBLISHED surface.
  */
-const ALLOWED_IMPORTERS = ['src/core/damage.ts', 'src/core/speed.ts', 'src/core/hazards.ts'];
+const ALLOWED_IMPORTERS = [
+  'src/core/damage.ts',
+  'src/core/speed.ts',
+  'src/core/hazards.ts',
+  'src/core/calcinternals.ts',
+];
+
+/**
+ * A `dist/` specifier reaches past what a package publishes, and semver promises nothing
+ * about a file that was never part of the API — an upgrade may move or rename it with no
+ * major bump. That makes it the most breakable edge in the tree, so it is worth knowing
+ * exactly where it is, and "exactly where" should stay one place rather than a set that
+ * grows quietly. `speed.ts` and `hazards.ts` each carried one of these with a comment
+ * explaining itself, which is how there came to be two.
+ */
+const ALLOWED_DEEP_IMPORTER = 'src/core/calcinternals.ts';
 
 function allSourceFiles(dir: string): string[] {
   return readdirSync(dir, {withFileTypes: true}).flatMap((entry) => {
@@ -46,12 +62,24 @@ function coreModules(): string[] {
   return allSourceFiles('src/core').map((p) => p.replace(/^src\/core\//, '').replace(/\.ts$/, ''));
 }
 
-describe('the @smogon/calc dependency stays confined to damage.ts and speed.ts', () => {
+describe('the @smogon/calc dependency stays confined to the modules that need its formulas', () => {
   it('is imported by exactly the allowed files, nowhere else', () => {
     const importers = allSourceFiles('src').filter((path) =>
       importStatements(readFileSync(path, 'utf8')).some((s) => s.specifier.startsWith('@smogon/calc')),
     );
     expect(importers.sort()).toEqual([...ALLOWED_IMPORTERS].sort());
+  });
+
+  it('is reached past its PUBLISHED surface from one module only', () => {
+    const deep = allSourceFiles('src').filter((path) =>
+      importStatements(readFileSync(path, 'utf8')).some((s) => s.specifier.includes('/dist/')),
+    );
+    expect(
+      deep,
+      "A '/dist/' import reaches past what the package publishes, so semver does not cover it. " +
+        `Bind it in ${ALLOWED_DEEP_IMPORTER} against a type stated in the package's own PUBLIC ` +
+        'surface, and import that binding instead.',
+    ).toEqual([ALLOWED_DEEP_IMPORTER]);
   });
 });
 

@@ -19,11 +19,11 @@
 // This answers "who is faster", not "who acts first" — priority moves, Gale Wings,
 // Quick Claw are deliberately out of scope (the native tooltip already shows moves).
 
-// Deep import, deliberately: getFinalSpeed is implemented and typed in @smogon/calc
-// but not re-exported from the package index. The package has no `exports` map, so
-// the path is reachable — and speed.test.ts pins known composite values, so a calc
-// upgrade that moves or changes it fails the build instead of the hover.
-import {getFinalSpeed} from '@smogon/calc/dist/mechanics/util';
+// The speed arithmetic is one of the two functions the calc implements but does not
+// publish; core/calcinternals.ts owns that reach and the contract it is bound against.
+// speed.test.ts pins known composite values on top, so a calc upgrade that changes what
+// the function DOES — rather than its shape — fails the build instead of the hover.
+import {finalSpeedOf} from './calcinternals.js';
 import {Field, Generations, type GenerationNum} from '@smogon/calc';
 import {buildPokemon} from './damage.js';
 import {labelBuckets} from './variants.js';
@@ -50,7 +50,7 @@ export function finalSpeed(mon: ResolvedMon, ctx: SpeedContext = {}): number {
     ...(ctx.field?.terrain ? {terrain: ctx.field.terrain} : {}),
     attackerSide: {isTailwind: Boolean(ctx.tailwind)},
   });
-  return getFinalSpeed(gen, pokemon, field, field.attackerSide);
+  return finalSpeedOf(gen, pokemon, field, field.attackerSide);
 }
 
 /** One distinct possible speed for a mon whose set isn't fully revealed. */

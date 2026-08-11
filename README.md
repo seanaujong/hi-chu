@@ -32,8 +32,6 @@ network unless that IS its job.
 
 ### Producing a damage number
 
-Dependencies only ever point downward:
-
 ```
 ┌───────────────────────────────────────────────────────────────┐
 │ content.ts                           the shell (impure) · DOM │
@@ -115,13 +113,7 @@ Dependencies only ever point downward:
 ### Narrowing what the foe could be
 
 The pipeline above answers *what would this move do*. The half that makes the tooltip worth
-reading answers *what could that Pokémon even be* — and it runs on nothing but the public
-log, which is what makes the mirror it shows on our own Pokémon honest.
-
-Evidence arrives in three kinds, and each is blind to what the others see. A Choice Scarf
-changes no damage number, so only move order can find it. An Assault Vest changes no damage
-its holder *deals*, so only a hit into it can. A Life Orb rules itself out by staying
-silent, having never taken its recoil.
+reading answers *what could that Pokémon even be*.
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
@@ -165,21 +157,6 @@ silent, having never taken its recoil.
 │ disagree about one set                                        │
 └───────────────────────────────────────────────────────────────┘
 ```
-
-Two things there are easy to miss. The calc runs **twice** per hover, asked different
-questions: `itemreveal.ts` reruns it over each still-possible set to ask *could this one
-have dealt what I saw?*, and only the survivors reach the pipeline above, which asks *what
-does this one do next?*. That is a loop in the dataflow, not in the imports — the
-sequencing lives in `section.ts`, and the module graph has no cycle. And this whole layer
-needs a pool to narrow, so unlike the damage pipeline it is **Random-Battle-only**: an open
-format has no feed to enumerate, so a foe hover carries none of this and the move tooltip
-brackets the spread instead.
-
-Every reading is judged against the state the observation happened *under*, never the state
-on screen. A move's own secondary stat drop lands between the hit and the hover, and so does
-any HP either side has lost since. Getting that wrong does not blur a verdict so much as
-invert one: Blaze's ×1.5 is the same multiplier as Choice Specs', so a pinched Pokémon read
-at full health convicts the item it does not hold.
 
 For exact shapes and signatures, read the source and the `*.test.ts` next to each module —
 the tests double as worked examples, pinned against real Showdown numbers.

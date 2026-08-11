@@ -735,6 +735,16 @@ picture and not in this list, this list is the thing that's wrong.
       DEFENDING — `fieldDefendingUs` and `fieldDefendingThem` are separate NAMED fields
       because two `FieldFacts` in a row is a swap waiting to happen. Adding a fourth reveal
       source = one field on `LogObservations` and one branch here.
+    - `possibilities.ts` — what a Pokémon could still BE, given a feed, with the feed held
+      behind a port (`SetSource`) this module declares. Every law here needs an
+      already-chosen `RandbatsEntry`, and CHOOSING one means reading the feed — which core
+      may not do — so the shape of the answer is declared here and the answering is
+      `data/suppliers.ts`'s job (a test supplies a literal roster instead, which is the
+      point: these laws are now testable with no feed at all). The split is not pure vs
+      impure — `data/lookup.ts` is perfectly pure — but which side a change belongs to: a
+      feed that keys Megas differently is a `SetSource` change; which abilities can hide a
+      Zoroark, or what counts as a still-possible set, is a change here. Which is why
+      `SetSource` ENUMERATES the feed rather than pre-filtering it.
     - `speedreveal.ts` — the move-ORDER law, and the third direction a reveal can come
       from: `deductions.ts` reads whether a side effect fired, `itemreveal.ts` what number a
       hit dealt, and this one who moved first. Move order is a fact about the PAIR and our
@@ -770,7 +780,9 @@ picture and not in this list, this list is the thing that's wrong.
     the case we can only SUSPECT; this is the one the client tells us outright.
   - `assume.ts` — the OPEN-format assumption law (no feed): the foe's unknown spread
     bracketed by its two honest extremes on the axis the move attacks, crossed with the
-    species' dex abilities. A second producer of `SetVariant`s, reusing `resolve`'s
+    species' dex abilities. Supplies its own `DefenderVariantsFor` adapter
+    (`openVariantsFor`), memoised per move category — the arrangement `damage.ts`'s note on
+    `moveCategory` already described. A second producer of `SetVariant`s, reusing `resolve`'s
     `buildResolved` writer but never `narrow` (see the invariant below).
   - `variantdamage.ts` — one move's damage over every set the other side could still BE:
     one calc run per still-possible variant, the unmodellable ones dropped, the rest handed
@@ -801,6 +813,12 @@ picture and not in this list, this list is the thing that's wrong.
 - `src/data/lookup.ts` — pure reads over an already-fetched feed (`pickEntry`, the Mega
   lookups, the Champions stat-point conversion) — split out of `randbats.ts` so `section.ts`
   can depend on the lookups without also depending on a file that calls `fetch`.
+- `src/data/suppliers.ts` — the randbats feed wired to the `SetSource` port
+  `core/possibilities.ts` declares. Only WIRING lives here: every question it answers is
+  "where in the feed is that", never "what does it mean". It is also where the feed's two
+  irregularities are absorbed — a held Mega stone redirecting to a forme whose key does not
+  follow from the base species' name, and the shape-fixes `lookup.ts` applies — so core sees
+  neither. The roster is enumerated once per source rather than once per call.
 - `src/section.ts` — pure shell orchestration, one builder per tooltip surface:
   `buildMoveSection(battle, pokemon, moveName, data)` for move-button hovers and
   `buildPokemonSection(battle, pokemon, data)` for Pokémon hovers (foe → possible sets
@@ -952,7 +970,7 @@ was always undefined.
 | `battle.myPokemon` feeds OUR-view surfaces only, never the opponent's-knowledge views | 👁 | `battle/readState.ts` (`readOwnServerPokemon`), `section.ts` | `section.test.ts`, `readState.test.ts` |
 | Which section a surface shows is read from ONE table, never re-derived per section — and every empty cell records why (`withheld` = redundancy, `private` = privacy) | ✅ | `core/surfaces.ts` (`SURFACES`, `previewsSwitchInHazards`, `hasMatchupBlock`) | `surfaces.test.ts`, `surfaces-grid.test.ts`, `section.test.ts` |
 | Hovering our OWN Pokémon leads with the matchup view — outgoing lines withheld for the mon already on the field; the mirror below stays public | ✅ | `section.ts` (`ownMovesSection`, `ownHoverMatchup`, `buildSwitchSection`) | `section.test.ts`, `render.test.ts`, `readState.test.ts`, `content.test.ts` |
-| The matchup view's defensive half — the `Incoming:` group | ✅ | `section.ts` (`randbatsIncomingMovesFor`, `ownMovesSection`) | `section.test.ts`, `render.test.ts` |
+| The matchup view's defensive half — the `Incoming:` group | ✅ | `core/possibilities.ts` (`incomingMovesFor`), `section.ts` (`ownMovesSection`) | `section.test.ts`, `render.test.ts` |
 | Hovering a FOE's roster icon shows OUR active's damage into it | ✅ | `section.ts` (`foeSwitchInDamage`) | `section.test.ts` |
 | A LANDED damaging hit with no item revealed rules Life Orb out | ✅ | `core/deductions.ts`, `battle/readState.ts` (`hasLandedDamagingHit`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts` |
 | Taking entry-hazard damage rules Heavy-Duty Boots out; switching in unharmed confirms it | ✅ | `core/deductions.ts`, `battle/readState.ts` | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts` |
@@ -979,7 +997,7 @@ was always undefined.
 | Protean/Libero grant STAB only until they FIRE — gen 9 converts once per switch-in, where the calc still models gens 6-8 | ✅ | `core/damage.ts` (`calcAbility`), `battle/readState.ts` (`proteanAlreadyFired`) | `damage.test.ts`, `readState.test.ts`, `section.test.ts` |
 | A Transformed Pokémon is calculated as the one it COPIED, keeping only its own HP | ✅ | `core/transform.ts`, `section.ts` (`factsReader`) | `transform.test.ts`, `readState.test.ts`, `section.test.ts` |
 | An ability narrows a role only if a SET could have been built with it | ✅ | `core/narrow.ts` (`buildableAbilities`) | `resolve.test.ts` |
-| A disguised Zoroark surfaces as its own candidate, never a corrupted one | ✅ | `core/illusion.ts`, `section.ts` (`illusionVariants`) | `illusion.test.ts`, `variants.test.ts`, `render.test.ts` |
+| A disguised Zoroark surfaces as its own candidate, never a corrupted one | ✅ | `core/illusion.ts`, `core/possibilities.ts` (`illusionVariants`, `suspectsFor`) | `illusion.test.ts`, `variants.test.ts`, `render.test.ts` |
 | Our OWN disguised Zoroark is seen through — the private team names it | ✅ | `section.ts` (`ownTruth`), `battle/readState.ts` (`readOwnServerPokemon`) | `section.test.ts`, `readState.test.ts` |
 | Set inference keys on the INNATE ability (`baseAbility`), not the live one | ✅ | `core/facts.ts` (`innateAbility`) | `resolve.test.ts`, `readState.test.ts` |
 | …and only when the species could actually HAVE that ability | ✅ | `core/facts.ts` (`innateAbility`) | `resolve.test.ts` |

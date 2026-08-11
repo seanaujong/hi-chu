@@ -451,6 +451,26 @@ export interface ObservedHit {
   readonly defenderHpPercent: number;
 }
 
+/**
+ * The still-possible defending sets for one move, per Pokémon — the port both formats plug
+ * into. A randbats adapter closes over the feed (every foe's variants are the same whatever
+ * we throw at them); an open-format one brackets the spread on the axis THIS move attacks,
+ * so its variants depend on the move's category.
+ */
+export type DefenderVariantsFor = (defenderFacts: LiveFacts) => (moveName: string) => readonly SetVariant[];
+
+/**
+ * Every distinct move a Pokémon could still attack WITH, paired with the attacker variants
+ * that could carry it — the mirror of `DefenderVariantsFor`. There a fixed move fans out
+ * over hidden defending sets; here a fixed defender fans out over hidden attacking ones, one
+ * entry per still-possible move. `known` marks a move actually used, the same ✓ the sets
+ * view carries. Only a feed can supply this: an assumed spread has no move pool to
+ * enumerate, so an open format supplies nothing rather than branching inside the surface.
+ */
+export type IncomingMovesFor = (
+  foeFacts: LiveFacts,
+) => readonly {readonly move: string; readonly known: boolean; readonly variants: readonly SetVariant[]}[];
+
 export interface SetVariant {
   readonly mon: ResolvedMon;
   /** The role this variant assumes ('' for role-less older-gen entries). */

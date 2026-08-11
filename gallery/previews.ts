@@ -24,7 +24,7 @@
 // which is exactly the wait this file exists to delete.
 
 import {buildMoveSection, buildPokemonSection, buildSwitchSection} from '../src/section.js';
-import {loadBattle, scenarioData, scenarioDataItemAbilitySplit, scenarioDataTwinRoles, scenarioDataWithCharizard, scenarioDataWithDitto, scenarioDataWithEmboar, scenarioDataWithGreninja} from '../src/scenario.js';
+import {loadBattle, scenarioData, scenarioDataItemAbilitySplit, scenarioDataWithAmoonguss, scenarioDataTwinRoles, scenarioDataWithCharizard, scenarioDataWithDitto, scenarioDataWithEmboar, scenarioDataWithGreninja} from '../src/scenario.js';
 
 // Re-exported so the gallery can style its panels with the very stylesheet the extension
 // injects, rather than a copy of it that could drift.
@@ -44,10 +44,10 @@ export interface Preview {
 type Overrides = Parameters<typeof loadBattle>[0];
 
 /** Our move button, hovered: `move`'s damage into the foe active. */
-function moveHover(name: string, note: string, over: Overrides, move: string, teraSelected = false): Preview {
+function moveHover(name: string, note: string, over: Overrides, move: string, teraSelected = false, data = scenarioData): Preview {
   const {battle, active} = loadBattle(over);
   const us = active(over?.ourZoroark ? 'Zoroark-Hisui' : 'Noivern');
-  return {surface: 'Our move button', name, note, html: buildMoveSection(battle, us, move, scenarioData, teraSelected)};
+  return {surface: 'Our move button', name, note, html: buildMoveSection(battle, us, move, data, teraSelected)};
 }
 
 /** A Pokémon hovered — the foe's (sets + threat) or our own (the matchup view). */
@@ -137,6 +137,28 @@ export const PREVIEWS: readonly Preview[] = [
     'Same verdict, different reason, and not a contrivance: gen9 randbats gives Noivern exactly one ability, so every Noivern in the format walks through a doll — which is why the absorbing previews above had to send out a different Pokémon.',
     {tentacruelSubstitute: 'fresh'},
     'Draco Meteor',
+  ),
+  moveHover(
+    'Strength Sap, and the cap that decides it',
+    'A move the calc computes as nothing: it siphons the target’s Attack as HP rather than dealing damage. What it is WORTH is not the question — a siphon bigger than the room to gain it is wasted, so the line states where the sap leaves us. Their Emboar is the target; ours is on 30%.',
+    {foeEmboar: true, myNoivernHpPercent: 0.3},
+    'Strength Sap',
+    false,
+    scenarioDataWithEmboar,
+  ),
+  moveHover(
+    'The same sap, turned round by Liquid Ooze',
+    'Tentacruel’s only randbats ability inverts a siphon into damage, so healing off it costs us instead. Amber, never the KO red — red on this tooltip means a hit KOes THEM, and wearing it on a cost to ourselves would read as exactly the opposite.',
+    {myNoivernHpPercent: 0.3},
+    'Strength Sap',
+  ),
+  moveHover(
+    'A sap whose amount the set has not settled',
+    'The randbats generator zeroes both the EVs and the IVs of a set with no physical move, so Amoonguss’s two surviving roles disagree about its Attack — and a move that heals by that stat turns the gap into two numbers. No damage surface can see it: neither role attacks with the stat.',
+    {foeAmoonguss: true, myNoivernHpPercent: 0.3},
+    'Strength Sap',
+    false,
+    scenarioDataWithAmoonguss,
   ),
   pokemonHover(
     'Foe active',

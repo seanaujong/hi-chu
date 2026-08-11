@@ -59,6 +59,29 @@ export const scenarioDataWithEmboar = {
 } as unknown as RandbatsData;
 
 /**
+ * The same feed plus Amoonguss's real gen9 randbats entry, verbatim from the live feed.
+ *
+ * Brought along for the one axis a set's SPREAD can differ on. The generator zeroes both
+ * the EVs and the IVs of a set with no physical move, so Amoonguss's two roles genuinely
+ * disagree about its Attack — Bulky Support carries none, Bulky Attacker the flat 85 —
+ * and nothing else in the captured battle does. That gap is invisible to every damage
+ * surface, since neither role attacks with the stat; it is Strength Sap, which heals by
+ * the target's Attack, that turns it into two different numbers on the tooltip.
+ */
+export const scenarioDataWithAmoonguss = {
+  ...(scenarioData as object),
+  Amoonguss: {
+    level: 82,
+    abilities: ['Regenerator'],
+    items: ['Leftovers', 'Rocky Helmet'],
+    roles: {
+      'Bulky Support': {abilities: ['Regenerator'], items: ['Leftovers', 'Rocky Helmet'], teraTypes: ['Steel', 'Water'], moves: ['Clear Smog', 'Giga Drain', 'Sludge Bomb', 'Spore', 'Toxic'], evs: {atk: 0}, ivs: {atk: 0}},
+      'Bulky Attacker': {abilities: ['Regenerator'], items: ['Leftovers', 'Rocky Helmet'], teraTypes: ['Steel', 'Water'], moves: ['Giga Drain', 'Sludge Bomb', 'Spore', 'Stomping Tantrum']},
+    },
+  },
+} as unknown as RandbatsData;
+
+/**
  * The same feed plus Greninja's real gen9 randbats entry, verbatim from the live feed.
  *
  * Brought along for Protean, which nothing in the captured battle has and which is the one
@@ -169,7 +192,7 @@ export const scenarioDataItemAbilitySplit = {
  * The client's classes are untyped and cyclic, so the reconstruction casts through
  * `unknown` — the shapes match readState's structural interfaces.
  */
-export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; farStealthRock?: boolean; farSpikes?: number; tentacruelHpPercent?: number; foeDitto?: 'transformed' | 'plain'; foeEmboar?: boolean; foeCharizardHpPercent?: number; foeGreninja?: 'unspent' | 'converted'; noivernBoosts?: Record<string, number>; foeMovedFirst?: boolean; ourZoroark?: boolean; tentacruelSubstitute?: 'fresh' | 'dented'; noivernSubstitute?: 'fresh' | 'dented'} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
+export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; farStealthRock?: boolean; farSpikes?: number; tentacruelHpPercent?: number; foeDitto?: 'transformed' | 'plain'; foeEmboar?: boolean; foeAmoonguss?: boolean; foeCharizardHpPercent?: number; foeGreninja?: 'unspent' | 'converted'; noivernBoosts?: Record<string, number>; foeMovedFirst?: boolean; ourZoroark?: boolean; tentacruelSubstitute?: 'fresh' | 'dented'; noivernSubstitute?: 'fresh' | 'dented'} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
   const sides: ClientSide[] = fixture.battle.sides.map((s, i) => {
     // Tailwind blows on OUR side (index 0) only — the asymmetry is the point: it must
     // double our speed and leave the foe's alone, whichever side a caller orients on.
@@ -241,6 +264,15 @@ export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?
   // for one Pokémon — and our Noivern, at 249, moves first against both. The state exists to
   // be looked at: it is where the ⚡ line has something true to say about the foe's speed
   // that changes nothing about the answer.
+  // Swap the foe active for an Amoonguss with nothing revealed, so BOTH its roles survive
+  // — the one fixture whose surviving sets disagree about the target's own Attack.
+  if (over.foeAmoonguss) {
+    const amoonguss = {
+      speciesForme: 'Amoonguss', level: 82, hp: 321, maxhp: 321, status: '', boosts: {},
+      terastallized: '', ident: 'p2: Amoonguss', side: sides[1], item: '', moveTrack: [],
+    };
+    (sides[1]!.active as (ClientPokemon | null)[])[0] = amoonguss as unknown as ClientPokemon;
+  }
   if (over.foeEmboar) {
     const emboar = {
       speciesForme: 'Emboar', level: 84, hp: 322, maxhp: 322, status: '', boosts: {},

@@ -533,6 +533,10 @@ arguments the client passes them.
   foe active, so doubles renders two.
 - **Pain Split** (`renderPainSplit`) — replaces Damage for that one move; it redistributes
   HP rather than dealing any, so the calc returns nothing to show.
+- **Strength Sap** (`renderStrengthSap`) — replaces Damage for that one move too, and for
+  the same reason: it siphons the target's Attack as HP rather than dealing damage. States
+  where the sap leaves US, one line per distinct outcome when the target's surviving sets
+  disagree about its Attack. Amber when Liquid Ooze turns the siphon round.
 - **⚡ speed verdict** (`renderSpeedSection`) — who moves first, as a fact about the (ours,
   theirs) PAIR. Appears standalone leading a foe hover, and again inside each matchup block.
 - **Matchup blocks** (`renderOwnMovesSection`) — one "vs \<foe\>" block per foe active,
@@ -710,6 +714,13 @@ picture and not in this list, this list is the thing that's wrong.
     plus the three non-sound bypassers and Infiltrator, which it doesn't). The calc models
     none of this, so the whole mechanic is ours — including the rule that no KO may be
     claimed through a standing doll, which `render.ts` enforces.
+  - `strengthsap.ts` — the siphon law: a move that deals no damage and heals by a STAT.
+    Showdown reads the target's Attack with boosts APPLIED and every other modifier
+    SKIPPED (no Choice Band, no Huge Power), so the amount is exact per still-possible
+    set rather than a roll — which is why it buckets distinct outcomes the way
+    `speed.ts` does rather than the way `damage.ts` does. Reports where the sap LEAVES
+    us, because the cap is most of the answer. Liquid Ooze inverts it; Big Root is a
+    deliberate gap (no randbats set holds one).
   - `transform.ts` — the Transform law (Ditto's Imposter): a Pokémon that has copied another
     one WHOLE. `transformCopy` builds the copy (the target's body and final numbers, wearing
     the copier's HP — the one stat Transform never takes); `applyTransform` overlays it on the
@@ -927,6 +938,7 @@ was always undefined.
 | One hit of a multi-hit move is asked for as TWO — a single hit takes gen 9's Tera 60 BP floor, which no multi-hit move ever takes | ✅ | `core/damage.ts` (`TERA_FLOOR_SAFE_HITS`) | `damage.test.ts` |
 | Rage Fist's power scales with the ATTACKER's own hits taken | ✅ | `core/damage.ts` (`rageFistPower`), `battle/readState.ts` (`timesAttacked`) | `damage.test.ts`, `readState.test.ts`, `transform.test.ts` |
 | A move with NO base power takes its damage from a callback over current HP — one exact amount, no nHKO ladder, but still stopped by an immunity | ✅ | `core/moves.ts` (`damageCallback`), `core/damage.ts` (`connects`) | `damage.test.ts`, `section.test.ts` |
+| Strength Sap heals by the target's Attack with BOOSTS applied and every other modifier skipped — exact per set, so distinct outcomes bucket rather than a range | ✅ | `core/strengthsap.ts` (`sappedAttack`, `strengthSap`), `core/render.ts` (`renderStrengthSap`) | `strengthsap.test.ts`, `render.test.ts`, `section.test.ts` |
 | A Substitute is a shield, and the tooltip says ONE thing about it: how many hits break the doll — cumulative per HIT, never spilled over | ✅ | `core/substitute.ts`, `core/damage.ts` (`substituteStanding`) | `substitute.test.ts`, `damage.test.ts`, `section.test.ts` |
 | NO KO may be claimed while a Substitute stands — the KO text, the nHKO ladder, the Sash aside and the sets view's danger tiers go together | ✅ | `core/render.ts` (`blockedBySubstitute`, `koTier`) | `render.test.ts`, `section.test.ts` |
 | A Shed Tail sub is sized on its MAKER's max HP, not the Pokémon wearing it; a dented one caps the count rather than bracketing it | ✅ | `core/substitute.ts` (`substituteHP`), `battle/readState.ts` (`readSubstitute`), `section.ts` (`shedTailMakerMaxHP`) | `substitute.test.ts`, `readState.test.ts`, `damage.test.ts` |

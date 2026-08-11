@@ -83,7 +83,7 @@ describe('the @smogon/calc dependency stays confined to the modules that need it
   });
 });
 
-describe('the pure core never imports back into the shell (fetch/render.ts stays a leaf)', () => {
+describe('the pure core never imports back into the shell (read/render stays a leaf)', () => {
   it('no file under src/core imports from battle/, data/, content.ts, or section.ts', () => {
     const offenders = allSourceFiles('src/core').filter((path) =>
       localImports(path).some((s) => /^\.\.\/(battle|data|content|section)/.test(s.specifier)),

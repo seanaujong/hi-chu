@@ -26,7 +26,7 @@ The design is a small pure core behind a thin shell, and the shell itself splits
 `content.ts` is the only *impure* piece — it monkey-patches Showdown's tooltip and touches
 the DOM/network directly — but it hands the actual work to `section.ts`, which is pure
 (no DOM, no cache, no network of its own) and does the real folding. Below that, three
-steps stay strictly separate — **fetch** (the live page, the network), **reason** (the
+steps stay strictly separate — **read** (the live page, the network), **reason** (the
 domain logic), **render** (model → HTML) — so a step never reaches into the DOM or the
 network unless that IS its job.
 
@@ -43,13 +43,13 @@ network unless that IS its job.
 ┌───────────────────────────────────────────────────────────────┐
 │ section.ts                                  pure orchestrator │
 │ given the battle, the hover, and the data                     │
-│ → folds FETCH → REASON → RENDER into one HTML string          │
+│ → folds READ → REASON → RENDER into one HTML string           │
 └───────────────────────────────────────────────────────────────┘
-──────────── the pipeline — FETCH → REASON → RENDER ─────────────
+──────────── the pipeline — READ → REASON → RENDER ──────────────
                                 │
                                 ▼
 ┌───────────────────────────────────────────────────────────────┐
-│ FETCH                            reads the page + the network │
+│ READ                            the live page + the sets feed │
 │ ┌───────────────────────────┐   ┌───────────────────────────┐ │
 │ │ battle/readState.ts       │   │ data/randbats.ts          │ │
 │ │ client Pokemon objects    │   │ fetch + cache             │ │
@@ -102,7 +102,7 @@ network unless that IS its job.
 └───────────────────────────────────────────────────────────────┘
                                 │ tooltip HTML
                                 ▼
-──────────── the pipeline — FETCH → REASON → RENDER ─────────────
+──────────── the pipeline — READ → REASON → RENDER ──────────────
 ┌───────────────────────────────────────────────────────────────┐
 │ section.ts                                  pure orchestrator │
 │ the folded pipeline result                                    │
@@ -116,6 +116,7 @@ The pipeline above answers *what would this move do*. The half that makes the to
 reading answers *what could that Pokémon even be*.
 
 ```
+────────── inside READ → REASON — observe, then judge ───────────
 ┌───────────────────────────────────────────────────────────────┐
 │ battle/readState.ts                               public only │
 │ the protocol log — evidence about turns already FOUGHT,       │

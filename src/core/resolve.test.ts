@@ -232,6 +232,26 @@ describe('resolveVariants — the still-possible sets to calc over', () => {
       .toEqual(['Assault Vest']);
   });
 
+  it('drops the Choice variants once a status move has ruled them out', () => {
+    // The seam for the set-shape rule, on Gardevoir's real role: three items, two of them
+    // Choice. A single Calm Mind is enough — where the LOCK rule next door would still be
+    // waiting for a second freely-chosen move — and what it buys is concrete: the Choice
+    // Specs bucket is a ×1.5 damage line, and the Scarf is the ⚡ verdict's "if it is
+    // Scarfed" aside. Both are phantoms the moment the boost goes up.
+    const base = gardevoirFacts({baseAbility: 'Trace', revealedMoves: ['Psychic']});
+    expect(items(resolveVariants(base, GARDEVOIR)).sort()).toEqual(['Choice Scarf', 'Choice Specs', 'Life Orb']);
+    const setup = gardevoirFacts({baseAbility: 'Trace', revealedMoves: ['Calm Mind'], revealedStatusMoves: ['Calm Mind']});
+    expect(items(resolveVariants(setup, GARDEVOIR))).toEqual(['Life Orb']);
+  });
+
+  it('keeps them for the status move the generator pairs with a Choice item', () => {
+    // Trick is in the same Gardevoir pool, and it is the counterexample the rule is built
+    // around: a Trick set holds a Choice item BECAUSE it Tricks. Reading it as evidence
+    // against one would rule out the very set most likely to be standing there.
+    const trick = gardevoirFacts({baseAbility: 'Trace', revealedMoves: ['Trick'], revealedStatusMoves: ['Trick']});
+    expect(items(resolveVariants(trick, GARDEVOIR)).sort()).toEqual(['Choice Scarf', 'Choice Specs', 'Life Orb']);
+  });
+
   it('rules out a Choice-ONLY role outright, not just its item line', () => {
     // The knock-on through `narrow.roleMatches`: a role whose entire item pool is ruled out
     // can no longer be what this Pokémon is, so it leaves the candidate list altogether.

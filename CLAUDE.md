@@ -14,7 +14,9 @@ own moves would do INTO that mon, so a switch decision reads both "can it threat
 "does it survive?" in one place (randbats-only, like the ⚡ verdict below). In a
 **Random Battle** those surfaces sit atop the information game — hovering a
 **Pokémon** shows which randbats sets are still possible given every public reveal (moves
-used, item incl. consumed/knocked-off, ability), with damage vs our active attached on
+used, item incl. consumed/knocked-off, ability) and what the SHAPE of a randbats set
+forbids — a status move means no Choice item, and a revealed Choice item means no status
+move — with damage vs our active attached on
 the opponent's tooltip and the mirror ("their read on you") on our own; a **⚡ speed-order
 verdict** (exact randbats speeds, a surviving Scarf set as an "if …" aside where it FLIPS
 the verdict — a set that reaches the same answer earns no clause, Trick Room
@@ -611,7 +613,10 @@ it is a design constraint held at review.
   ambiguous — an unknown ident, an empty log — resolves to "no signal". Prefer MISSING a
   rule-out to making a false one. See the Life Orb, Heavy-Duty Boots, Choice, Air Balloon
   and status-orb rows — the last two invert the others (they are the items that ANNOUNCE
-  themselves, so their silence is the evidence), but obey the same preference. Its strongest
+  themselves, so their silence is the evidence), but obey the same preference. The
+  Choice/status-move rule is the odd one out and worth knowing as such: its evidence is not
+  behaviour at all but the SHAPE the generator builds sets in, so no ability can excuse it
+  and its exceptions are seven MEASURED moves instead. Its strongest
   form is that **a deduction may NARROW the candidate roles but never empty them**: a
   rule-out is an inference from something that did not happen, so one that kills every role
   is likelier to be the inference failing than the species being impossible. See *A
@@ -670,7 +675,20 @@ picture and not in this list, this list is the thing that's wrong.
       silent no-op. A new OBSERVATION it reads from the protocol log belongs in
       `readState.ts` as a `BehaviorSignals` field; the Life Orb and Boots rows in the
       invariant index name the pattern to copy. Keeps the matcher general (it filters a
-      pool, it doesn't know mechanics).
+      pool, it doesn't know mechanics). A rule-out read from how a set was BUILT rather
+      than from anything it did belongs one file over, in `choiceitems.ts`.
+    - `choiceitems.ts` — the set-shape law, and `deductions.ts`' sibling in kind: a Choice
+      item and a status move never share a randbats set, so a status move seen rules the
+      three items OUT and a revealed Choice item rules the status moves out of what the set
+      could still be RUNNING. One law, two directions, the way `itemreveal.ts` reads a hit
+      at both ends. What separates it from every rule next door is that it reads no
+      BEHAVIOUR: the sim will happily lock a Choice Band holder into Swords Dance, and what
+      cannot happen is the GENERATOR handing that set out — which is also why it needs no
+      ability guard, since no ability changes how a set was built. Its seven exceptions
+      (Trick, Switcheroo, Healing Wish, Transform, Nature Power, Baton Pass, Parting Shot)
+      are MEASURED, not recalled — `npm run choice-exclusions` re-derives them from
+      Showdown's own generator, and a missing one is a false deduction rather than a
+      missed one. Adding a status move to the exception list = re-run that script.
     - `narrow.ts` — the evidence law: `roleMatches` + `selectRoles` narrow roles by ALL
       public evidence (moves, item incl. `prevItem`, innate ability, active Tera) plus the
       deduction rule-outs. The one place the "which roles survive" rule lives —
@@ -923,6 +941,9 @@ was always undefined.
 | Two freely-chosen moves in ONE stint rule out all three Choice items — scoped per stint, since the lock dies on switch-out | ✅ | `core/deductions.ts`, `battle/readState.ts` (`usedDifferentMovesSinceSwitchIn`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts` |
 | A switch-in that announced nothing rules Air Balloon out — the one item that always reveals itself, so SILENCE is the evidence | ✅ | `core/deductions.ts`, `battle/readState.ts` (`switchedInWithoutAnnouncingBalloon`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts`, `section.test.ts` |
 | A turn that ended with its holder un-statused rules out Flame Orb AND Toxic Orb — the same silence, at a moment that comes round every turn | ✅ | `core/deductions.ts`, `battle/readState.ts` (`endedTurnUnstatused`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts`, `section.test.ts` |
+| A status move rules out all three Choice items — a claim about how the set was BUILT, so it needs no ability guard and settles on the FIRST such move | ✅ | `core/choiceitems.ts` (`choiceRuledOutByStatusMoves`), `core/deductions.ts` (`choiceRuledOutBySetShape`) | `choiceitems.test.ts`, `deductions.test.ts`, `resolve.test.ts`, `section.test.ts` |
+| …and the same law backwards: a revealed Choice item rules the status moves out of what the set could still be RUNNING, pruned against the very Items line the block prints | ✅ | `core/choiceitems.ts` (`movesUnderChoiceItem`), `core/narrow.ts` (`candidateMoves`) | `choiceitems.test.ts`, `knowledge.test.ts`, `section.test.ts` |
+| The seven status moves a Choice set DOES hold are measured from Showdown's own generator, never recalled — a missing one is a FALSE deduction | ✅ | `core/choiceitems.ts` (`PAIRS_WITH_CHOICE`), `scripts/choice-exclusions.mjs` | `choiceitems.test.ts`, `npm run choice-exclusions` |
 | A deduction narrows the candidate roles but never empties them — nor the item pool a chosen role calcs with | ✅ | `core/narrow.ts` (`consistentRoles`, `candidateItems`) | `resolve.test.ts` |
 | ONE rule decides a candidate's item pool, so the block's Items line and its damage can't disagree | ✅ | `core/narrow.ts` (`candidateItems`) | `resolve.test.ts`, `section.test.ts` |
 | A log reading goes stale only when the state really MOVED — the weather's end-of-turn tick announces the weather, it does not change it | ✅ | `battle/readState.ts` (`changesState`, `STATE_CHANGING_TAGS`) | `readState.test.ts`, `npm run drift-check` |

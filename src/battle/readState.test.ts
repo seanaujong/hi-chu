@@ -1,6 +1,8 @@
 import {describe, it, expect} from 'vitest';
 import {
   toLiveFacts,
+  readBehaviors,
+  statusMoveReader,
   readLiveForme,
   readLiveTypes,
   readRoosting,
@@ -896,6 +898,63 @@ describe('proteanAlreadyFired (gen 9 fires Protean/Libero once per switch-in)', 
   it('ignores another Pokémon’s conversion', () => {
     const theirs = '|-start|p1a: Cinderace|typechange|Fire|[from] ability: Libero';
     expect(proteanAlreadyFired(withLog([IN, theirs]), greninja)).toBe(false);
+  });
+});
+
+describe('reading a move CATEGORY off the client dex (the set-shape law\u2019s one input)', () => {
+  // The dex is the only source for this: the pure core carries no move data, and a table of
+  // status moves would rot against a client dex that is always current.
+  const withDex = (): ClientBattle =>
+    ({
+      gen: 9,
+      tier: '[Gen 9] Random Battle',
+      sides: [],
+      dex: {
+        species: {get: () => undefined},
+        moves: {
+          get: (n: string) =>
+            ({
+              'Calm Mind': {priority: 0, category: 'Status', type: 'Psychic'},
+              Trick: {priority: 0, category: 'Status', type: 'Psychic'},
+              Psychic: {priority: 0, category: 'Special', type: 'Psychic'},
+            })[n],
+        },
+      },
+    }) as unknown as ClientBattle;
+
+  it('reports the status moves a Pok\u00e9mon has been SEEN using, and only those', () => {
+    const mon = clientMon({ident: 'p2: Gardevoir', moveTrack: [['Calm Mind', 0], ['Psychic', 0]]});
+    expect(readBehaviors(withDex(), mon).revealedStatusMoves).toEqual(['Calm Mind']);
+  });
+
+  it('leaves out a move the dex cannot place, rather than guessing it is one', () => {
+    // Over-reporting here would rule out an item the Pok\u00e9mon may well be holding, which is
+    // the failure this whole layer prefers to avoid.
+    const mon = clientMon({ident: 'p2: Gardevoir', moveTrack: [['Invented Move', 0]]});
+    expect(readBehaviors(withDex(), mon).revealedStatusMoves).toEqual([]);
+  });
+
+  it('drops a Transform-copied move, exactly as `revealedMoves` does', () => {
+    // A "*" marks the COPIED Pok\u00e9mon's move. Reading it here would rule out an item on
+    // evidence that was never this Pok\u00e9mon's \u2014 the same trap one field over.
+    const mon = clientMon({ident: 'p2: Ditto', moveTrack: [['*Calm Mind', 0]]});
+    expect(readBehaviors(withDex(), mon).revealedStatusMoves).toEqual([]);
+  });
+
+  it('exposes the same reading as a lookup, for pool moves never used', () => {
+    // The reverse direction asks about moves in a FEED pool, which no `moveTrack` contains,
+    // so the capability has to be callable rather than precomputed.
+    const isStatus = statusMoveReader(withDex());
+    expect(isStatus('Calm Mind')).toBe(true);
+    expect(isStatus('Psychic')).toBe(false);
+    expect(isStatus('Invented Move')).toBe(false);
+  });
+
+  it('says nothing at all when the client serves no dex', () => {
+    const bare = ({gen: 9, tier: '[Gen 9] Random Battle', sides: []}) as unknown as ClientBattle;
+    const mon = clientMon({ident: 'p2: Gardevoir', moveTrack: [['Calm Mind', 0]]});
+    expect(readBehaviors(bare, mon).revealedStatusMoves).toEqual([]);
+    expect(statusMoveReader(bare)('Calm Mind')).toBe(false);
   });
 });
 

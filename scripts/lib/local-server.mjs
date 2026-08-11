@@ -43,6 +43,21 @@ function ensureInstalled() {
   execSync('npm install --no-audit --no-fund', {cwd: DIR, stdio: 'inherit'});
 }
 
+/**
+ * The checkout itself, without a server on top of it — for `choice-exclusions`, which wants
+ * Showdown's TEAM GENERATOR rather than a battle to play. Returns the path to the built
+ * `dist/sim`, building it if this checkout has only ever been cloned.
+ */
+export function ensureLocalCheckout() {
+  ensureCloned();
+  ensureInstalled();
+  if (!existsSync(`${DIR}/dist/sim/index.js`)) {
+    console.log('· building the local Showdown checkout (one-time)…');
+    execSync('node build', {cwd: DIR, stdio: 'inherit'});
+  }
+  return `${DIR}dist/sim/index.js`;
+}
+
 /** Starts the server, resolving once it's actually accepting connections on `PORT`. */
 export async function startLocalServer() {
   ensureCloned();

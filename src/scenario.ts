@@ -59,6 +59,33 @@ export const scenarioDataWithEmboar = {
 } as unknown as RandbatsData;
 
 /**
+ * The same feed plus Gardevoir's real gen9 randbats entry, verbatim from the live feed.
+ *
+ * Brought along for the shape that makes `choiceitems.ts` worth having at all: ONE role
+ * whose pool holds both Choice items and a status move. Fifty-seven roles in the live feed
+ * look like this, and they are the ones where narrowing by revealed moves cannot help —
+ * the role survives either way, so only the set-shape law can say that a Gardevoir which
+ * has clicked Calm Mind is not the Choice Specs one. Trick sits in the same pool as the
+ * counterexample that keeps the law honest.
+ */
+export const scenarioDataWithGardevoir = {
+  ...(scenarioData as object),
+  Gardevoir: {
+    level: 83,
+    abilities: ['Trace'],
+    items: [],
+    roles: {
+      'Fast Attacker': {
+        abilities: ['Trace'],
+        items: ['Choice Scarf', 'Choice Specs', 'Life Orb'],
+        teraTypes: ['Fairy', 'Fighting', 'Fire'],
+        moves: ['Calm Mind', 'Focus Blast', 'Moonblast', 'Psychic', 'Psyshock', 'Trick'],
+      },
+    },
+  },
+} as unknown as RandbatsData;
+
+/**
  * The same feed plus Amoonguss's real gen9 randbats entry, verbatim from the live feed.
  *
  * Brought along for the one axis a set's SPREAD can differ on. The generator zeroes both
@@ -192,7 +219,7 @@ export const scenarioDataItemAbilitySplit = {
  * The client's classes are untyped and cyclic, so the reconstruction casts through
  * `unknown` — the shapes match readState's structural interfaces.
  */
-export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; farStealthRock?: boolean; farSpikes?: number; tentacruelHpPercent?: number; foeDitto?: 'transformed' | 'plain'; foeEmboar?: boolean; foeAmoonguss?: boolean; foeCharizardHpPercent?: number; foeGreninja?: 'unspent' | 'converted'; noivernBoosts?: Record<string, number>; foeMovedFirst?: boolean; ourZoroark?: boolean; tentacruelSubstitute?: 'fresh' | 'dented'; noivernSubstitute?: 'fresh' | 'dented'; tentacruelTookBoomburst?: number} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
+export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; farStealthRock?: boolean; farSpikes?: number; tentacruelHpPercent?: number; foeDitto?: 'transformed' | 'plain'; foeEmboar?: boolean; foeGardevoir?: 'setup' | 'trick' | 'banded'; foeAmoonguss?: boolean; foeCharizardHpPercent?: number; foeGreninja?: 'unspent' | 'converted'; noivernBoosts?: Record<string, number>; foeMovedFirst?: boolean; ourZoroark?: boolean; tentacruelSubstitute?: 'fresh' | 'dented'; noivernSubstitute?: 'fresh' | 'dented'; tentacruelTookBoomburst?: number} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
   const sides: ClientSide[] = fixture.battle.sides.map((s, i) => {
     // Tailwind blows on OUR side (index 0) only — the asymmetry is the point: it must
     // double our speed and leave the foe's alone, whichever side a caller orients on.
@@ -284,6 +311,25 @@ export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?
   // states are the SAME Pokémon on the same turn count — the only difference is whether the
   // log carries the conversion, which is exactly the difference a player has to read off the
   // type bar and which every number on the tooltip depends on.
+  // Swap the foe active for a Gardevoir, at one of the three moments its set-shape reading
+  // turns on. Its single role pools Choice Scarf, Choice Specs and Life Orb against a move
+  // list holding both Calm Mind and Trick, so revealed-move narrowing leaves the role
+  // standing in every case and only `choiceitems.ts` separates them:
+  //   'setup'  — Calm Mind clicked, so no Choice item was ever on this set.
+  //   'trick'  — Trick clicked, the status move a Choice set holds an item BECAUSE of, so
+  //              nothing is ruled out and all three items stay.
+  //   'banded' — the item revealed instead, reading the law the other way: a Choice Specs
+  //              Gardevoir cannot be running the Calm Mind still sitting in its pool.
+  if (over.foeGardevoir) {
+    const shown = over.foeGardevoir === 'setup' ? 'Calm Mind' : over.foeGardevoir === 'trick' ? 'Trick' : 'Psychic';
+    const gardevoir = {
+      speciesForme: 'Gardevoir', level: 83, hp: 271, maxhp: 271, status: '', boosts: {},
+      terastallized: '', ident: 'p2: Gardevoir', side: sides[1],
+      item: over.foeGardevoir === 'banded' ? 'Choice Specs' : '',
+      moveTrack: [[shown, 0]],
+    };
+    (sides[1]!.active as (ClientPokemon | null)[])[0] = gardevoir as unknown as ClientPokemon;
+  }
   if (over.foeGreninja) {
     const converted = over.foeGreninja === 'converted';
     const greninja = {
@@ -338,12 +384,19 @@ export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?
     sides,
     // The client's own move dex, which is where a PRIORITY bracket is read from — the calc's
     // move data carries no negative priority at all. Only the moves these scenarios use.
-    ...(over.foeMovedFirst !== undefined
+    ...(over.foeMovedFirst !== undefined || over.foeGardevoir
       ? {dex: {
           species: {get: () => undefined},
           moves: {get: (n: string) => ({
             'Head Smash': {priority: 0, category: 'Physical', type: 'Rock'},
             'Draco Meteor': {priority: 0, category: 'Special', type: 'Dragon'},
+            // The set-shape law reads `category` and nothing else off these.
+            'Calm Mind': {priority: 0, category: 'Status', type: 'Psychic'},
+            'Trick': {priority: 0, category: 'Status', type: 'Psychic'},
+            'Focus Blast': {priority: 0, category: 'Special', type: 'Fighting'},
+            'Moonblast': {priority: 0, category: 'Special', type: 'Fairy'},
+            'Psychic': {priority: 0, category: 'Special', type: 'Psychic'},
+            'Psyshock': {priority: 0, category: 'Special', type: 'Psychic'},
           }[n])},
         }}
       : {}),

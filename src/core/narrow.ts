@@ -6,9 +6,10 @@
 //
 // Pure: no DOM, no network, no @smogon/calc.
 
-import type {LiveFacts, RandbatsEntry, RandbatsRole} from './types.js';
+import type {IsStatusMove, LiveFacts, RandbatsEntry, RandbatsRole} from './types.js';
 import {toId, innateAbility} from './facts.js';
 import {survivingItems} from './deductions.js';
+import {isChoiceItem, movesUnderChoiceItem} from './choiceitems.js';
 
 /**
  * Every ability the feed says this species can be BUILT with — the union over its roles.
@@ -145,6 +146,39 @@ export function candidateItems(
   const declared = role?.items?.length ? role.items : (entry.items ?? []);
   const abilities = role?.abilities?.length ? role.abilities : (entry.abilities ?? []);
   const surviving = survivingItems(abilities, declared, facts);
+  return surviving.length > 0 ? surviving : declared;
+}
+
+/**
+ * The moves ONE candidate could still be running — the role's own pool, with a known
+ * Choice item allowed to narrow it but never to empty it.
+ *
+ * `candidateItems`' twin, and it takes that function's answer as an argument rather than
+ * recomputing one, for the reason its docblock spends a page on: two layers deriving the
+ * same pool is how a block's Items line came to contradict the damage printed under it.
+ * Here the coupling is tighter still, because the two lines make a JOINT claim — "Choice
+ * Band" over "Swords Dance" describes a set the generator does not build (see
+ * `choiceitems.ts`). Pruning against the very list the block will display is what keeps
+ * the block honest with itself.
+ *
+ * The narrowing needs the item to be SETTLED: while a role could still be holding a Life
+ * Orb, its setup moves are all live possibilities, and only once every survivor is a
+ * Choice item does the law have anything to say. That is usually a reveal — a Knock Off
+ * exposing a Choice Band — but a role whose whole pool is Choice items qualifies from the
+ * start.
+ */
+export function candidateMoves(
+  entry: RandbatsEntry,
+  role: Pick<RandbatsRole, 'moves'> | undefined,
+  items: readonly string[],
+  isStatusMove: IsStatusMove | undefined,
+): readonly string[] {
+  // A feed omits an empty array rather than writing one, so neither list is guaranteed present.
+  const declared = role?.moves?.length ? role.moves : (entry.moves ?? []);
+  if (!isStatusMove || items.length === 0 || !items.every(isChoiceItem)) return declared;
+  const surviving = movesUnderChoiceItem(declared, isStatusMove);
+  // Never empty, for the reason `consistentRoles` gives: a deduction that leaves a
+  // Pokémon with no moves at all has failed, and saying so beats printing the finding.
   return surviving.length > 0 ? surviving : declared;
 }
 

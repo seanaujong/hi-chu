@@ -199,3 +199,34 @@ describe('inferSets', () => {
     expect(k.candidates[0]!.items).toEqual([{name: 'Life Orb', known: false}]);
   });
 });
+
+describe('a revealed Choice item narrows the moves it could still be running', () => {
+  // The other direction of `choiceitems.ts`' one law: the generator never builds a set
+  // holding a Choice item alongside a status move, so the item read tells us about the
+  // moves exactly as the moves tell us about the item.
+  const moveNames = (k: ReturnType<typeof inferSets>, i = 0): string[] => k.candidates[i]!.moves.map((o) => o.name);
+  // Standing in for the client dex over Gardevoir's pool, whose two status moves are the
+  // ones that matter: Calm Mind falls, Trick survives.
+  const isStatusMove = (name: string) => name === 'Calm Mind' || name === 'Trick';
+  const banded = () => gardevoirFacts({item: 'Choice Specs', revealedMoves: ['Psychic']});
+
+  it('drops the setup move once the item is known to be a Choice one', () => {
+    expect(moveNames(inferSets(banded(), GARDEVOIR, isStatusMove)))
+      .toEqual(['Psychic', 'Focus Blast', 'Moonblast', 'Psyshock', 'Trick']);
+  });
+
+  it('keeps Trick, which is WHY such a set holds the item', () => {
+    expect(moveNames(inferSets(banded(), GARDEVOIR, isStatusMove))).toContain('Trick');
+  });
+
+  it('narrows nothing while the item could still be the Life Orb in the same pool', () => {
+    // The item has to be SETTLED. An unrevealed Gardevoir could be any of its three items,
+    // and under a Life Orb every one of these moves is live.
+    expect(moveNames(inferSets(gardevoirFacts({revealedMoves: ['Psychic']}), GARDEVOIR, isStatusMove)))
+      .toContain('Calm Mind');
+  });
+
+  it('narrows nothing without a dex to classify moves with', () => {
+    expect(moveNames(inferSets(banded(), GARDEVOIR))).toContain('Calm Mind');
+  });
+});

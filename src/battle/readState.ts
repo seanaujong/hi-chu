@@ -6,7 +6,7 @@
 // `toLiveFacts` is pure and unit-tested with a stub; the navigation helpers are
 // thin and defensive (the client's shape can shift between releases).
 
-import type {FieldFacts, FullStats, LiveFacts, ObservedHit, OrderedMove, SpeciesData, StatID, StatusName, TerrainName, TurnOrder, WeatherName} from '../core/types.js';
+import type {FieldFacts, FullStats, IsStatusMove, LiveFacts, ObservedHit, OrderedMove, SpeciesData, StatID, StatusName, TerrainName, TurnOrder, WeatherName} from '../core/types.js';
 import {isMegaForme} from '../core/facts.js';
 import {multiHitProfile} from '../core/moves.js';
 import type {OwnSideHazards} from '../core/hazards.js';
@@ -186,6 +186,7 @@ export interface BehaviorSignals {
   readonly proteanAlreadyFired?: boolean;
   readonly timesAttacked?: number;
   readonly substitute?: SubstituteReading;
+  readonly revealedStatusMoves?: readonly string[];
 }
 
 /** What the log says about the Substitute a Pokémon is currently standing behind — the
@@ -400,13 +401,7 @@ export function findByIdent(battle: ClientBattle, ident: string): ClientPokemon 
 }
 
 export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, speciesData?: SpeciesData): LiveFacts {
-  // moveTrack entries are [name, pp]. A "*" marks a move held only by TRANSFORM: it is the
-  // COPIED Pokémon's move, and reading it as this one's would narrow its set by evidence
-  // that was never its own (a transformed Ditto "revealing" the moveset it is imitating).
-  const revealedMoves = (p.moveTrack ?? [])
-    .filter(([name]) => !name.startsWith('*'))
-    .map(([name]) => name)
-    .filter((name) => name.length > 0);
+  const revealedMoves = revealedMoveNames(p);
   const liveForme = readLiveForme(p);
   const liveTypes = readLiveTypes(p);
   const roosting = readRoosting(p);
@@ -439,6 +434,7 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, spe
     boosts,
     terastallized: Boolean(p.terastallized),
     revealedMoves,
+    revealedStatusMoves: signals.revealedStatusMoves ?? [],
     landedDamagingHit: signals.landedDamagingHit ?? false,
     tookEntryHazardDamage: signals.tookEntryHazardDamage ?? false,
     switchedIntoStealthRockUnharmed: signals.switchedIntoStealthRockUnharmed ?? false,
@@ -1255,10 +1251,46 @@ export function mostRecentCleanOrder(
   return stale ? undefined : found;
 }
 
+/**
+ * The moves this Pokémon has been SEEN using. `moveTrack` entries are [name, pp], and a
+ * "*" marks a move held only by TRANSFORM: it is the COPIED Pokémon's move, and reading it
+ * as this one's would narrow its set by evidence that was never its own (a transformed
+ * Ditto "revealing" the moveset it is imitating).
+ */
+function revealedMoveNames(p: ClientPokemon): string[] {
+  return (p.moveTrack ?? [])
+    .filter(([name]) => !name.startsWith('*'))
+    .map(([name]) => name)
+    .filter((name) => name.length > 0);
+}
+
+/**
+ * Which of the revealed moves the client's own dex calls STATUS moves — the reading behind
+ * `choiceitems.ts`' set-shape law, since the generator never pairs a status move with a
+ * Choice item. A move the dex cannot place is left out rather than guessed: an unclassified
+ * move is not evidence of anything, and over-reporting here would rule out an item the
+ * Pokémon may well be holding.
+ */
+function revealedStatusMoves(battle: ClientBattle, mon: ClientPokemon): readonly string[] {
+  return revealedMoveNames(mon).filter((name) => isStatusMove(battle, name));
+}
+
+/** Does the client dex call this move a status move? Exported as the capability the pure
+ *  core takes (`IsStatusMove`), so the set-inference layers can read a FEED pool's moves —
+ *  names they have never seen used and so cannot get from `LiveFacts`. */
+export function statusMoveReader(battle: ClientBattle): IsStatusMove {
+  return (name) => isStatusMove(battle, name);
+}
+
+function isStatusMove(battle: ClientBattle, name: string): boolean {
+  return battle.dex?.moves?.get(name)?.category === 'Status';
+}
+
 /** Bundle the log-derived behaviours for one Pokémon, ready to hand to `toLiveFacts`. */
 export function readBehaviors(battle: ClientBattle, mon: ClientPokemon): BehaviorSignals {
   const substitute = readSubstitute(battle, mon);
   return {
+    revealedStatusMoves: revealedStatusMoves(battle, mon),
     landedDamagingHit: hasLandedDamagingHit(battle, mon),
     tookEntryHazardDamage: tookEntryHazardDamage(battle, mon),
     switchedIntoStealthRockUnharmed: switchedIntoStealthRockUnharmed(battle, mon),
@@ -1436,6 +1468,7 @@ export function serverPokemonFacts(p: ClientServerPokemon, battle?: ClientBattle
     boosts: {},
     terastallized: Boolean(p.terastallized),
     revealedMoves: [],
+    revealedStatusMoves: [],
     landedDamagingHit: false,
     tookEntryHazardDamage: false,
     switchedIntoStealthRockUnharmed: false,

@@ -91,6 +91,33 @@ describe('Choice rule-out (two moves in one stint ⇒ not locked into one)', () 
   });
 });
 
+describe('Choice rule-out by set shape (a status move ⇒ never built with a Choice item)', () => {
+  const pool = ['Choice Band', 'Choice Specs', 'Choice Scarf', 'Life Orb'];
+  const used = (moves: string[], over = {}) => liveFacts({revealedStatusMoves: moves, ...over});
+
+  it('removes all three on the FIRST status move, where the lock rule needs two', () => {
+    expect(survivingItems(['Overgrow'], pool, used(['Calm Mind']))).toEqual(['Life Orb']);
+  });
+
+  it('needs no ability guard — Klutz excuses the lock, but not how the set was built', () => {
+    expect(survivingItems(['Klutz'], pool, used(['Calm Mind'], {baseAbility: 'Klutz'}))).toEqual(['Life Orb']);
+  });
+
+  it('stays quiet for the status moves the generator DOES pair with a Choice item', () => {
+    expect(survivingItems(['Overgrow'], pool, used(['Trick']))).toEqual(pool);
+  });
+
+  it('does nothing without the signal, or once an item is revealed', () => {
+    expect(survivingItems(['Overgrow'], pool, liveFacts())).toEqual(pool);
+    expect(survivingItems(['Overgrow'], pool, used(['Calm Mind'], {item: 'Choice Specs'}))).toEqual(pool);
+    expect(survivingItems(['Overgrow'], pool, used(['Calm Mind'], {prevItem: 'Choice Specs'}))).toEqual(pool);
+  });
+
+  it('can empty a Choice-only pool, which is how `narrow` rules the ROLE out', () => {
+    expect(survivingItems(['Overgrow'], ['Choice Specs', 'Choice Scarf'], used(['Calm Mind']))).toEqual([]);
+  });
+});
+
 describe('Air Balloon rule-out (came in silently ⇒ not holding one)', () => {
   // The mirror of the rules above: the balloon announces itself on every switch-in, so
   // silence is the evidence. Heatran's real randbats pool is exactly this two-item pair,

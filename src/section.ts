@@ -42,8 +42,7 @@ import {
   shows,
   type HoverTarget,
 } from './core/surfaces.js';
-import {variantsConsistentWithDamageDealt, variantsConsistentWithDamageTaken} from './core/itemreveal.js';
-import {variantsConsistentWithOrder} from './core/speedreveal.js';
+import {hasObservation, narrowByLog, type LogObservations, type RevealFrame} from './core/reveals.js';
 import {pickEntry, megaEntryForItem, megaEntriesFor} from './data/lookup.js';
 import {
   toLiveFacts,
@@ -140,6 +139,11 @@ function exactOwnAttacker(
  * the sets view's damage, and the sets view's own Items line — because a rule-out that
  * reaches some of those and not others is worse than no rule-out at all: it puts a Choice
  * Scarf on the Items line of a block whose ⚡ line has just declared it impossible.
+ *
+ * All this does is READ: which turns the log makes safe to judge at all, and how the field
+ * looks from each end. What those readings MEAN together — which of our own resolutions each
+ * is judged against, which orientation of the field belongs to which direction — is
+ * `core/reveals.ts`, so that it can be tested without building a battle.
  */
 function foeReveals(
   battle: ClientBattle,
@@ -148,59 +152,38 @@ function foeReveals(
   ourResolved: ResolvedMon | null,
   field: FieldFacts | undefined,
   format: {gen: number; doubles: boolean},
-  // Our mon as it stood on the turn the ORDER was observed — a turn that has already been
-  // fought, so a Mega or Tera merely TICKED in the move panel was not in effect for it.
-  // Defaults to `ourResolved` for callers with no preview to strip.
+  // Our mon as it stood on the turns observed — turns already fought, so a Mega or Tera
+  // merely TICKED in the move panel was in effect for none of them. Defaults to
+  // `ourResolved` for callers with no preview to strip.
   ourWhenItHappened: ResolvedMon | null = ourResolved,
   // Our mon with its PRIVATE item and ability, or null when they cannot be pinned. Only the
   // outgoing damage reading uses it, and only when it is non-null — see `exactOwnAttacker`.
   ourAttacker: ResolvedMon | null = null,
 ): FoeReveals | undefined {
   if (!ourMon || !ourResolved || !field) return undefined;
-  // Every reading here judges a turn ALREADY FOUGHT, so all three want our mon as it stood
-  // then — a Mega or Tera merely ticked in the move panel was in effect for none of them.
-  const ourselvesThen = ourWhenItHappened ?? ourResolved;
-  // Damage MAGNITUDE (core/itemreveal.ts) — not a side effect firing, but the NUMBER a past
-  // hit dealt, read at BOTH ends. `mostRecentCleanHit` is a fact about an ordered pair, so
-  // the same reader answers both: what THEY landed on us bounds their offensive item, what
-  // WE landed on them bounds their defensive one (an Assault Vest is invisible otherwise).
-  // Either hands back nothing unless it found one safe to compare.
+  // `mostRecentCleanHit` is a fact about an ordered PAIR, so one reader answers both
+  // directions by argument order: what THEY landed on us, and what WE landed on them. Each
+  // hands back nothing unless it found a turn safe to compare, and the outgoing one is not
+  // asked for at all without an exact attacker for it to divide through.
   const theirHit = mostRecentCleanHit(battle, foe, ourMon);
   const ourHit = ourAttacker ? mostRecentCleanHit(battle, ourMon, foe) : undefined;
-  // Move ORDER (core/speedreveal.ts) — the only reading that separates a Scarf from a Band.
   const order = mostRecentCleanOrder(battle, ourMon, foe);
-  if (!theirHit && !ourHit && !order) return undefined;
-  // Field orientation follows whoever is DEFENDING. `field` was read with OUR side as the
-  // defender, which is right for a hit we TOOK; a hit we DEALT is the mirror, and reusing
-  // the same reading would put their Reflect on us and ours on them.
-  const theirField = ourHit ? readFieldFacts(battle, foe.side) : undefined;
-  return {
-    narrow: (variants) => {
-      let kept = variants;
-      if (theirHit) {
-        kept = variantsConsistentWithDamageDealt(kept, ourselvesThen, {gen: format.gen, field, doubles: format.doubles}, theirHit);
-      }
-      if (ourHit && ourAttacker) {
-        kept = variantsConsistentWithDamageTaken(
-          kept,
-          ourAttacker,
-          {gen: format.gen, ...(theirField ? {field: theirField} : {}), doubles: format.doubles},
-          ourHit,
-        );
-      }
-      if (order && ourWhenItHappened) {
-        kept = variantsConsistentWithOrder(kept, ourWhenItHappened, order, {
-          gen: format.gen,
-          field,
-          // `field` is read with OUR side as the defender, so `defenderTailwind` is ours.
-          // Swapping these silently doubles the wrong Pokémon's Speed.
-          ourTailwind: Boolean(field.defenderTailwind),
-          theirTailwind: Boolean(field.attackerTailwind),
-        });
-      }
-      return kept;
-    },
+  const observations: LogObservations = {
+    ...(theirHit ? {theirHit} : {}),
+    ...(ourHit ? {ourHit} : {}),
+    ...(order ? {order} : {}),
   };
+  if (!hasObservation(observations)) return undefined;
+  const frame: RevealFrame = {
+    gen: format.gen,
+    doubles: format.doubles,
+    ourselvesThen: ourWhenItHappened ?? ourResolved,
+    ...(ourAttacker ? {ourAttacker} : {}),
+    fieldDefendingUs: field,
+    // The mirror orientation, read only when there is an outgoing hit to spend it on.
+    ...(ourHit ? {fieldDefendingThem: readFieldFacts(battle, foe.side)} : {}),
+  };
+  return {narrow: (variants) => narrowByLog(variants, observations, frame)};
 }
 
 /**

@@ -725,6 +725,16 @@ picture and not in this list, this list is the thing that's wrong.
       Both observations come from `readState.ts`'s `mostRecentCleanHit`, which is a fact about
       an ordered pair and so answers both by argument order. A rule-out read from a hit's
       magnitude belongs here; one read from a side effect belongs in `deductions.ts`.
+    - `reveals.ts` — the composition law: the three readings above are each written to know
+      nothing of the others, so somebody has to say which of OUR resolutions each is judged
+      against and which orientation of the field belongs to which direction. `narrowByLog`
+      is that somebody. It lived in `section.ts` as comments beside a chain of positional
+      arguments, where testing it meant building a battle; the two facts it now states in
+      its own types are that every observation describes a turn already FOUGHT (so a ticked
+      Mega/Tera was in effect for none of them) and that orientation follows whoever is
+      DEFENDING — `fieldDefendingUs` and `fieldDefendingThem` are separate NAMED fields
+      because two `FieldFacts` in a row is a swap waiting to happen. Adding a fourth reveal
+      source = one field on `LogObservations` and one branch here.
     - `speedreveal.ts` — the move-ORDER law, and the third direction a reveal can come
       from: `deductions.ts` reads whether a side effect fired, `itemreveal.ts` what number a
       hit dealt, and this one who moved first. Move order is a fact about the PAIR and our
@@ -952,6 +962,7 @@ was always undefined.
 | Move ORDER rules out a Choice Scarf — the one axis damage can never reveal | ✅ | `core/speedreveal.ts`, `battle/readState.ts` (`mostRecentCleanOrder`) | `speedreveal.test.ts`, `readState.test.ts`, `section.test.ts` |
 | A priority bracket is an ALIBI: any variant whose bracket explains the order survives without its speed being consulted | ✅ | `core/speedreveal.ts` (`bracket`, `UNREADABLE_ABILITIES`) | `speedreveal.test.ts` |
 | A move's priority is read from the CLIENT dex — @smogon/calc's own data zeroes every negative bracket | ✅ | `battle/readState.ts` (`readMoveOrder`) | `readState.test.ts`, `speedreveal.test.ts` |
+| The three log readings are composed by ONE law — each judged against our mon as it stood THEN, and the field read from the end that is DEFENDING | ✅ | `core/reveals.ts` (`narrowByLog`, `RevealFrame`), `section.ts` (`foeReveals`) | `reveals.test.ts`, `section.test.ts` |
 | Every log-derived reveal reaches EVERY surface showing that foe's set — one narrowing, applied to the damage, the ⚡ verdict and the Items line alike | ✅ | `section.ts` (`foeReveals`, `narrowCandidate`) | `section.test.ts` |
 | The forme a Pokémon IS and the one it is WEARING differ — only the calc reads the second | ✅ | `battle/readState.ts` (`readLiveForme`), `core/resolve.ts` (`buildResolved`) | `readState.test.ts`, `resolve.test.ts` |
 | The types a Pokémon IS and the ones it was BUILT with differ too — a retype drives the calc, never set inference | ✅ | `battle/readState.ts` (`readLiveTypes`), `core/damage.ts` (`speciesOverrides`, `NEUTRAL_TYPE`) | `readState.test.ts`, `damage.test.ts`, `section.test.ts` |

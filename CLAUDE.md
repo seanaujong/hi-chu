@@ -772,6 +772,14 @@ picture and not in this list, this list is the thing that's wrong.
     bracketed by its two honest extremes on the axis the move attacks, crossed with the
     species' dex abilities. A second producer of `SetVariant`s, reusing `resolve`'s
     `buildResolved` writer but never `narrow` (see the invariant below).
+  - `variantdamage.ts` — one move's damage over every set the other side could still BE:
+    one calc run per still-possible variant, the unmodellable ones dropped, the rest handed
+    to `bucketByDamage`. `moveDamageBuckets` varies the DEFENDER and `incomingDamageBuckets`
+    the ATTACKER, over one shared loop, so the two directions cannot drift. It is its own
+    module because neither neighbour can hold it: `damage.ts` is the calc boundary and would
+    have to import `variants.ts`, which type-imports back; and `variants.ts` is deliberately
+    general — `speed.ts` and `strengthsap.ts` reuse its labelling for outcomes that are not
+    damage — so teaching it the damage calc would specialise a law three domains share.
   - `variants.ts` — the distinct-outcome law: run the calc per `resolveVariants` result,
     then `bucketByDamage` collapses identical rolls into the few DISTINCT outcomes and
     names each bucket by the axis that differs (an Assault Vest that changes the number).
@@ -975,8 +983,8 @@ was always undefined.
 | Our OWN disguised Zoroark is seen through — the private team names it | ✅ | `section.ts` (`ownTruth`), `battle/readState.ts` (`readOwnServerPokemon`) | `section.test.ts`, `readState.test.ts` |
 | Set inference keys on the INNATE ability (`baseAbility`), not the live one | ✅ | `core/facts.ts` (`innateAbility`) | `resolve.test.ts`, `readState.test.ts` |
 | …and only when the species could actually HAVE that ability | ✅ | `core/facts.ts` (`innateAbility`) | `resolve.test.ts` |
-| Damage under a hidden item/ability is split by DISTINCT outcome, not by set | ✅ | `core/variants.ts` (`bucketByDamage`) | `variants.test.ts`, `section.test.ts` |
-| The sets view's per-candidate damage never guesses a representative attacker either | ✅ | `section.ts` (`candidateDamageByMove`), `core/render.ts` (`spanText`, `koTier`) | `render.test.ts`, `section.test.ts` |
+| Damage under a hidden item/ability is split by DISTINCT outcome, not by set | ✅ | `core/variantdamage.ts` (`moveDamageBuckets`, `incomingDamageBuckets`), `core/variants.ts` (`bucketByDamage`) | `variantdamage.test.ts`, `variants.test.ts`, `section.test.ts` |
+| The sets view's per-candidate damage never guesses a representative attacker either | ✅ | `core/variantdamage.ts` (`candidateDamageByMove`), `core/render.ts` (`spanText`, `koTier`) | `render.test.ts`, `section.test.ts` |
 | A candidate's hidden item/ability folds into ONE span; only the outcome deciding a KO is spelled out | ✅ | `core/render.ts` (`spanText`, `worstTier`, `koCondition`) | `render.test.ts`, `section.test.ts` |
 | Bucket labels are always DISTINCT — one role's item × ability fan-out separates on the pair | ✅ | `core/variants.ts` (`labelBuckets`, `itemAbilityOf`) | `variants.test.ts` |
 | Format ids are derived like PS's own `toID` | ✅ | `battle/readState.ts` | `readState.test.ts` |
@@ -1008,7 +1016,7 @@ was always undefined.
 | Each fitness rule is a pure judgement, tested against a violation it must catch — watched failing on every commit, not once by hand | ✅ | `fitness/rules.ts` | `rules.test.ts` |
 | A lexical boundary check reads whole import STATEMENTS, never lines — the rules above are defeated by a line wrap otherwise | ✅ | `fitness/importgraph.ts` (`importStatements`) | `importgraph.test.ts`, `dependency-boundaries.test.ts` |
 | No barrel file — one directory-wide re-export makes "does the core import the shell?" and "who imports `deductions.ts`?" stop having per-module answers | ✅ | `fitness/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |
-| An escape hatch that switches the typechecker OFF carries a written rationale — in code that SHIPS, derived from the build's entry points rather than listed | ✅ | `fitness/conventions.test.ts` (`HATCH`, `shippedFiles`), `data/lookup.ts` (`rawEntries`) | `conventions.test.ts` |
+| An escape hatch that switches the typechecker OFF carries a written rationale — in code that SHIPS, derived from the build's entry points rather than listed | ✅ | `fitness/rules.ts` (`HATCH`), `fitness/conventions.test.ts` (`shippedFiles`), `data/lookup.ts` (`rawEntries`) | `conventions.test.ts` |
 | Every module in the pure core has a colocated test, or a listed reason it does not | ✅ | `fitness/conventions.test.ts` (`UNTESTED_BY_DESIGN`) | `conventions.test.ts` |
 | "No DOM, no network" is typechecked everywhere but the two files whose job it is | ✅ | `src/tsconfig.pure.json` | `npm run typecheck` |
 | The store's summary ships FROM the package — the listing doc, the manifest and `package.json` carry one sentence | ✅ | `docs/chrome-web-store-listing.md` (Summary) | `store-summary.test.ts` |

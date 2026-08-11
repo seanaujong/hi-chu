@@ -11,11 +11,12 @@
 //   buildPokemonSection — a Pokémon hover: the still-possible sets (narrowed by reveals),
 //     with damage numbers attached when the hovered mon is the opponent's.
 
-import {calcDamage, finalStatsOf, moveCategory, painSplit, speciesBody, type DamageReport} from './core/damage.js';
+import {finalStatsOf, moveCategory, painSplit, speciesBody} from './core/damage.js';
 import {resolveMon, resolveVariants} from './core/resolve.js';
 import {assumeDefenderVariants, type MoveSlant} from './core/assume.js';
 import {inferSets} from './core/knowledge.js';
-import {bucketByDamage, type DamageBucket} from './core/variants.js';
+import {type DamageBucket} from './core/variants.js';
+import {candidateDamageByMove, incomingDamageBuckets, moveDamageBuckets, type DamageContext} from './core/variantdamage.js';
 import {compareSpeed, finalSpeed, speedBuckets, type SpeedOrder} from './core/speed.js';
 import {illusionSuspects, type IllusionSuspect} from './core/illusion.js';
 import {strengthSap} from './core/strengthsap.js';
@@ -540,6 +541,13 @@ function ownTruth(battle: ClientBattle, mon: ClientPokemon, facts: LiveFacts): L
   };
 }
 
+/** The format and field every damage call needs, in the shape `core/variantdamage.ts` takes.
+ *  A function rather than an inline literal because the field's ORIENTATION is the argument
+ *  that matters here, and naming the call site's own reading keeps it visible. */
+function ctxOf(format: {gen: number; doubles: boolean}, field: FieldFacts): DamageContext {
+  return {gen: format.gen, field, doubles: format.doubles};
+}
+
 /** "Zoroark-Hisui" → "Zoroark": the forme suffix dropped, so formes of one Pokémon compare equal. */
 function baseSpecies(speciesForme: string): string {
   return toId(speciesForme.split('-')[0] ?? speciesForme);
@@ -806,7 +814,7 @@ function ownMovesSection(
     // is ours — the mirror image of speedSection's read, which orients on our own side.
     const field = readFieldFacts(battle, foe.side);
     const rows = moves
-      .map((move) => moveDamageBuckets(attacker, variantsForMove(move), move, format.gen, field, format.doubles))
+      .map((move) => moveDamageBuckets(attacker, variantsForMove(move), move, ctxOf(format, field)))
       .filter((buckets) => buckets.length > 0) // status / unmodellable moves get no line
       // The report's move name is dex-resolved, so the id form ("dracometeor") displays right.
       .map((buckets) => ({name: buckets[0]!.report.move, buckets}));
@@ -819,7 +827,7 @@ function ownMovesSection(
       .map(({move, known, variants}) => ({
         name: move,
         known,
-        buckets: incomingDamageBuckets(attacker, variants, move, format.gen, incomingField, format.doubles),
+        buckets: incomingDamageBuckets(attacker, variants, move, ctxOf(format, incomingField)),
       }))
       .filter((row) => row.buckets.length > 0);
     const incoming = incomingRows.length > 0
@@ -964,7 +972,7 @@ function foeSwitchInDamage(
 
   const field = readFieldFacts(battle, hoveredFoe.side); // the hovered foe is the defender here
   const rows = moves
-    .map((move) => moveDamageBuckets(attacker, switchedIn, move, format.gen, field, format.doubles))
+    .map((move) => moveDamageBuckets(attacker, switchedIn, move, ctxOf(format, field)))
     .filter((buckets) => buckets.length > 0)
     .map((buckets) => ({name: buckets[0]!.report.move, buckets}));
   if (rows.length === 0) return '';
@@ -1075,116 +1083,9 @@ function groupByRole(variants: readonly SetVariant[]): Map<string, SetVariant[]>
   return out;
 }
 
-/**
- * The distinct damage outcomes for each of `moves`, from every still-possible variant of
- * ONE candidate role into `defender` — the sets view's per-candidate damage, computed the
- * same way the Incoming section already computes an uncertain ATTACKER's threat
- * (`incomingDamageBuckets`): enumerate every item/ability the role could still be running
- * rather than picking a representative one and hoping. A role with no real uncertainty
- * (one variant, or every variant landing on the same number) still comes back as a single
- * bucket with an empty label — the caller renders that inline exactly as it always has;
- * only a REAL split (an Assault Vest that changes the number) grows a second outcome.
- * Status moves and moves the calc can't model for this role are simply absent.
- *
- * Requests the nHKO ladder up to turn 2 — `render.koTier` reads its turn-2 figure to color
- * a move '2hko' when it can't OHKO outright but a second use realistically could, so a fast
- * scan down the block still flags danger the raw percent alone wouldn't at a glance.
- */
-function candidateDamageByMove(
-  roleVariants: readonly SetVariant[],
-  defender: ResolvedMon,
-  moves: readonly string[],
-  gen: number,
-  field: ReturnType<typeof readFieldFacts>,
-  doubles: boolean,
-): Map<string, DamageBucket[]> {
-  const out = new Map<string, DamageBucket[]>();
-  for (const move of moves) {
-    const buckets = incomingDamageBuckets(defender, roleVariants, move, gen, field, doubles, 2);
-    if (buckets.length > 0) out.set(toId(move), buckets);
-  }
-  return out;
-}
 
-/**
- * Score `moveName` over a pool of still-possible sets, one calc run per variant, and
- * bucket the results into the distinct outcomes. `build` picks which side of the calc
- * each variant fills — the shared core for both damage directions: `moveDamageBuckets`
- * varies the DEFENDER (a fixed attacker's move into an uncertain foe), and
- * `incomingDamageBuckets` varies the ATTACKER (an uncertain foe's move into a fixed
- * defender). Status and unmodellable variants are dropped; an all-dropped move yields
- * no buckets.
- */
-function scoreVariants(
-  variants: readonly SetVariant[],
-  moveName: string,
-  build: (mon: ResolvedMon) => readonly [attacker: ResolvedMon, defender: ResolvedMon],
-  gen: number,
-  field: ReturnType<typeof readFieldFacts>,
-  doubles: boolean,
-  nhkoTurns?: number,
-  selfHp = false,
-): DamageBucket[] {
-  const scored: {variant: SetVariant; report: DamageReport}[] = [];
-  for (const variant of variants) {
-    try {
-      const [atk, def] = build(variant.mon);
-      const report = calcDamage(atk, def, moveName, {
-        gen,
-        field,
-        doubles,
-        ...(nhkoTurns !== undefined ? {nhkoTurns} : {}),
-        ...(selfHp ? {selfHp} : {}),
-      });
-      if (report.category !== 'Status') scored.push({variant, report});
-    } catch {
-      // A move outside the calc's world for this variant shouldn't drop the section.
-    }
-  }
-  return bucketByDamage(scored);
-}
 
-/**
- * The distinct damage outcomes for `moveName` from `attacker` into the target, one
- * per still-possible defending set, merged where they land on the same number.
- * `nhkoTurns` requests the nHKO ladder (the move tooltip shows it; the compact
- * own-hover view doesn't, and skips the survival sim). `selfHp` requests the attacker's own
- * drain/recoil swing on exactly the same terms — the move tooltip renders it, the compact
- * views don't, and a view that doesn't ask keeps its buckets keyed as before.
- */
-function moveDamageBuckets(
-  attacker: ResolvedMon,
-  defenderVariants: readonly SetVariant[],
-  moveName: string,
-  gen: number,
-  field: ReturnType<typeof readFieldFacts>,
-  doubles: boolean,
-  nhkoTurns?: number,
-  selfHp = false,
-): DamageBucket[] {
-  return scoreVariants(defenderVariants, moveName, (mon) => [attacker, mon], gen, field, doubles, nhkoTurns, selfHp);
-}
 
-/**
- * The distinct damage outcomes for `moveName` from a still-uncertain ATTACKER into a fixed
- * `defender` — shared by two callers that vary the attacker instead of the defender: the
- * matchup view's defensive half (what a foe's move would do INTO the mon being evaluated;
- * `attackerVariants` from `IncomingMovesFor`, no nHKO ladder — matching `moveDamageBuckets`'
- * compact-view scope) and the sets view's per-candidate damage (`candidateDamageByMove`,
- * which DOES request the ladder — see `nhkoTurns`). `nhkoTurns` defaults to unrequested so
- * the Incoming section's own call stays exactly as compact as before.
- */
-function incomingDamageBuckets(
-  defender: ResolvedMon,
-  attackerVariants: readonly SetVariant[],
-  moveName: string,
-  gen: number,
-  field: ReturnType<typeof readFieldFacts>,
-  doubles: boolean,
-  nhkoTurns?: number,
-): DamageBucket[] {
-  return scoreVariants(attackerVariants, moveName, (mon) => [mon, defender], gen, field, doubles, nhkoTurns);
-}
 
 /**
  * The move-button tooltip section: `moveName` from our active `pokemon` into the
@@ -1349,7 +1250,7 @@ function moveSectionHtml(
   field: ReturnType<typeof readFieldFacts>,
   targetLabel: string | undefined,
 ): string {
-  const buckets = moveDamageBuckets(attacker, defenderVariants, moveName, format.gen, field, format.doubles, 3, true);
+  const buckets = moveDamageBuckets(attacker, defenderVariants, moveName, {...ctxOf(format, field), nhkoTurns: 3, selfHp: true});
   if (buckets.length === 0) return ''; // status / unmodellable move
 
   // The live Tera is shared by every variant (it's a revealed fact, not a hidden set).
@@ -1565,7 +1466,7 @@ function randbatsPokemonSection(
       const shown = withCopiedMoves(c, s.facts);
       const roleVariants = variantsByRole.get(c.name) ?? [];
       const damage = defender && field && roleVariants.length > 0
-        ? candidateDamageByMove(roleVariants, defender, shown.moves.map((m) => m.name), format.gen, field, format.doubles)
+        ? candidateDamageByMove(roleVariants, defender, shown.moves.map((m) => m.name), ctxOf(format, field))
         : undefined;
       const cut = reveals ? narrowCandidate(shown, survivingByRole.get(c.name) ?? []) : shown;
       blocks.push(toBlock(cut, s.species, damage));

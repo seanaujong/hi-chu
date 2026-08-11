@@ -71,6 +71,26 @@ function resolveFile(ref: string): string | undefined {
   return [join('src', ref), join('fitness', ref), ref].find((p) => existsSync(p));
 }
 
+/**
+ * Whether `source` DECLARES `symbol`, as opposed to merely mentioning it. A substring match
+ * cannot tell the two apart, and the difference is the whole point of attributing a symbol
+ * to a file: an import, a call or a comment all satisfy "the name appears here", so a symbol
+ * that MOVES leaves every row that named its old home still passing.
+ *
+ * Measured when this replaced the substring test: of 91 rows, exactly one named a symbol it
+ * did not declare — `conventions.test.ts` was credited with `HATCH`, which lives in
+ * `rules.ts`, as that file's own docblock already said.
+ */
+function declares(source: string, symbol: string): boolean {
+  const name = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(
+    `^\\s*(export\\s+)?(async\\s+)?(function|const|let|class|interface|type|enum)\\s+${name}\\b` +
+      `|^\\s*(readonly\\s+)?${name}\\s*[:(]` +
+      `|^\\s*${name}\\s*=`,
+    'm',
+  ).test(source);
+}
+
 function findByBasename(dir: string, basename: string): boolean {
   return readdirSync(dir, {withFileTypes: true}).some((e) =>
     e.isDirectory() ? findByBasename(join(dir, e.name), basename) : e.name === basename,
@@ -107,13 +127,18 @@ describe("CLAUDE.md's invariant index points at things that exist", () => {
     expect(missing).toEqual([]);
   });
 
-  it('finds every named symbol IN the file the row attributes it to', () => {
+  it('finds every named symbol DECLARED in the file the row attributes it to', () => {
+    // Declared, not merely present: a row survives its symbol moving to another module if
+    // the old home still imports or calls it, which is exactly the rot this index exists to
+    // catch. Lifting `candidateDamageByMove` out of `section.ts` was the case that showed it.
     const missing = rows.flatMap((r) =>
       [...fileSymbolPairs(r.ownedBy), ...fileSymbolPairs(r.checkedBy)].flatMap(([file, symbols]) => {
         const path = resolveFile(file);
         if (!path) return []; // already reported by the file checks above
         const source = readFileSync(path, 'utf8');
-        return symbols.filter((s) => !source.includes(s)).map((s) => `${r.invariant} → ${file} has no "${s}"`);
+        return symbols
+          .filter((s) => !declares(source, s))
+          .map((s) => `${r.invariant} → ${file} does not declare "${s}"`);
       }),
     );
     expect(missing).toEqual([]);

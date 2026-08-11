@@ -157,6 +157,7 @@ reading answers *what could that Pokémon even be*.
 │ speed verdict, the damage and the Items line cannot           │
 │ disagree about one set                                        │
 └───────────────────────────────────────────────────────────────┘
+─────── narrowing needs a set feed — Random Battles only ────────
 ```
 
 For exact shapes and signatures, read the source and the `*.test.ts` next to each module —

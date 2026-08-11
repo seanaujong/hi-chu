@@ -25,9 +25,18 @@ function mon(over: Partial<ResolvedMon> & {speciesForme: string}): ResolvedMon {
   };
 }
 
-/** An observation with both sides unboosted — what every case below assumed implicitly. */
+/** An observation with both sides unboosted and at full health — what every case below
+ *  assumed implicitly. */
 function hit(move: string, damageFraction: number, over: Partial<ObservedHit> = {}): ObservedHit {
-  return {move, damageFraction, attackerBoosts: {}, defenderBoosts: {}, ...over};
+  return {
+    move,
+    damageFraction,
+    attackerBoosts: {},
+    defenderBoosts: {},
+    attackerHpPercent: 1,
+    defenderHpPercent: 1,
+    ...over,
+  };
 }
 
 describe('variantsConsistentWithDamageDealt', () => {
@@ -136,5 +145,67 @@ describe('variantsConsistentWithDamageTaken (our hit bounds THEIR defensive item
   it('never narrows to nothing in this direction either', () => {
     const observed = hit('Bug Buzz', 5);
     expect(variantsConsistentWithDamageTaken(variants, attacker, options, observed)).toEqual(variants);
+  });
+});
+
+describe('the HP a reading is judged under is the OBSERVATION\u2019s too', () => {
+  // The four pinch abilities switch on at a THRESHOLD rather than scaling, so a hover taken
+  // a few turns after the hit can sit on the wrong side of it. Blaze is the worked example:
+  // the same Flamethrower is x1.5 below a third and plain above it.
+  const defender = mon({speciesForme: 'Skarmory'});
+  const healthy: SetVariant = {mon: mon({speciesForme: 'Charizard', ability: 'Blaze'}), role: 'Attacker'};
+  const options = {gen: 9, field: noField, doubles: false};
+
+  const full = calcDamage(healthy.mon, defender, 'Flamethrower', options).percent;
+  const pinched = calcDamage({...healthy.mon, hpPercent: 0.2}, defender, 'Flamethrower', options).percent;
+
+  it('separates the two, so the fixture means something', () => {
+    expect(pinched.min).toBeGreaterThan(full.max);
+  });
+
+  it('judges a hit landed at FULL health as full health, however chipped the attacker is now', () => {
+    const observed = hit('Flamethrower', (full.min + full.max) / 200, {attackerHpPercent: 1});
+    expect(variantsConsistentWithDamageDealt([healthy], defender, options, observed)).toEqual([healthy]);
+  });
+
+  it('does not mistake a pinched Blaze for a Choice Specs at full health', () => {
+    // The sharpest case there is, because the two multipliers are the SAME number: Blaze is
+    // x1.5 below a third and Choice Specs is x1.5 always. So a Leftovers Charizard swinging
+    // from 20% hits exactly as hard as a Choice Specs one that is whole — and judged at the
+    // health it has NOW, the observation convicts the item it does not hold.
+    const specs: SetVariant = {mon: mon({speciesForme: 'Charizard', ability: 'Blaze', item: 'Choice Specs'}), role: 'Attacker'};
+    const leftovers: SetVariant = {mon: mon({speciesForme: 'Charizard', ability: 'Blaze', item: 'Leftovers'}), role: 'Attacker'};
+    const pool = [specs, leftovers];
+
+    const landed = calcDamage({...leftovers.mon, hpPercent: 0.2}, defender, 'Flamethrower', options).percent;
+    const observed = hit('Flamethrower', (landed.min + landed.max) / 200, {attackerHpPercent: 0.2});
+    expect(variantsConsistentWithDamageDealt(pool, defender, options, observed)).toEqual([leftovers]);
+
+    // The same number read at full health picks the other one out — the false rule-out this
+    // snapshot exists to prevent, and it eliminates the item actually held.
+    const naive = {...observed, attackerHpPercent: 1};
+    expect(variantsConsistentWithDamageDealt(pool, defender, options, naive)).toEqual([specs]);
+  });
+
+  it('a Multiscale defender is read at the health the hit resolved against', () => {
+    // The other end of the same idea, and the one that always applies: Multiscale halves only
+    // at FULL HP, and a defender is never at full HP afterwards — the hit itself is what took
+    // it off. So every reading of a hit into a Multiscale holder is a reading across that
+    // threshold. Both variants below stand where the hit left them, at half.
+    const attacker = mon({speciesForme: 'Weavile'});
+    const dragonite = mon({speciesForme: 'Dragonite', ability: 'Multiscale', hpPercent: 0.5});
+    const vest: SetVariant = {mon: {...dragonite, item: 'Assault Vest'}, role: 'Bulky Setup'};
+    const bare: SetVariant = {mon: {...dragonite, item: 'Leftovers'}, role: 'Bulky Setup'};
+    const pool = [vest, bare];
+
+    // What the Leftovers set really took, from full health, with Multiscale up.
+    const landed = calcDamage(attacker, {...bare.mon, hpPercent: 1}, 'Ice Beam', options).percent;
+    const observed = hit('Ice Beam', (landed.min + landed.max) / 200, {defenderHpPercent: 1});
+    expect(variantsConsistentWithDamageTaken(pool, attacker, options, observed)).toEqual([bare]);
+
+    // Read at the health it is on NOW, Multiscale is gone, every prediction doubles, and
+    // nothing fits — so the pool comes back whole and the rule-out is quietly lost.
+    const naive = {...observed, defenderHpPercent: 0.5};
+    expect(variantsConsistentWithDamageTaken(pool, attacker, options, naive)).toEqual(pool);
   });
 });

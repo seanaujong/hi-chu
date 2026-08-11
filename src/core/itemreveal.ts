@@ -42,11 +42,15 @@ interface CalcOptions {
  * than judged — this only ever rules something OUT on a provable mismatch, never in on a
  * merely-plausible one.
  *
- * Both mons are calculated with the boosts recorded ON THE OBSERVATION rather than the ones
- * they carry now. A move's own secondary lands between the hit and the hover, so those are
- * different tables — and reading the wrong one is not a near-miss but a false rule-out: Bug
- * Buzz drops the defender's SpD, so the boosts standing now predict a bigger hit than
- * actually landed and would convict sets that were never impossible.
+ * Both mons are calculated with the boosts and remaining HP recorded ON THE OBSERVATION
+ * rather than the ones they carry now. A move's own secondary lands between the hit and the
+ * hover, so those are different tables — and reading the wrong one is not a near-miss but a
+ * false rule-out: Bug Buzz drops the defender's SpD, so the boosts standing now predict a
+ * bigger hit than actually landed and would convict sets that were never impossible. HP is
+ * the same story across a threshold rather than a stage: a Blaze holder that has since
+ * dropped under a third would have its Fire moves read at x1.5 for a hit it landed at full
+ * health, and a Multiscale defender that has since been chipped loses a halving that was in
+ * force when the hit resolved.
  *
  * Never narrows to nothing: if every variant's range fails to contain the observation, that
  * says this READING is unsafe to trust (a mechanic it doesn't model — a damage-boosting
@@ -67,8 +71,8 @@ function narrowByObservedDamage(
     let report;
     try {
       report = calcDamage(
-        {...attacker, boosts: observed.attackerBoosts},
-        {...defender, boosts: observed.defenderBoosts},
+        {...attacker, boosts: observed.attackerBoosts, hpPercent: observed.attackerHpPercent},
+        {...defender, boosts: observed.defenderBoosts, hpPercent: observed.defenderHpPercent},
         observed.move,
         {gen: options.gen, ...(options.field ? {field: options.field} : {}), doubles: options.doubles},
       );

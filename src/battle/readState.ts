@@ -1034,6 +1034,10 @@ function hpToken(token: string | undefined): number | undefined {
  * landed and rule out sets that were never impossible. So the boosts are REPLAYED
  * (`applyBoostLine`) and reported as they stood at the moment the hit landed, which is the
  * only version of them the observed number was ever about.
+ *
+ * HP travels with the observation for the same reason and is free to carry, since this scan
+ * already tracks it: the calc reads both sides' remaining HP, and both sides have thresholds
+ * that a hover taken several turns later sits on the wrong side of (see `ObservedHit`).
  */
 export function mostRecentCleanHit(
   battle: ClientBattle,
@@ -1086,9 +1090,13 @@ export function mostRecentCleanHit(
             move: moveName,
             damageFraction: Math.max(0, before - frac),
             // Snapshot HERE, at the damage line: a secondary that fires after it was not in
-            // effect for the number we just read.
+            // effect for the number we just read, and neither was any HP either side has
+            // lost since. The defender's is `before` — the health this hit was resolved
+            // against, not what it left behind.
             attackerBoosts: {...boosts[atk]},
             defenderBoosts: {...boosts[def]},
+            attackerHpPercent: hp[atk] ?? 1,
+            defenderHpPercent: before,
           };
           stale = false;
         }

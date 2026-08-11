@@ -446,12 +446,12 @@ describe('mostRecentCleanHit (an observed hit’s MAGNITUDE reveals an item)', (
       '|move|p2a: Weavile|Icicle Crash|p1a: Skarmory',
       '|-damage|p1a: Skarmory|60/100',
     ];
-    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toEqual({move: 'Icicle Crash', damageFraction: 0.4, attackerBoosts: {}, defenderBoosts: {}});
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toEqual({move: 'Icicle Crash', damageFraction: 0.4, attackerBoosts: {}, defenderBoosts: {}, attackerHpPercent: 1, defenderHpPercent: 1});
   });
 
   it('defaults "before" to full HP when the defender was never seen switching in', () => {
     const log = ['|move|p2a: Weavile|Icicle Crash|p1a: Skarmory', '|-damage|p1a: Skarmory|75/100'];
-    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toEqual({move: 'Icicle Crash', damageFraction: 0.25, attackerBoosts: {}, defenderBoosts: {}});
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toEqual({move: 'Icicle Crash', damageFraction: 0.25, attackerBoosts: {}, defenderBoosts: {}, attackerHpPercent: 1, defenderHpPercent: 1});
   });
 
   it('excludes a multi-hit move — the shown number is a SUM, not one roll', () => {
@@ -491,6 +491,8 @@ describe('mostRecentCleanHit (an observed hit’s MAGNITUDE reveals an item)', (
       damageFraction: 0.4,
       attackerBoosts: {},
       defenderBoosts: {},
+      attackerHpPercent: 1,
+      defenderHpPercent: 1,
     });
   });
 
@@ -512,7 +514,7 @@ describe('mostRecentCleanHit (an observed hit’s MAGNITUDE reveals an item)', (
       '|upkeep',
       '|turn|4',
     ];
-    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toEqual({move: 'Icicle Crash', damageFraction: 0.4, attackerBoosts: {}, defenderBoosts: {}});
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toEqual({move: 'Icicle Crash', damageFraction: 0.4, attackerBoosts: {}, defenderBoosts: {}, attackerHpPercent: 1, defenderHpPercent: 1});
   });
 
   it('still goes stale when the weather actually STARTS or ENDS', () => {
@@ -536,6 +538,8 @@ describe('mostRecentCleanHit (an observed hit’s MAGNITUDE reveals an item)', (
       damageFraction: 0.4,
       attackerBoosts: {},
       defenderBoosts: {}, // the drop landed AFTER the number, so it was not in effect for it
+      attackerHpPercent: 1,
+      defenderHpPercent: 1,
     });
   });
 
@@ -551,6 +555,8 @@ describe('mostRecentCleanHit (an observed hit’s MAGNITUDE reveals an item)', (
       damageFraction: 0.6,
       attackerBoosts: {atk: 2},
       defenderBoosts: {def: -1},
+      attackerHpPercent: 1,
+      defenderHpPercent: 1,
     });
   });
 
@@ -571,6 +577,38 @@ describe('mostRecentCleanHit (an observed hit’s MAGNITUDE reveals an item)', (
       '|switch|p2a: Weavile|Weavile, L78|100/100',
       ...hitLines,
     ])).toEqual({});
+  });
+
+  it('reports the HP each side stood at, not the HP left behind', () => {
+    // The attacker has been chipped; the defender is read at the health this hit was
+    // resolved AGAINST, not the health it left. Both arm thresholds in the calc — the four
+    // pinch abilities on one side, Multiscale on the other.
+    const log = [
+      '|switch|p2a: Weavile|Weavile, L78|100/100',
+      '|switch|p1a: Skarmory|Skarmory, L78|100/100',
+      '|move|p1a: Skarmory|Brave Bird|p2a: Weavile',
+      '|-damage|p2a: Weavile|20/100',
+      '|move|p2a: Weavile|Icicle Crash|p1a: Skarmory',
+      '|-damage|p1a: Skarmory|60/100',
+    ];
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toMatchObject({
+      damageFraction: 0.4,
+      attackerHpPercent: 0.2, // Weavile swung from 20%, where Swarm-style abilities are live
+      defenderHpPercent: 1, // Skarmory was whole when the hit resolved, not at the 60% left
+    });
+  });
+
+  it('carries the HP a Pokémon RETURNS at, not the HP it left on', () => {
+    // Boosts reset on a switch and HP does not, so the two snapshots part company here.
+    const log = [
+      '|switch|p2a: Weavile|Weavile, L78|100/100',
+      '|-damage|p2a: Weavile|30/100',
+      '|switch|p2a: Gengar|Gengar, L80|100/100',
+      '|switch|p2a: Weavile|Weavile, L78|30/100',
+      '|move|p2a: Weavile|Icicle Crash|p1a: Skarmory',
+      '|-damage|p1a: Skarmory|60/100',
+    ];
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toMatchObject({attackerHpPercent: 0.3});
   });
 
   it('still abstains on a boost line whose DIRECTION it cannot replay', () => {
@@ -600,7 +638,7 @@ describe('mostRecentCleanHit (an observed hit’s MAGNITUDE reveals an item)', (
 
   it('matches by side+name across a switch, not by slot letter', () => {
     const log = ['|move|p2b: Weavile|Icicle Crash|p1a: Skarmory', '|-damage|p1a: Skarmory|60/100'];
-    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toEqual({move: 'Icicle Crash', damageFraction: 0.4, attackerBoosts: {}, defenderBoosts: {}});
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toEqual({move: 'Icicle Crash', damageFraction: 0.4, attackerBoosts: {}, defenderBoosts: {}, attackerHpPercent: 1, defenderHpPercent: 1});
   });
 
   it('is undefined with no log or no ident (conservative — never a false reading)', () => {

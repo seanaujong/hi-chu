@@ -13,13 +13,10 @@
 
 import type {LiveFacts} from './types.js';
 import {toId, innateAbility} from './facts.js';
+import {CHOICE_ITEMS, choiceRuledOutByStatusMoves} from './choiceitems.js';
 
 // Abilities that mask Life Orb's recoil, so its ABSENCE proves nothing about the item.
 const RECOIL_SUPPRESSORS = new Set(['sheerforce', 'magicguard']);
-
-// The three items the sim marks `isChoice` — the ones that lock their holder into a single
-// move per stint, and so the ones varying moves rules out together.
-const CHOICE_ITEMS = ['choiceband', 'choicespecs', 'choicescarf'];
 
 // Klutz ignores the holder's item outright, so a Klutz mon varies its moves freely even
 // while holding a Choice item — the sim's `ignoringItem()` check inside the lock. Its two
@@ -157,12 +154,30 @@ function statusOrbsRuledOut(facts: LiveFacts, roleAbilities: readonly string[]):
   return noExcuse(facts, roleAbilities, STATUS_ORB_SUPPRESSORS);
 }
 
+/**
+ * A status move rules the three Choice items out, because the team generator never builds
+ * a set holding both — the law, its measurement and its seven exceptions all live in
+ * `choiceitems.ts`. Two things separate it from the Choice rule directly above, which
+ * reaches the same three items by a different road:
+ *
+ *   - It settles on the FIRST status move, where the lock rule needs two freely-chosen
+ *     moves in one stint. A Calm Mind on turn one is enough, and most defensive sets show
+ *     a status move long before they show two attacks.
+ *   - It needs no ability guard. Klutz excuses the lock rule because an ignored item locks
+ *     nothing; it excuses nothing here, since no ability changes which set was built.
+ */
+function choiceRuledOutBySetShape(facts: LiveFacts): boolean {
+  return itemStillHidden(facts) && choiceRuledOutByStatusMoves(facts.revealedStatusMoves);
+}
+
 /** The items (id form) a role can no longer be holding, by behavioural deduction. */
 export function ruledOutItems(facts: LiveFacts, roleAbilities: readonly string[]): ReadonlySet<string> {
   const out = new Set<string>();
   if (lifeOrbRuledOut(facts, roleAbilities)) out.add('lifeorb');
   if (bootsRuledOut(facts)) out.add('heavydutyboots');
-  if (choiceItemsRuledOut(facts, roleAbilities)) for (const i of CHOICE_ITEMS) out.add(i);
+  if (choiceItemsRuledOut(facts, roleAbilities) || choiceRuledOutBySetShape(facts)) {
+    for (const i of CHOICE_ITEMS) out.add(i);
+  }
   if (airBalloonRuledOut(facts, roleAbilities)) out.add('airballoon');
   if (statusOrbsRuledOut(facts, roleAbilities)) for (const i of STATUS_ORBS) out.add(i);
   return out;

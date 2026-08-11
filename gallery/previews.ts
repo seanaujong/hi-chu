@@ -24,7 +24,8 @@
 // which is exactly the wait this file exists to delete.
 
 import {buildMoveSection, buildPokemonSection, buildSwitchSection} from '../src/section.js';
-import {loadBattle, scenarioData, scenarioDataItemAbilitySplit, scenarioDataWithAmoonguss, scenarioDataTwinRoles, scenarioDataWithCharizard, scenarioDataWithDitto, scenarioDataWithEmboar, scenarioDataWithGreninja} from '../src/scenario.js';
+import {loadBattle, scenarioData, scenarioDataItemAbilitySplit, scenarioDataWithAmoonguss,
+  scenarioDataWithGardevoir, scenarioDataTwinRoles, scenarioDataWithCharizard, scenarioDataWithDitto, scenarioDataWithEmboar, scenarioDataWithGreninja} from '../src/scenario.js';
 
 // Re-exported so the gallery can style its panels with the very stylesheet the extension
 // injects, rather than a copy of it that could drift.
@@ -213,6 +214,30 @@ export const PREVIEWS: readonly Preview[] = [
     {foeEmboar: true, noivernBoosts: {spe: -1}, foeMovedFirst: false},
     'Emboar',
     scenarioDataWithEmboar,
+  ),
+  pokemonHover(
+    'Foe active',
+    'It set up, so it was never Choiced',
+    'Gardevoir has clicked Calm Mind. Its one role pools Choice Scarf, Choice Specs and Life Orb, and the move narrows none of them away — but Showdown never BUILDS a Choice set around a status move, so the item is pinned to the Life Orb on the first click, where the Choice-lock rule would still be waiting for a second freely-chosen move.',
+    {foeGardevoir: 'setup'},
+    'Gardevoir',
+    scenarioDataWithGardevoir,
+  ),
+  pokemonHover(
+    'Foe active',
+    'Trick is the status move that KEEPS the Choice item',
+    'The same Gardevoir, one move over. A Trick set holds a Choice item because it has one to give away, so the rule that pinned the Life Orb above must stay silent here — all three items survive. Seven status moves behave this way, and they are measured from Showdown\u2019s own generator rather than recalled, because a missing one is a false deduction rather than a missed one.',
+    {foeGardevoir: 'trick'},
+    'Gardevoir',
+    scenarioDataWithGardevoir,
+  ),
+  pokemonHover(
+    'Foe active',
+    'The same law backwards: a Choice item forbids the setup',
+    'Here the item is what got revealed, so the reading runs the other way — a Choice Specs set is one no Calm Mind belongs to, and the Moves line drops it while keeping every attack and Trick. The Items line and the Moves line under it make a joint claim, so they are narrowed against each other rather than separately.',
+    {foeGardevoir: 'banded'},
+    'Gardevoir',
+    scenarioDataWithGardevoir,
   ),
   pokemonHover(
     'Foe active',

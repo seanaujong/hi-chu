@@ -11,6 +11,7 @@ function facts(over: Partial<LiveFacts> = {}): LiveFacts {
     boosts: {},
     terastallized: false,
     revealedMoves: [],
+    revealedStatusMoves: [],
     landedDamagingHit: false,
     tookEntryHazardDamage: false,
     switchedIntoStealthRockUnharmed: false,

@@ -13,7 +13,7 @@
 import {describe, it, expect} from 'vitest';
 import {buildMoveSection, buildPokemonSection, buildSwitchSection} from './section.js';
 import type {ClientBattle, ClientPokemon, ClientSide} from './battle/readState.js';
-import {loadBattle, scenarioData as data, scenarioDataTwinRoles, scenarioDataWithAmoonguss, scenarioDataWithCharizard as dataWithCharizard, scenarioDataWithDitto, scenarioDataWithEmboar as dataWithEmboar, scenarioDataWithGreninja as dataWithGreninja} from './scenario.js';
+import {loadBattle, scenarioData as data, scenarioDataTwinRoles, scenarioDataWithAmoonguss, scenarioDataWithGardevoir, scenarioDataWithCharizard as dataWithCharizard, scenarioDataWithDitto, scenarioDataWithEmboar as dataWithEmboar, scenarioDataWithGreninja as dataWithGreninja} from './scenario.js';
 import type {RandbatsData} from './core/types.js';
 import {HOVER_TARGETS, SECTION_NAMES, shows, type HoverTarget, type SectionName} from './core/surfaces.js';
 
@@ -752,6 +752,44 @@ describe('buildPokemonSection speed order (the ⚡ line on a foe hover)', () => 
     expect(html).toContain('⚡ you move first — 249 vs 235'); // the faster bucket leads
     expect(html).not.toContain('157'); // the slower one says the same thing, so it is gone
     expect(html).not.toContain('<small>if ');
+  });
+});
+
+describe('a status move rules out a Choice item, through the whole live pipeline', () => {
+  // Gardevoir's one role pools Choice Scarf, Choice Specs and Life Orb against a move list
+  // holding Calm Mind and Trick, so it survives every reveal below and revealed-move
+  // narrowing decides nothing. What separates these three tooltips is only the set-shape
+  // law: the generator never builds a Choice set around a status move — except the handful,
+  // Trick among them, that hold one BECAUSE of the move.
+  const gardevoirSets = (foeGardevoir: 'setup' | 'trick' | 'banded'): string => {
+    const {battle: b, active: a} = loadBattle({foeGardevoir});
+    return buildPokemonSection(b, a('Gardevoir'), scenarioDataWithGardevoir);
+  };
+  const setup = gardevoirSets('setup');
+  const trick = gardevoirSets('trick');
+  const banded = gardevoirSets('banded');
+
+  it('pins the item to Life Orb the moment Calm Mind is clicked', () => {
+    // One click, on turn one, and two of the three items are gone — where the Choice LOCK
+    // rule next door would still be waiting for a second freely-chosen move.
+    expect(setup).toContain('<small>Items:</small> Life Orb');
+    expect(setup).not.toContain('Choice Specs');
+    expect(setup).not.toContain('Choice Scarf');
+  });
+
+  it('leaves all three standing for Trick, which is why such a set holds one', () => {
+    expect(trick).toContain('Choice Scarf');
+    expect(trick).toContain('Choice Specs');
+    expect(trick).toContain('Life Orb');
+  });
+
+  it('reads the same law backwards: a revealed Choice Specs cannot be running Calm Mind', () => {
+    // The reverse direction reaching a rendered tooltip. The move line is speculation about
+    // a set we have not seen, and a Choice Specs set is one no Calm Mind belongs to.
+    expect(banded).toContain('<small>Items:</small> <b>✓ Choice Specs</b>');
+    expect(banded).not.toContain('Calm Mind');
+    expect(banded).toContain('Trick'); // the exception survives its own rule
+    expect(banded).toContain('Psyshock'); // and the attacks are untouched
   });
 });
 

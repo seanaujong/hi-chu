@@ -12,6 +12,13 @@ export type FullStats = Record<StatID, number>;
 
 export type StatusName = 'brn' | 'par' | 'psn' | 'tox' | 'slp' | 'frz';
 
+/**
+ * Is this move a STATUS move? A capability the shell supplies from the client's own dex,
+ * since the pure core carries no move categories and a table of them would rot against a
+ * dex that is always current. `choiceitems.ts` is what reads it.
+ */
+export type IsStatusMove = (moveName: string) => boolean;
+
 // Field state. These two unions mirror @smogon/calc's `Weather`/`Terrain` exactly
 // (so they assign straight through) but live here to keep the core calc-free.
 export type WeatherName = 'Sand' | 'Sun' | 'Rain' | 'Hail' | 'Snow' | 'Harsh Sunshine' | 'Heavy Rain' | 'Strong Winds';
@@ -145,6 +152,14 @@ export interface LiveFacts {
   readonly prevItem?: string;
   /** Moves actually seen this battle — used to narrow which role they are running. */
   readonly revealedMoves: readonly string[];
+  /**
+   * The subset of `revealedMoves` the client dex calls STATUS moves. Split out because the
+   * generator never pairs a status move with a Choice item, so seeing one rules all three
+   * out — a set-shape reading rather than a behavioural one, argued in `choiceitems.ts`.
+   * Kept as the raw list rather than a boolean, because the seven status moves that DO
+   * ride along with a Choice item are the law's business, not the reader's.
+   */
+  readonly revealedStatusMoves: readonly string[];
   /**
    * True once the battle log shows this Pokémon LANDING a damaging hit (a move it used
    * dealing damage to a foe). Life Orb takes 1/10 recoil on that hit and REVEALS itself

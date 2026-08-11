@@ -32,7 +32,7 @@ import {
   type MoveKnowledgeRow,
   type SpeedLineModel,
 } from './core/render.js';
-import type {CandidateSet, FieldFacts, KnownOption, LiveFacts, RandbatsData, RandbatsEntry, ResolvedMon, SetVariant, TransformCopy} from './core/types.js';
+import type {CandidateSet, FieldFacts, IsStatusMove, KnownOption, LiveFacts, RandbatsData, RandbatsEntry, ResolvedMon, SetVariant, TransformCopy} from './core/types.js';
 import {transformCopy} from './core/transform.js';
 import {applySwitchInHazards} from './core/hazards.js';
 import {
@@ -70,6 +70,7 @@ import {
   nearSide,
   detectFormat,
   readFieldFacts,
+  statusMoveReader,
   type ClientBattle,
   type ClientPokemon,
   type ClientServerPokemon,
@@ -297,11 +298,11 @@ type IncomingMovesFor = (
  *  alignment `groupByRole` uses for the sets view's own per-candidate damage. Never a
  *  set's first-guessed item: hidden Life Orb/Choice item splits an incoming line into
  *  labelled outcomes exactly like the move tooltip's defender side. */
-function randbatsIncomingMovesFor(data: RandbatsData): IncomingMovesFor {
+function randbatsIncomingMovesFor(data: RandbatsData, isStatusMove: IsStatusMove): IncomingMovesFor {
   return (foeFacts) => {
     const entry = entryFor(data, foeFacts);
     if (!entry) return [];
-    const knowledge = inferSets(foeFacts, entry);
+    const knowledge = inferSets(foeFacts, entry, isStatusMove);
     const variants = resolveVariants(foeFacts, entry);
     const seen = new Map<string, {known: boolean; roles: Set<string>}>();
     for (const c of knowledge.candidates) {
@@ -918,7 +919,7 @@ function ownHoverMatchup(
   // surfaces). Hazards ride on the same underlying fact, so they read from it too rather
   // than from a second copy of "is this mon on the field".
   const previewsHazards = previewsSwitchInHazards(target);
-  const incomingMovesFor = shows(target, 'incoming') ? randbatsIncomingMovesFor(data) : undefined;
+  const incomingMovesFor = shows(target, 'incoming') ? randbatsIncomingMovesFor(data, statusMoveReader(battle)) : undefined;
   const ownHazards = previewsHazards ? readOwnHazards(pokemon.side) : {stealthRock: false, spikesLayers: 0};
   const switchInAttacker = previewsHazards ? applySwitchInHazards(attacker, ownHazards, format.gen) : attacker;
   const hazardFaints = previewsHazards && switchInAttacker.hpPercent <= 0;
@@ -1039,7 +1040,7 @@ export function buildSwitchSection(battle: ClientBattle, server: ClientServerPok
       const ownHazards = readOwnHazards(ourSide);
       const switchInAttacker = applySwitchInHazards(attacker, ownHazards, format.gen);
       const hazardFaints = switchInAttacker.hpPercent <= 0;
-      const incomingMovesFor = shows(target, 'incoming') ? randbatsIncomingMovesFor(data) : undefined;
+      const incomingMovesFor = shows(target, 'incoming') ? randbatsIncomingMovesFor(data, statusMoveReader(battle)) : undefined;
       return ownMovesSection(
         battle, ourSide, switchInAttacker, shows(target, 'outgoing') ? moves : [], format, readFacts,
         randbatsVariantsFor(data), speedFor,
@@ -1501,7 +1502,10 @@ function randbatsPokemonSection(
   const entry = entryFor(data, facts);
   if (!entry) return ''; // not a tracked randbats Pokémon
 
-  const shown = inferSets(facts, entry);
+  // The client's dex, as the one capability `inferSets` needs from outside the pure core:
+  // which of a set's POOL moves are status moves, so a revealed Choice item can narrow it.
+  const isStatusMove = statusMoveReader(battle);
+  const shown = inferSets(facts, entry, isStatusMove);
   const notes = shown.uncertainReason ? [shown.uncertainReason] : [];
 
   // The hovered species, plus any Zoroark it might secretly be (Illusion) and any Mega
@@ -1516,12 +1520,12 @@ function randbatsPokemonSection(
       // any Transform copy belongs to it.
       const {transformedInto: _notItsCopy, ...shownFacts} = facts;
       const f: LiveFacts = {...shownFacts, speciesForme: species, level: e.level};
-      return {facts: f, entry: e, species: species as string | undefined, knowledge: inferSets(f, e)};
+      return {facts: f, entry: e, species: species as string | undefined, knowledge: inferSets(f, e, isStatusMove)};
     }),
     ...megaCandidatesFor(facts, data).map(({forme, entry: e}) => {
       const {transformedInto: _notItsCopy, ...shownFacts} = facts;
       const f: LiveFacts = {...shownFacts, speciesForme: forme, level: e.level};
-      return {facts: f, entry: e, species: undefined as string | undefined, knowledge: inferSets(f, e)};
+      return {facts: f, entry: e, species: undefined as string | undefined, knowledge: inferSets(f, e, isStatusMove)};
     }),
   ];
 

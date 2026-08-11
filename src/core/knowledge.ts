@@ -5,9 +5,9 @@
 //
 // Pure: no DOM, no network, no @smogon/calc.
 
-import type {Gimmick, KnownOption, LiveFacts, RandbatsEntry, RandbatsRole, SetKnowledge} from './types.js';
+import type {Gimmick, IsStatusMove, KnownOption, LiveFacts, RandbatsEntry, RandbatsRole, SetKnowledge} from './types.js';
 import {toId, innateAbility} from './facts.js';
-import {selectRoles, candidateItems} from './narrow.js';
+import {selectRoles, candidateItems, candidateMoves} from './narrow.js';
 
 /** Union a pool into options, confirmed names first; dedup by id, keep display names. */
 function unionOptions(pool: readonly string[], confirmed: readonly string[]): KnownOption[] {
@@ -76,8 +76,12 @@ function baseSpecies(speciesForme: string): string {
  * with the same evidence rule the calc uses, and keep each surviving candidate
  * WHOLE (which item goes with which moves is the information), reveals marked.
  * Role-less gen ≤ 8 entries become a single unnamed candidate from the entry pools.
+ *
+ * `isStatusMove` is the shell's dex, and its absence is a real state rather than a
+ * missing argument: without a way to tell a status move from an attack, the Choice-item
+ * narrowing in `candidateMoves` has nothing to go on and the move pools stay whole.
  */
-export function inferSets(facts: LiveFacts, entry: RandbatsEntry): SetKnowledge {
+export function inferSets(facts: LiveFacts, entry: RandbatsEntry, isStatusMove?: IsStatusMove): SetKnowledge {
   const {candidates, names, uncertain} = selectRoles(entry, facts);
   const totalRoles = entry.roles ? Object.keys(entry.roles).length : 0;
 
@@ -92,11 +96,14 @@ export function inferSets(facts: LiveFacts, entry: RandbatsEntry): SetKnowledge 
   const toCandidate = (name: string, role: RandbatsRole): SetKnowledge['candidates'][number] => {
     const items = exclusiveOptions(candidateItems(entry, role, facts), revealedItem ? [revealedItem] : []);
     const teraTypes = exclusiveOptions(role.teraTypes, activeTera);
+    // Pruned against `items` — the list this very block will print — so the two lines
+    // cannot make a joint claim about a set the generator never builds.
+    const pool = candidateMoves(entry, role, items.map((i) => i.name), isStatusMove);
     return {
       name,
       abilities: exclusiveOptions(role.abilities, revealedAbility ? [revealedAbility] : []),
       items,
-      moves: unionOptions(fullMoveset ? [] : role.moves, facts.revealedMoves),
+      moves: unionOptions(fullMoveset ? [] : pool, facts.revealedMoves),
       gimmicks: deriveGimmicks(items, teraTypes, species),
     };
   };

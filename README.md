@@ -28,7 +28,11 @@ the DOM/network directly — but it hands the actual work to `section.ts`, which
 (no DOM, no cache, no network of its own) and does the real folding. Below that, three
 steps stay strictly separate — **fetch** (the live page, the network), **reason** (the
 domain logic), **render** (model → HTML) — so a step never reaches into the DOM or the
-network unless that IS its job. Dependencies only ever point downward:
+network unless that IS its job.
+
+### Producing a damage number
+
+Dependencies only ever point downward:
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
@@ -108,20 +112,74 @@ network unless that IS its job. Dependencies only ever point downward:
 └───────────────────────────────────────────────────────────────┘
 ```
 
-The only thing a battle's format changes is *where the foe's possibilities come
-from* — a real set feed (`resolve.ts`) vs. two bracketing assumptions with none
-(`assume.ts`) — everything below that fork in REASON is shared.
+### Narrowing what the foe could be
 
-The diagram above is the **pipeline** — what flows where. It is deliberately not the import
-graph: the two answer different questions, and only one of them rots. For *which module
-actually imports which*, see [`docs/architecture-graph.md`](docs/architecture-graph.md),
-generated from the source by `npm run graph` and re-diffed by CI so it cannot drift. For what
-the layers MEAN — why `facts.ts` is a leaf, why every behavioural deduction routes through
-`narrow.ts` — read `CLAUDE.md`'s Architecture section, kept current file-by-file as the
-codebase grows. Those layering rules are enforced, not just described:
-`fitness/dependency-boundaries.test.ts` holds this project's named ones and
-`.dependency-cruiser.cjs` the structural ones (no cycles, no orphans); both run in
-`npm run check`.
+The pipeline above answers *what would this move do*. The half that makes the tooltip worth
+reading answers *what could that Pokémon even be* — and it runs on nothing but the public
+log, which is what makes the mirror it shows on our own Pokémon honest.
+
+Evidence arrives in three kinds, and each is blind to what the others see. A Choice Scarf
+changes no damage number, so only move order can find it. An Assault Vest changes no damage
+its holder *deals*, so only a hit into it can. A Life Orb rules itself out by staying
+silent, having never taken its recoil.
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│ battle/readState.ts                               public only │
+│ the protocol log — evidence about turns already FOUGHT,       │
+│ which is a different output from the LiveFacts snapshot       │
+│ of how things stand now                                       │
+└───────────────────────────────────────────────────────────────┘
+         ┌──────────────────────┼──────────────────────┐
+         │                      │                      │
+         ▼                      ▼                      ▼
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│ deductions.ts   │    │ itemreveal.ts   │    │ speedreveal.ts  │
+│ did a side      │    │ what NUMBER did │    │ who moved       │
+│ effect fire?    │    │ a hit deal?     │    │ first?          │
+│                 │    │ (asks the calc) │    │                 │
+│                 │    │                 │    │                 │
+│ Life Orb recoil,│    │ theirs into us: │    │ Choice Scarf —  │
+│ hazard damage,  │    │ Choice Specs;   │    │ the one axis a  │
+│ an orb that     │    │ ours into them: │    │ damage number   │
+│ stayed silent   │    │ Assault Vest    │    │ can never show  │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         └──────────────────────┴──────────────────────┘
+                                │ per still-possible set
+                                ▼
+┌───────────────────────────────────────────────────────────────┐
+│ the sets still standing                         never emptied │
+│ a deduction lands via narrow.ts BEFORE a set is built, so     │
+│ a role whose item pool empties is dropped whole. The other    │
+│ two judge sets already built. None of them may narrow the     │
+│ candidates to nothing — a rule-out is an inference from       │
+│ something that did NOT happen, so one that kills every set    │
+│ is likelier wrong than the species impossible                 │
+└───────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌───────────────────────────────────────────────────────────────┐
+│ back into REASON                 one narrowing, every surface │
+│ the same pool the pipeline above calculates with, so the      │
+│ speed verdict, the damage and the Items line cannot           │
+│ disagree about one set                                        │
+└───────────────────────────────────────────────────────────────┘
+```
+
+Two things there are easy to miss. The calc runs **twice** per hover, asked different
+questions: `itemreveal.ts` reruns it over each still-possible set to ask *could this one
+have dealt what I saw?*, and only the survivors reach the pipeline above, which asks *what
+does this one do next?*. That is a loop in the dataflow, not in the imports — the
+sequencing lives in `section.ts`, and the module graph has no cycle. And this whole layer
+needs a pool to narrow, so unlike the damage pipeline it is **Random-Battle-only**: an open
+format has no feed to enumerate, so a foe hover carries none of this and the move tooltip
+brackets the spread instead.
+
+Every reading is judged against the state the observation happened *under*, never the state
+on screen. A move's own secondary stat drop lands between the hit and the hover, and so does
+any HP either side has lost since. Getting that wrong does not blur a verdict so much as
+invert one: Blaze's ×1.5 is the same multiplier as Choice Specs', so a pinched Pokémon read
+at full health convicts the item it does not hold.
 
 For exact shapes and signatures, read the source and the `*.test.ts` next to each module —
 the tests double as worked examples, pinned against real Showdown numbers.

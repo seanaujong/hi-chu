@@ -216,6 +216,27 @@ export const PREVIEWS: readonly Preview[] = [
   ),
   pokemonHover(
     'Foe active',
+    'Assault Vest or not — nothing has told us yet',
+    'Tentacruel\u2019s one role holds either an Assault Vest or Leftovers, and no public fact separates them. A vest changes no damage Tentacruel DEALS, fires no side effect and bends no move order, so every other reveal in the codebase is blind to it: the Items line has to carry both.',
+    {tentacruelItem: ''},
+    'Tentacruel',
+  ),
+  pokemonHover(
+    'Foe active',
+    'Our own hit was too hard for a vest',
+    'One Boomburst of ours took 27% off it. Behind an Assault Vest that move reads 16.5\u201319.9%; bare it reads 25\u201329.4%, and only the second contains what happened \u2014 so the vest goes. This is the mirror of every other reading here: the evidence is damage WE dealt, which is why it can see a defensive item at all, and it is the sharper direction because our own set is read exactly off the private team.',
+    {tentacruelItem: '', myNoivernItem: 'heavydutyboots', tentacruelTookBoomburst: 0.27},
+    'Tentacruel',
+  ),
+  pokemonHover(
+    'Foe active',
+    'Our own hit was too soft for anything else',
+    'The same Boomburst, but it took only 18%. Now it is the bare set that is impossible and the vest that survives \u2014 the rule cuts whichever way the number points, and never picks the closest set when neither fits.',
+    {tentacruelItem: '', myNoivernItem: 'heavydutyboots', tentacruelTookBoomburst: 0.18},
+    'Tentacruel',
+  ),
+  pokemonHover(
+    'Foe active',
     'Protean, still unspent',
     'Greninja has not moved yet, so whatever it throws will convert it and arrive with STAB — every line here is boosted, and correctly so. Read it against the preview below: same Pokémon, same turn, one log line apart.',
     {foeGreninja: 'unspent'},

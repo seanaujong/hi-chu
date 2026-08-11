@@ -42,7 +42,7 @@ import {
   shows,
   type HoverTarget,
 } from './core/surfaces.js';
-import {variantsConsistentWithDamage} from './core/itemreveal.js';
+import {variantsConsistentWithDamageDealt, variantsConsistentWithDamageTaken} from './core/itemreveal.js';
 import {variantsConsistentWithOrder} from './core/speedreveal.js';
 import {pickEntry, megaEntryForItem, megaEntriesFor} from './data/lookup.js';
 import {
@@ -106,6 +106,34 @@ interface FoeReveals {
 }
 
 /**
+ * Our own active as the ATTACKER of a hit that has already landed: its public battle state
+ * with the private team's real item and ability laid over it — the same composition
+ * `buildMoveSection` uses for our outgoing damage, and for the same reason.
+ *
+ * `null` unless that item can be pinned exactly, and the outgoing damage reading is dropped
+ * entirely when it is. This is not caution for its own sake: that reading divides the
+ * observed number by what we think we hit with, so an item guessed from the set's pool
+ * multiplies straight into the verdict. A Choice Specs read as Heavy-Duty Boots predicts two
+ * thirds of the damage that really landed, which reads as a defence we never faced and
+ * convicts whichever of the foe's items is bulkiest — the exact false rule-out this whole
+ * layer exists to avoid. Spectating a replay (no `myPokemon` at all) and a Pokémon whose
+ * item has been knocked off both land here, and both would rather say nothing.
+ */
+function exactOwnAttacker(
+  battle: ClientBattle,
+  mon: ClientPokemon,
+  facts: LiveFacts,
+  data: RandbatsData,
+): ResolvedMon | null {
+  const entry = entryFor(data, facts);
+  if (!entry) return null;
+  const item = ownItemName(battle, mon, entry);
+  if (!item) return null;
+  const ability = ownAbilityName(battle, mon, entry);
+  return resolveMon({...facts, item, ...(ability ? {ability} : {})}, entry);
+}
+
+/**
  * The one place a foe's still-possible variants are narrowed by the log. EVERY surface that
  * shows a foe's set goes through it — the ⚡ verdict, the move tooltip's defender fan-out,
  * the sets view's damage, and the sets view's own Items line — because a rule-out that
@@ -123,18 +151,42 @@ function foeReveals(
   // fought, so a Mega or Tera merely TICKED in the move panel was not in effect for it.
   // Defaults to `ourResolved` for callers with no preview to strip.
   ourWhenItHappened: ResolvedMon | null = ourResolved,
+  // Our mon with its PRIVATE item and ability, or null when they cannot be pinned. Only the
+  // outgoing damage reading uses it, and only when it is non-null — see `exactOwnAttacker`.
+  ourAttacker: ResolvedMon | null = null,
 ): FoeReveals | undefined {
   if (!ourMon || !ourResolved || !field) return undefined;
+  // Every reading here judges a turn ALREADY FOUGHT, so all three want our mon as it stood
+  // then — a Mega or Tera merely ticked in the move panel was in effect for none of them.
+  const ourselvesThen = ourWhenItHappened ?? ourResolved;
   // Damage MAGNITUDE (core/itemreveal.ts) — not a side effect firing, but the NUMBER a past
-  // hit dealt. `mostRecentCleanHit` hands back nothing unless it found one safe to compare.
-  const hit = mostRecentCleanHit(battle, foe, ourMon);
+  // hit dealt, read at BOTH ends. `mostRecentCleanHit` is a fact about an ordered pair, so
+  // the same reader answers both: what THEY landed on us bounds their offensive item, what
+  // WE landed on them bounds their defensive one (an Assault Vest is invisible otherwise).
+  // Either hands back nothing unless it found one safe to compare.
+  const theirHit = mostRecentCleanHit(battle, foe, ourMon);
+  const ourHit = ourAttacker ? mostRecentCleanHit(battle, ourMon, foe) : undefined;
   // Move ORDER (core/speedreveal.ts) — the only reading that separates a Scarf from a Band.
   const order = mostRecentCleanOrder(battle, ourMon, foe);
-  if (!hit && !order) return undefined;
+  if (!theirHit && !ourHit && !order) return undefined;
+  // Field orientation follows whoever is DEFENDING. `field` was read with OUR side as the
+  // defender, which is right for a hit we TOOK; a hit we DEALT is the mirror, and reusing
+  // the same reading would put their Reflect on us and ours on them.
+  const theirField = ourHit ? readFieldFacts(battle, foe.side) : undefined;
   return {
     narrow: (variants) => {
       let kept = variants;
-      if (hit) kept = variantsConsistentWithDamage(kept, ourResolved, {gen: format.gen, field, doubles: format.doubles}, hit);
+      if (theirHit) {
+        kept = variantsConsistentWithDamageDealt(kept, ourselvesThen, {gen: format.gen, field, doubles: format.doubles}, theirHit);
+      }
+      if (ourHit && ourAttacker) {
+        kept = variantsConsistentWithDamageTaken(
+          kept,
+          ourAttacker,
+          {gen: format.gen, ...(theirField ? {field: theirField} : {}), doubles: format.doubles},
+          ourHit,
+        );
+      }
       if (order && ourWhenItHappened) {
         kept = variantsConsistentWithOrder(kept, ourWhenItHappened, order, {
           gen: format.gen,
@@ -171,7 +223,10 @@ function revealsAgainst(
   if (!ourActive) return undefined;
   const ourFacts = ownTruth(battle, ourActive, readFacts(ourActive));
   const resolved = resolveMon(ourFacts, entryOrMinimal(entryFor(data, ourFacts), ourFacts));
-  return foeReveals(battle, foe, ourActive, resolved, readFieldFacts(battle, ourActive.side), format);
+  return foeReveals(
+    battle, foe, ourActive, resolved, readFieldFacts(battle, ourActive.side), format,
+    resolved, exactOwnAttacker(battle, ourActive, ourFacts, data),
+  );
 }
 
 /**
@@ -1488,9 +1543,10 @@ function randbatsPokemonSection(
   // preview, and deliberately the SAME `teraPreviewFor`/`megaPreviewFor` rather than a
   // defensive fork — a Tera that grants STAB on our move is the same Tera that resists
   // theirs, so the two directions must never disagree about which type is active.
-  // Our mon WITHOUT the pending previews: the move-order reading describes a turn already
-  // fought, and a Mega or Tera merely ticked in the move panel was not in effect for it.
-  // The damage reading wants the previewed one.
+  // Our mon WITHOUT the pending previews. Every log reading describes a turn already fought,
+  // and a Mega or Tera merely ticked in the move panel was not in effect for any of them —
+  // so `foeReveals` takes this one, while the DISPLAYED damage below takes the previewed
+  // `defender`, which is a claim about the turn to come.
   const defenderNow = ourMon && ourFacts
     ? resolveMon(ourFacts, entryOrMinimal(entryFor(data, ourFacts), ourFacts))
     : null;
@@ -1505,7 +1561,10 @@ function randbatsPokemonSection(
   // past hit dealt, and who moved first. Gathered once and applied everywhere below, so the
   // Items line, the per-move damage and the ⚡ verdict cannot disagree about the same set.
   // A no-op on the common hover where neither observation is safe to read.
-  const reveals = foeReveals(battle, pokemon, ourMon, defender, field, format, defenderNow);
+  const reveals = foeReveals(
+    battle, pokemon, ourMon, defender, field, format, defenderNow,
+    ourMon && ourFacts ? exactOwnAttacker(battle, ourMon, ourFacts, data) : null,
+  );
 
   const blocks: CandidateBlock[] = [];
   for (const s of sources) {

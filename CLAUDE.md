@@ -690,9 +690,18 @@ picture and not in this list, this list is the thing that's wrong.
       items ruled out by the NUMBER a hit dealt, where `deductions.ts` reads whether a side
       effect FIRED. It reruns the calc per still-possible variant and keeps only those whose
       own roll range could have produced the observed fraction, never narrowing to nothing.
-      Its one observation comes from `readState.ts`'s `mostRecentCleanHit`. A rule-out read
-      from a hit's magnitude belongs here; one read from a side effect belongs in
-      `deductions.ts`.
+      A hit reveals an item at BOTH ends and the two ends answer different questions, so
+      there are two entry points over one law: `variantsConsistentWithDamageDealt` bounds the
+      foe's OFFENSIVE item from what its own hit did to us (Band/Specs, Life Orb, Expert
+      Belt), and `variantsConsistentWithDamageTaken` bounds its DEFENSIVE one from what our
+      hit did to it — the only angle an Assault Vest is visible from at all, since it changes
+      no damage its holder deals, fires no side effect and bends no move order. The second is
+      the sharper of the two, because our own set is read exactly off the private team. Field
+      orientation follows whoever is DEFENDING, so the two directions read the field in
+      OPPOSITE orientations; `section.ts`'s `foeReveals` is where that mirror is taken.
+      Both observations come from `readState.ts`'s `mostRecentCleanHit`, which is a fact about
+      an ordered pair and so answers both by argument order. A rule-out read from a hit's
+      magnitude belongs here; one read from a side effect belongs in `deductions.ts`.
     - `speedreveal.ts` — the move-ORDER law, and the third direction a reveal can come
       from: `deductions.ts` reads whether a side effect fired, `itemreveal.ts` what number a
       hit dealt, and this one who moved first. Move order is a fact about the PAIR and our
@@ -912,6 +921,8 @@ was always undefined.
 | A deduction narrows the candidate roles but never empties them — nor the item pool a chosen role calcs with | ✅ | `core/narrow.ts` (`consistentRoles`, `candidateItems`) | `resolve.test.ts` |
 | ONE rule decides a candidate's item pool, so the block's Items line and its damage can't disagree | ✅ | `core/narrow.ts` (`candidateItems`) | `resolve.test.ts`, `section.test.ts` |
 | A log reading goes stale only when the state really MOVED — the weather's end-of-turn tick announces the weather, it does not change it | ✅ | `battle/readState.ts` (`changesState`, `STATE_CHANGING_TAGS`) | `readState.test.ts`, `npm run drift-check` |
+| A hit's MAGNITUDE bounds an item at both ends — theirs into us reveals their offence, ours into them their defence (the only way an Assault Vest is ever seen) | ✅ | `core/itemreveal.ts` (`variantsConsistentWithDamageDealt`, `variantsConsistentWithDamageTaken`), `section.ts` (`foeReveals`) | `itemreveal.test.ts`, `section.test.ts` |
+| A magnitude reading is judged under the boosts the hit LANDED under, never the ones standing now — a move's own secondary drop lands between the two | ✅ | `battle/readState.ts` (`applyBoostLine`, `REPLAYABLE_BOOST_TAGS`), `core/itemreveal.ts` | `readState.test.ts`, `itemreveal.test.ts`, `section.test.ts` |
 | Move ORDER rules out a Choice Scarf — the one axis damage can never reveal | ✅ | `core/speedreveal.ts`, `battle/readState.ts` (`mostRecentCleanOrder`) | `speedreveal.test.ts`, `readState.test.ts`, `section.test.ts` |
 | A priority bracket is an ALIBI: any variant whose bracket explains the order survives without its speed being consulted | ✅ | `core/speedreveal.ts` (`bracket`, `UNREADABLE_ABILITIES`) | `speedreveal.test.ts` |
 | A move's priority is read from the CLIENT dex — @smogon/calc's own data zeroes every negative bracket | ✅ | `battle/readState.ts` (`readMoveOrder`) | `readState.test.ts`, `speedreveal.test.ts` |

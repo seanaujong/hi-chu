@@ -6,7 +6,7 @@
 // `toLiveFacts` is pure and unit-tested with a stub; the navigation helpers are
 // thin and defensive (the client's shape can shift between releases).
 
-import type {FieldFacts, FullStats, LiveFacts, OrderedMove, SpeciesData, StatID, StatusName, TerrainName, TurnOrder, WeatherName} from '../core/types.js';
+import type {FieldFacts, FullStats, LiveFacts, ObservedHit, OrderedMove, SpeciesData, StatID, StatusName, TerrainName, TurnOrder, WeatherName} from '../core/types.js';
 import {isMegaForme} from '../core/facts.js';
 import {multiHitProfile} from '../core/moves.js';
 import type {OwnSideHazards} from '../core/hazards.js';
@@ -927,6 +927,7 @@ const STATE_CHANGING_TAGS = new Set([
   '-ability', '-endability',
   '-terastallize', '-formechange', 'detailschange',
   '-item', '-enditem',
+  '-copyboost',
 ]);
 
 /**
@@ -943,6 +944,59 @@ const STATE_CHANGING_TAGS = new Set([
 function changesState(tag: string, parts: readonly string[]): boolean {
   if (tag === '-weather' && parts.includes('[upkeep]')) return false;
   return STATE_CHANGING_TAGS.has(tag);
+}
+
+/** One Pokémon's boosts, as the log has moved them so far. */
+type BoostTable = Partial<Record<StatID, number>>;
+
+/**
+ * The boost lines this reader replays, so a hit observed BEFORE them can still be judged —
+ * against the boosts it actually landed under, rather than the ones standing now. Every one
+ * of these says outright what it did and to whose table, which is what makes replaying it a
+ * reading rather than a guess.
+ *
+ * `-swapboost` and `-copyboost` are deliberately not here. Each names two Pokémon and a
+ * direction, and a direction read backwards puts a boost on the wrong side — a false
+ * rule-out, the one outcome these readings must never produce. Both stay in
+ * `STATE_CHANGING_TAGS`, so a hit followed by one is abstained from instead.
+ */
+const REPLAYABLE_BOOST_TAGS = new Set([
+  '-boost', '-unboost', '-setboost',
+  '-clearboost', '-clearallboost', '-clearpositiveboost', '-clearnegativeboost', '-invertboost',
+]);
+
+/** The stage cap Showdown applies to every boost, in both directions. */
+const BOOST_LIMIT = 6;
+
+/** Moves `tables` on by one boost line — the same arithmetic the client itself does. */
+function applyBoostLine(tables: Record<string, BoostTable>, tag: string, parts: readonly string[]): void {
+  if (tag === '-clearallboost') {
+    for (const key of Object.keys(tables)) tables[key] = {};
+    return;
+  }
+  // `-clearpositiveboost|TARGET|POKEMON|EFFECT` names its target first, like every other line
+  // here; its second field is whoever caused it, whose own table does not move.
+  const who = identKey(parts[2]);
+  if (!who) return;
+  const table = (tables[who] ??= {});
+
+  if (tag === '-clearboost') {
+    tables[who] = {};
+  } else if (tag === '-invertboost') {
+    for (const stat of BOOSTABLE) if (table[stat]) table[stat] = -table[stat]!;
+  } else if (tag === '-clearpositiveboost') {
+    for (const stat of BOOSTABLE) if ((table[stat] ?? 0) > 0) delete table[stat];
+  } else if (tag === '-clearnegativeboost') {
+    for (const stat of BOOSTABLE) if ((table[stat] ?? 0) < 0) delete table[stat];
+  } else {
+    const stat = parts[3] as StatID;
+    const amount = Number(parts[4]);
+    if (!BOOSTABLE.includes(stat) || !Number.isFinite(amount)) return;
+    const next = tag === '-setboost' ? amount : (table[stat] ?? 0) + (tag === '-boost' ? amount : -amount);
+    const capped = Math.max(-BOOST_LIMIT, Math.min(BOOST_LIMIT, next));
+    if (capped === 0) delete table[stat];
+    else table[stat] = capped;
+  }
 }
 
 /** "245/312 par" / "48/100" / "0 fnt" → the HP fraction, or undefined if unparseable. */
@@ -966,25 +1020,36 @@ function hpToken(token: string | undefined): number | undefined {
  *   - a hit that KOed the target — the display clips at 0, so the true damage is only a
  *     LOWER bound, not the exact figure a range check needs;
  *   - anything in `STATE_CHANGING_TAGS` occurring AFTER the hit, on EITHER side — past
- *     that point, current field/boost/status/item/ability/forme facts no longer describe
- *     the state the hit happened under.
+ *     that point, current field/status/item/ability/forme facts no longer describe the
+ *     state the hit happened under.
  * Returns undefined rather than a guess whenever nothing qualifies — we would rather miss
  * a rule-out than manufacture a false one.
+ *
+ * BOOSTS are the exception, and they have to be: a move that drops a stat as a secondary
+ * emits that drop as part of its own resolution, so treating it as "something happened
+ * since" made such a move stale the very hit it had just produced. Mystical Fire drops SpA
+ * every time, which cost that move its reading permanently. Ignoring the drop instead is not
+ * an option — Bug Buzz lowers the DEFENDER's SpD, exactly the stat the recomputation reads,
+ * so a reading taken against the boosts standing now would predict a bigger hit than really
+ * landed and rule out sets that were never impossible. So the boosts are REPLAYED
+ * (`applyBoostLine`) and reported as they stood at the moment the hit landed, which is the
+ * only version of them the observed number was ever about.
  */
 export function mostRecentCleanHit(
   battle: ClientBattle,
   attacker: {readonly ident?: string},
   defender: {readonly ident?: string},
-): {readonly move: string; readonly damageFraction: number} | undefined {
+): ObservedHit | undefined {
   const atk = identKey(attacker.ident);
   const def = identKey(defender.ident);
   if (!atk || !def) return undefined;
 
   const hp: Record<string, number> = {};
+  const boosts: Record<string, BoostTable> = {};
   let mover: string | null = null;
   let moveName: string | null = null;
   let critTarget: string | null = null;
-  let found: {move: string; damageFraction: number} | undefined;
+  let found: ObservedHit | undefined;
   let stale = false;
 
   for (const line of battle.stepQueue ?? []) {
@@ -1000,6 +1065,7 @@ export function mostRecentCleanHit(
       const who = identKey(parts[2]);
       const frac = hpToken(parts[4]);
       if (who && frac !== undefined) hp[who] = frac;
+      if (who) boosts[who] = {}; // a Pokémon arriving has none, however it left
     } else if (tag === 'turn') {
       mover = null;
       moveName = null;
@@ -1016,11 +1082,20 @@ export function mostRecentCleanHit(
         const multiHit = multiHitProfile(moveName) !== undefined;
         if (!indirect && !wasCrit && !fainted && !multiHit) {
           const before = hp[who] ?? 1;
-          found = {move: moveName, damageFraction: Math.max(0, before - frac)};
+          found = {
+            move: moveName,
+            damageFraction: Math.max(0, before - frac),
+            // Snapshot HERE, at the damage line: a secondary that fires after it was not in
+            // effect for the number we just read.
+            attackerBoosts: {...boosts[atk]},
+            defenderBoosts: {...boosts[def]},
+          };
           stale = false;
         }
       }
       if (who && frac !== undefined) hp[who] = frac;
+    } else if (REPLAYABLE_BOOST_TAGS.has(tag)) {
+      applyBoostLine(boosts, tag, parts); // followed, not abstained from — see the docblock
     } else if (changesState(tag, parts)) {
       if (found) stale = true;
     }

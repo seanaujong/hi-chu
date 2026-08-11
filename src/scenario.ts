@@ -192,7 +192,7 @@ export const scenarioDataItemAbilitySplit = {
  * The client's classes are untyped and cyclic, so the reconstruction casts through
  * `unknown` — the shapes match readState's structural interfaces.
  */
-export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; farStealthRock?: boolean; farSpikes?: number; tentacruelHpPercent?: number; foeDitto?: 'transformed' | 'plain'; foeEmboar?: boolean; foeAmoonguss?: boolean; foeCharizardHpPercent?: number; foeGreninja?: 'unspent' | 'converted'; noivernBoosts?: Record<string, number>; foeMovedFirst?: boolean; ourZoroark?: boolean; tentacruelSubstitute?: 'fresh' | 'dented'; noivernSubstitute?: 'fresh' | 'dented'} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
+export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; farStealthRock?: boolean; farSpikes?: number; tentacruelHpPercent?: number; foeDitto?: 'transformed' | 'plain'; foeEmboar?: boolean; foeAmoonguss?: boolean; foeCharizardHpPercent?: number; foeGreninja?: 'unspent' | 'converted'; noivernBoosts?: Record<string, number>; foeMovedFirst?: boolean; ourZoroark?: boolean; tentacruelSubstitute?: 'fresh' | 'dented'; noivernSubstitute?: 'fresh' | 'dented'; tentacruelTookBoomburst?: number} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
   const sides: ClientSide[] = fixture.battle.sides.map((s, i) => {
     // Tailwind blows on OUR side (index 0) only — the asymmetry is the point: it must
     // double our speed and leave the foe's alone, whichever side a caller orients on.
@@ -347,7 +347,7 @@ export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?
           }[n])},
         }}
       : {}),
-    ...(over.tentacruelSubstitute || over.noivernSubstitute || over.foeMovedFirst !== undefined || over.foeGreninja
+    ...(over.tentacruelSubstitute || over.noivernSubstitute || over.foeMovedFirst !== undefined || over.foeGreninja || over.tentacruelTookBoomburst !== undefined
       ? {stepQueue: [
           ...(over.foeGreninja ? ['|switch|p2a: Greninja|Greninja, M|238/238'] : []),
           // The ATTRIBUTION is the fact, not the retype: `proteanAlreadyFired` reads this
@@ -368,6 +368,17 @@ export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?
                   ? ['|move|p2a: Emboar|Head Smash|p1a: Noivern', '|move|p1a: Noivern|Draco Meteor|p2a: Emboar']
                   : ['|move|p1a: Noivern|Draco Meteor|p2a: Emboar', '|move|p2a: Emboar|Head Smash|p1a: Noivern']),
                 '|turn|2',
+              ]
+            : []),
+          // One clean hit of OUR Boomburst into Tentacruel, at full HP. Its magnitude is the
+          // only evidence an Assault Vest ever leaves: the vest changes no damage its holder
+          // deals, fires no side effect and bends no move order, so nothing but a hit INTO
+          // it can separate the two items this set can hold.
+          ...(over.tentacruelTookBoomburst !== undefined
+            ? [
+                '|switch|p2a: Tentacruel|Tentacruel, L84, M|100/100',
+                '|move|p1a: Noivern|Boomburst|p2a: Tentacruel',
+                `|-damage|p2a: Tentacruel|${Math.round(100 - over.tentacruelTookBoomburst * 100)}/100`,
               ]
             : []),
           ...(over.tentacruelSubstitute ? ['|-start|p2a: Tentacruel|Substitute'] : []),

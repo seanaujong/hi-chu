@@ -446,12 +446,12 @@ describe('mostRecentCleanHit (an observed hit’s MAGNITUDE reveals an item)', (
       '|move|p2a: Weavile|Icicle Crash|p1a: Skarmory',
       '|-damage|p1a: Skarmory|60/100',
     ];
-    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toEqual({move: 'Icicle Crash', damageFraction: 0.4});
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toEqual({move: 'Icicle Crash', damageFraction: 0.4, attackerBoosts: {}, defenderBoosts: {}, attackerHpPercent: 1, defenderHpPercent: 1});
   });
 
   it('defaults "before" to full HP when the defender was never seen switching in', () => {
     const log = ['|move|p2a: Weavile|Icicle Crash|p1a: Skarmory', '|-damage|p1a: Skarmory|75/100'];
-    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toEqual({move: 'Icicle Crash', damageFraction: 0.25});
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toEqual({move: 'Icicle Crash', damageFraction: 0.25, attackerBoosts: {}, defenderBoosts: {}, attackerHpPercent: 1, defenderHpPercent: 1});
   });
 
   it('excludes a multi-hit move — the shown number is a SUM, not one roll', () => {
@@ -478,13 +478,22 @@ describe('mostRecentCleanHit (an observed hit’s MAGNITUDE reveals an item)', (
     expect(mostRecentCleanHit(withLog(log), attacker, defender)).toBeUndefined();
   });
 
-  it('goes stale once a boost happens afterward — current facts no longer describe the hit', () => {
+  it('follows a boost that happens afterward rather than giving the hit up', () => {
+    // The boost is real, but it is not retroactive: the number was produced before it, so
+    // the reading keeps the table as it stood and the later stage never enters the calc.
     const log = [
       '|move|p2a: Weavile|Icicle Crash|p1a: Skarmory',
       '|-damage|p1a: Skarmory|60/100',
       '|-boost|p2a: Weavile|atk|1',
     ];
-    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toBeUndefined();
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toEqual({
+      move: 'Icicle Crash',
+      damageFraction: 0.4,
+      attackerBoosts: {},
+      defenderBoosts: {},
+      attackerHpPercent: 1,
+      defenderHpPercent: 1,
+    });
   });
 
   it('goes stale once weather/status/item changes afterward, on EITHER side', () => {
@@ -492,6 +501,122 @@ describe('mostRecentCleanHit (an observed hit’s MAGNITUDE reveals an item)', (
     expect(mostRecentCleanHit(withLog([...hit, '|-weather|Sandstorm']), attacker, defender)).toBeUndefined();
     expect(mostRecentCleanHit(withLog([...hit, '|-status|p1a: Skarmory|brn']), attacker, defender)).toBeUndefined();
     expect(mostRecentCleanHit(withLog([...hit, '|-enditem|p2a: Weavile|Life Orb']), attacker, defender)).toBeUndefined();
+  });
+
+  it('survives the standing weather\u2019s end-of-turn tick, which moves nothing', () => {
+    // The residual re-announcement, tagged `[upkeep]`. It fires every turn the weather is
+    // up, so counting it as a change made one Snow Warning lead cost the reading for the
+    // whole game \u2014 see `changesState`.
+    const log = [
+      '|move|p2a: Weavile|Icicle Crash|p1a: Skarmory',
+      '|-damage|p1a: Skarmory|60/100',
+      '|-weather|Snowscape|[upkeep]',
+      '|upkeep',
+      '|turn|4',
+    ];
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toEqual({move: 'Icicle Crash', damageFraction: 0.4, attackerBoosts: {}, defenderBoosts: {}, attackerHpPercent: 1, defenderHpPercent: 1});
+  });
+
+  it('still goes stale when the weather actually STARTS or ENDS', () => {
+    // The two lines that carry no `[upkeep]`, and both really do move the state.
+    const hit = ['|move|p2a: Weavile|Icicle Crash|p1a: Skarmory', '|-damage|p1a: Skarmory|60/100'];
+    const started = '|-weather|Snowscape|[from] ability: Snow Warning|[of] p2a: Abomasnow';
+    expect(mostRecentCleanHit(withLog([...hit, started]), attacker, defender)).toBeUndefined();
+    expect(mostRecentCleanHit(withLog([...hit, '|-weather|none']), attacker, defender)).toBeUndefined();
+  });
+
+  it('survives the hit\u2019s OWN secondary stat drop, reporting the boosts it landed under', () => {
+    // Moonblast's SpA drop is emitted as part of the same move's resolution. Treating it as
+    // "something happened since" made the move stale the very hit it had just produced.
+    const log = [
+      '|move|p2a: Weavile|Icicle Crash|p1a: Skarmory',
+      '|-damage|p1a: Skarmory|60/100',
+      '|-unboost|p1a: Skarmory|spa|1',
+    ];
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toEqual({
+      move: 'Icicle Crash',
+      damageFraction: 0.4,
+      attackerBoosts: {},
+      defenderBoosts: {}, // the drop landed AFTER the number, so it was not in effect for it
+      attackerHpPercent: 1,
+      defenderHpPercent: 1,
+    });
+  });
+
+  it('reports a boost that WAS in effect, replayed from the log', () => {
+    const log = [
+      '|-boost|p2a: Weavile|atk|2',
+      '|-unboost|p1a: Skarmory|def|1',
+      '|move|p2a: Weavile|Icicle Crash|p1a: Skarmory',
+      '|-damage|p1a: Skarmory|40/100',
+    ];
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toEqual({
+      move: 'Icicle Crash',
+      damageFraction: 0.6,
+      attackerBoosts: {atk: 2},
+      defenderBoosts: {def: -1},
+      attackerHpPercent: 1,
+      defenderHpPercent: 1,
+    });
+  });
+
+  it('replays the boost-table verbs, and forgets a table when its Pok\u00e9mon leaves', () => {
+    const hitLines = ['|move|p2a: Weavile|Icicle Crash|p1a: Skarmory', '|-damage|p1a: Skarmory|60/100'];
+    const at = (lines: string[]) => mostRecentCleanHit(withLog(lines), attacker, defender)?.attackerBoosts;
+
+    expect(at(['|-boost|p2a: Weavile|atk|2', '|-setboost|p2a: Weavile|atk|6', ...hitLines])).toEqual({atk: 6});
+    expect(at(['|-boost|p2a: Weavile|atk|2', '|-invertboost|p2a: Weavile', ...hitLines])).toEqual({atk: -2});
+    expect(at(['|-boost|p2a: Weavile|atk|2', '|-clearboost|p2a: Weavile', ...hitLines])).toEqual({});
+    expect(at(['|-unboost|p2a: Weavile|atk|2', '|-clearnegativeboost|p2a: Weavile', ...hitLines])).toEqual({});
+    expect(at(['|-boost|p2a: Weavile|atk|2', '|-clearallboost', ...hitLines])).toEqual({});
+    // Capped at +6 the way the client caps it, rather than accumulating past the stage limit.
+    expect(at(['|-boost|p2a: Weavile|atk|4', '|-boost|p2a: Weavile|atk|4', ...hitLines])).toEqual({atk: 6});
+    // A Pokémon arriving has no boosts, whatever the mon of that name had before it left.
+    expect(at([
+      '|-boost|p2a: Weavile|atk|2',
+      '|switch|p2a: Weavile|Weavile, L78|100/100',
+      ...hitLines,
+    ])).toEqual({});
+  });
+
+  it('reports the HP each side stood at, not the HP left behind', () => {
+    // The attacker has been chipped; the defender is read at the health this hit was
+    // resolved AGAINST, not the health it left. Both arm thresholds in the calc — the four
+    // pinch abilities on one side, Multiscale on the other.
+    const log = [
+      '|switch|p2a: Weavile|Weavile, L78|100/100',
+      '|switch|p1a: Skarmory|Skarmory, L78|100/100',
+      '|move|p1a: Skarmory|Brave Bird|p2a: Weavile',
+      '|-damage|p2a: Weavile|20/100',
+      '|move|p2a: Weavile|Icicle Crash|p1a: Skarmory',
+      '|-damage|p1a: Skarmory|60/100',
+    ];
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toMatchObject({
+      damageFraction: 0.4,
+      attackerHpPercent: 0.2, // Weavile swung from 20%, where Swarm-style abilities are live
+      defenderHpPercent: 1, // Skarmory was whole when the hit resolved, not at the 60% left
+    });
+  });
+
+  it('carries the HP a Pokémon RETURNS at, not the HP it left on', () => {
+    // Boosts reset on a switch and HP does not, so the two snapshots part company here.
+    const log = [
+      '|switch|p2a: Weavile|Weavile, L78|100/100',
+      '|-damage|p2a: Weavile|30/100',
+      '|switch|p2a: Gengar|Gengar, L80|100/100',
+      '|switch|p2a: Weavile|Weavile, L78|30/100',
+      '|move|p2a: Weavile|Icicle Crash|p1a: Skarmory',
+      '|-damage|p1a: Skarmory|60/100',
+    ];
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toMatchObject({attackerHpPercent: 0.3});
+  });
+
+  it('still abstains on a boost line whose DIRECTION it cannot replay', () => {
+    // `-swapboost` and `-copyboost` each name two Pokémon; reading the direction backwards
+    // would put a boost on the wrong side, so a hit followed by one is given up on.
+    const hit = ['|move|p2a: Weavile|Icicle Crash|p1a: Skarmory', '|-damage|p1a: Skarmory|60/100'];
+    expect(mostRecentCleanHit(withLog([...hit, '|-swapboost|p2a: Weavile|p1a: Skarmory|atk']), attacker, defender)).toBeUndefined();
+    expect(mostRecentCleanHit(withLog([...hit, '|-copyboost|p2a: Weavile|p1a: Skarmory']), attacker, defender)).toBeUndefined();
   });
 
   it('picks the MOST RECENT clean hit, not the first', () => {
@@ -513,7 +638,7 @@ describe('mostRecentCleanHit (an observed hit’s MAGNITUDE reveals an item)', (
 
   it('matches by side+name across a switch, not by slot letter', () => {
     const log = ['|move|p2b: Weavile|Icicle Crash|p1a: Skarmory', '|-damage|p1a: Skarmory|60/100'];
-    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toEqual({move: 'Icicle Crash', damageFraction: 0.4});
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toEqual({move: 'Icicle Crash', damageFraction: 0.4, attackerBoosts: {}, defenderBoosts: {}, attackerHpPercent: 1, defenderHpPercent: 1});
   });
 
   it('is undefined with no log or no ident (conservative — never a false reading)', () => {

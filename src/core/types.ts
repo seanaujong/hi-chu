@@ -410,6 +410,32 @@ export interface TurnOrder {
  * hits is the loud case). A variant pairs the calc-ready mon with the role it
  * assumes, so a bucket of identical-damage variants can be named by what differs.
  */
+/**
+ * One observed hit, as `battle/readState.ts`'s `mostRecentCleanHit` found it and
+ * `core/itemreveal.ts` judges it. "Clean" is defined there; what matters here is that the
+ * boosts travel WITH the observation rather than being read off the Pokémon afterwards —
+ * a move's own secondary stat drop lands between the hit and the hover, so the boosts
+ * standing now are not the ones the number was produced under.
+ */
+export interface ObservedHit {
+  readonly move: string;
+  /** Fraction of the DEFENDER's max HP actually lost to this one hit, in [0, 1]. */
+  readonly damageFraction: number;
+  /** Each side's boosts at the instant the hit landed, not at the instant of the hover. */
+  readonly attackerBoosts: Readonly<Partial<Record<StatID, number>>>;
+  readonly defenderBoosts: Readonly<Partial<Record<StatID, number>>>;
+  /**
+   * And each side's remaining HP at that same instant, in [0, 1], for the same reason —
+   * the calc reads both. The ATTACKER's arms the four pinch abilities (Overgrow, Blaze,
+   * Torrent, Swarm) and Defeatist, all of which switch on at a threshold it may have
+   * crossed since; the DEFENDER's arms Multiscale and Shadow Shield, which only apply at
+   * full health. The defender's is its HP BEFORE this hit, since that is the health the
+   * hit was resolved against.
+   */
+  readonly attackerHpPercent: number;
+  readonly defenderHpPercent: number;
+}
+
 export interface SetVariant {
   readonly mon: ResolvedMon;
   /** The role this variant assumes ('' for role-less older-gen entries). */

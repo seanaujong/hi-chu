@@ -493,10 +493,10 @@ describe('the sets view narrows a foe’s item pool by an OBSERVED hit’s MAGNI
     expect(html).not.toMatch(BRACKETED);
   });
 
-  it('goes back to bracketing both once the hit is stale (a boost happened since)', () => {
-    // The same 45% hit as above, but Weavile got a Swords Dance boost afterward — CURRENT
-    // facts no longer describe the state that hit happened under, so the reading must be
-    // withdrawn rather than compared against stale numbers.
+  it('keeps the rule-out when a boost lands AFTER the hit — the boost is not retroactive', () => {
+    // The same 45% hit, then a Swords Dance. Weavile is at +2 by the time anyone hovers, so
+    // comparing the observation against its stats NOW would predict a far bigger hit and put
+    // Choice Band back in doubt. The boosts travel with the observation instead.
     const stepQueue = [
       '|switch|p1a: Skarmory|Skarmory, L78|100/100',
       '|move|p2a: Weavile|Icicle Crash|p1a: Skarmory',
@@ -504,7 +504,96 @@ describe('the sets view narrows a foe’s item pool by an OBSERVED hit’s MAGNI
       '|-boost|p2a: Weavile|atk|2',
     ];
     const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far], stepQueue} as unknown as ClientBattle;
+    expect(buildPokemonSection(battle, foeWeavile, feed)).toMatch(BAND_ONLY);
+  });
+
+  it('goes back to bracketing both once the hit is stale (something unreplayable happened since)', () => {
+    // The same 45% hit, but Weavile has since changed item — CURRENT facts no longer
+    // describe the state that hit happened under, and unlike a boost there is nothing to
+    // replay, so the reading is withdrawn rather than compared against stale numbers.
+    const stepQueue = [
+      '|switch|p1a: Skarmory|Skarmory, L78|100/100',
+      '|move|p2a: Weavile|Icicle Crash|p1a: Skarmory',
+      '|-damage|p1a: Skarmory|55/100',
+      '|-enditem|p2a: Weavile|Choice Band',
+    ];
+    const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far], stepQueue} as unknown as ClientBattle;
     expect(buildPokemonSection(battle, foeWeavile, feed)).toMatch(BRACKETED);
+  });
+});
+
+describe('the sets view narrows a foe\u2019s item pool by what OUR OWN hit dealt into it', () => {
+  // The mirror direction, and the only one that can ever see an Assault Vest: it changes no
+  // damage its holder deals, fires no side effect and bends no move order, so a hit INTO the
+  // holder is the sole evidence there is. Our own set is exact, which makes it the sharper
+  // reading of the two.
+  const feed: RandbatsData = {
+    Skarmory: {level: 78, abilities: ['Sturdy'], items: ['Leftovers'], moves: ['Flash Cannon']},
+    Weavile: {level: 78, abilities: ['Pressure'], items: ['Assault Vest', 'Leftovers'], moves: ['Icicle Crash']},
+  };
+  const near = {isFar: false, sideConditions: {}, active: [] as unknown[]};
+  const far = {isFar: true, sideConditions: {}, active: [] as unknown[]};
+  const ourActive = {
+    speciesForme: 'Skarmory', level: 78, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p1: Skarmory', side: near,
+  } as unknown as ClientPokemon;
+  const foeWeavile = {
+    speciesForme: 'Weavile', level: 78, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p2: Weavile', side: far,
+  } as unknown as ClientPokemon;
+  near.active = [ourActive];
+  far.active = [foeWeavile];
+
+  const BOTH_ITEMS = /<small>Items:<\/small> Assault Vest, Leftovers/;
+  const VEST_GONE = /<small>Items:<\/small> Leftovers/;
+  // The private team view a player has and a spectator does not. Our Flash Cannon's damage
+  // divides straight through our own item, so this reading refuses to run without it.
+  const myPokemon = [{ident: 'p1: Skarmory', item: 'leftovers'}];
+
+  it('lists both items with nothing observed (the baseline)', () => {
+    const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far], myPokemon} as unknown as ClientBattle;
+    expect(buildPokemonSection(battle, foeWeavile, feed)).toMatch(BOTH_ITEMS);
+  });
+
+  it('drops the vest once our own hit landed harder than one could have allowed', () => {
+    // Our Flash Cannon takes Weavile to 62% — a 38% hit. Behind an Assault Vest that move
+    // reads 23.6-28.7%; bare it reads 35.4-41.4%. Only the second contains what happened.
+    const stepQueue = [
+      '|switch|p2a: Weavile|Weavile, L78|100/100',
+      '|move|p1a: Skarmory|Flash Cannon|p2a: Weavile',
+      '|-damage|p2a: Weavile|62/100',
+    ];
+    const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far], stepQueue, myPokemon} as unknown as ClientBattle;
+    const html = buildPokemonSection(battle, foeWeavile, feed);
+    expect(html).toMatch(VEST_GONE);
+    expect(html).not.toMatch(BOTH_ITEMS);
+  });
+
+  it('keeps the vest when our hit landed exactly as softly as one predicts', () => {
+    // 26% taken — inside the vest's range and nowhere near the bare one, so the vest is the
+    // only survivor. The rule cuts in whichever direction the number actually points.
+    const stepQueue = [
+      '|switch|p2a: Weavile|Weavile, L78|100/100',
+      '|move|p1a: Skarmory|Flash Cannon|p2a: Weavile',
+      '|-damage|p2a: Weavile|74/100',
+    ];
+    const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far], stepQueue, myPokemon} as unknown as ClientBattle;
+    // Anchored at the closing tag: an unnarrowed "Assault Vest, Leftovers" would satisfy a
+    // bare prefix match, and did.
+    expect(buildPokemonSection(battle, foeWeavile, feed)).toMatch(/<small>Items:<\/small> Assault Vest<\/p>/);
+  });
+
+  it('refuses the reading entirely when our own item is a guess (spectating)', () => {
+    // The same 38% hit, with no private team. Our Skarmory's item would then be picked from
+    // its own set's pool, and the observed number divided through a guess — so the honest
+    // answer is silence, not a rule-out computed from an assumption.
+    const stepQueue = [
+      '|switch|p2a: Weavile|Weavile, L78|100/100',
+      '|move|p1a: Skarmory|Flash Cannon|p2a: Weavile',
+      '|-damage|p2a: Weavile|62/100',
+    ];
+    const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far], stepQueue} as unknown as ClientBattle;
+    expect(buildPokemonSection(battle, foeWeavile, feed)).toMatch(BOTH_ITEMS);
   });
 });
 

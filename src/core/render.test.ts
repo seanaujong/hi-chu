@@ -1,5 +1,5 @@
 import {describe, it, expect} from 'vitest';
-import {koText, renderMoveSection, renderNotes, renderOwnMovesSection, renderSetsSection, renderSpeedSection, type MoveRenderModel, type OwnMovesModel, type SetsRenderModel} from './render.js';
+import {koText, renderMoveSection, renderNotes, renderOwnMovesSection, renderSetsSection, renderSpeedSection, renderStrengthSap, type MoveRenderModel, type OwnMovesModel, type SetsRenderModel} from './render.js';
 import type {DamageReport} from './damage.js';
 
 function report(over: Partial<DamageReport> & {move: string}): DamageReport {
@@ -793,5 +793,36 @@ describe('the sets view behind a Substitute', () => {
     const blocked = renderSetsSection(model({kind: 'absorbs', hits: {min: 2, max: 2}, dented: false}));
     expect(blocked).not.toContain('hichu-ko');
     expect(blocked).toContain('(30\u201336%)'); // the number itself is true and stays
+  });
+});
+
+describe('renderStrengthSap', () => {
+  it('states the swing on one line when the target’s sets agree', () => {
+    const html = renderStrengthSap({before: 20.1, outcomes: [{after: 93.7, label: '', weight: 1}]});
+    expect(html).toContain('<small>Strength Sap:</small> you 20.1% → 93.7% (+73.6%)');
+    expect(html).not.toContain('hichu-note'); // a gain reads as good news, uncoloured
+  });
+
+  it('gives each distinct outcome its own labelled line', () => {
+    const html = renderStrengthSap({
+      before: 20.1,
+      outcomes: [
+        {after: 93.7, label: 'Bulky Attacker', weight: 1},
+        {after: 76.8, label: 'Bulky Support', weight: 1},
+      ],
+    });
+    expect(html).toContain('<small>Strength Sap (Bulky Attacker):</small> you 20.1% → 93.7%');
+    expect(html).toContain('<small>Strength Sap (Bulky Support):</small> you 20.1% → 76.8%');
+  });
+
+  it('marks a swing that goes the WRONG way — Liquid Ooze, not a KO claim', () => {
+    const html = renderStrengthSap({before: 90.2, outcomes: [{after: 24.8, label: '', weight: 1}]});
+    expect(html).toContain('<span class="hichu-note">');
+    expect(html).toContain('you 90.2% → 24.8% (-65.4%)');
+    expect(html).not.toContain('hichu-ko'); // red means "this KOes THEM"; never our own cost
+  });
+
+  it('renders nothing at all when there is no outcome to state', () => {
+    expect(renderStrengthSap({before: 0, outcomes: []}, 'Tentacruel')).toBe('');
   });
 });

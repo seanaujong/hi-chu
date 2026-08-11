@@ -15,6 +15,7 @@
 import type {DamageReport, PainSplitReport} from './damage.js';
 import type {DamageBucket} from './variants.js';
 import type {SpeedOrder, SpeedOutcome} from './speed.js';
+import type {StrengthSapReport} from './strengthsap.js';
 import type {Gimmick, KnownOption} from './types.js';
 
 /** Escape the few characters that matter when injecting into innerHTML. */
@@ -357,6 +358,28 @@ function hpSwing(side: {before: number; after: number}): string {
  */
 export function renderPainSplit(r: PainSplitReport, targetLabel?: string): string {
   return block([targetHeader(targetLabel), `<small>Pain Split:</small> you ${hpSwing(r.user)} · foe ${hpSwing(r.foe)}`]);
+}
+
+/**
+ * Strength Sap's siphon, in the shape this surface already speaks. It deals no damage
+ * either, so it reuses Pain Split's swing rather than the "Drains:" row a healing move
+ * might suggest: the swing is what shows the CAP, and the cap is most of the answer for a
+ * move that can be worth more than the HP there is room to gain. One line per distinct
+ * outcome when the target's surviving sets disagree about its Attack.
+ *
+ * Amber marks a swing that goes the wrong way — the Liquid Ooze inversion, where the
+ * siphon comes out of us. Nothing here claims a KO even when it empties the bar, for the
+ * same reason `koTier` won't: a claim that strong belongs to the damage path, which has
+ * the rolls to support it.
+ */
+export function renderStrengthSap(r: StrengthSapReport, targetLabel?: string): string {
+  if (r.outcomes.length === 0) return ''; // a user we can't size — not even a header
+  const lines = r.outcomes.map((o) => {
+    const label = o.label ? ` (${esc(o.label)})` : '';
+    const body = `<small>Strength Sap${label}:</small> you ${hpSwing({before: r.before, after: o.after})}`;
+    return o.after < r.before ? `<span class="hichu-note">${body}</span>` : body;
+  });
+  return block([targetHeader(targetLabel), ...lines]);
 }
 
 // --- Pokémon hover: the speed-order line -------------------------------------

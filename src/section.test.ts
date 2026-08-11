@@ -13,7 +13,7 @@
 import {describe, it, expect} from 'vitest';
 import {buildMoveSection, buildPokemonSection, buildSwitchSection} from './section.js';
 import type {ClientBattle, ClientPokemon, ClientSide} from './battle/readState.js';
-import {loadBattle, scenarioData as data, scenarioDataTwinRoles, scenarioDataWithCharizard as dataWithCharizard, scenarioDataWithDitto, scenarioDataWithEmboar as dataWithEmboar, scenarioDataWithGreninja as dataWithGreninja} from './scenario.js';
+import {loadBattle, scenarioData as data, scenarioDataTwinRoles, scenarioDataWithAmoonguss, scenarioDataWithCharizard as dataWithCharizard, scenarioDataWithDitto, scenarioDataWithEmboar as dataWithEmboar, scenarioDataWithGreninja as dataWithGreninja} from './scenario.js';
 import type {RandbatsData} from './core/types.js';
 import {HOVER_TARGETS, SECTION_NAMES, shows, type HoverTarget, type SectionName} from './core/surfaces.js';
 
@@ -54,6 +54,44 @@ describe('buildMoveSection on the real captured battle (our move buttons)', () =
     expect(html).toContain('<small>Pain Split:</small>');
     expect(html).toMatch(/you [\d.]+% → [\d.]+%/);
     expect(html).toMatch(/foe [\d.]+% → [\d.]+%/);
+  });
+
+  it('shows where Strength Sap leaves us (another status move the calc computes as nothing)', () => {
+    const hurt = loadBattle({myNoivernHpPercent: 0.3});
+    const html = buildMoveSection(hurt.battle, hurt.active('Noivern'), 'Strength Sap', data);
+    expect(html).toContain('<small>Strength Sap:</small>');
+    expect(html).toMatch(/you [\d.]+% → [\d.]+%/);
+  });
+
+  it('turns that swing round — the captured foe is a Tentacruel, and Liquid Ooze inverts the siphon', () => {
+    // The one case where healing off a foe COSTS us, so it wears the amber a loss wears
+    // rather than reading as a gain. Tentacruel's only randbats ability is Liquid Ooze,
+    // so this is certain rather than one of several possible outcomes.
+    const html = buildMoveSection(battle, active('Noivern'), 'Strength Sap', data);
+    expect(html).toContain('hichu-note');
+    const [, before, after] = /you ([\d.]+)% → ([\d.]+)%/.exec(html)!;
+    expect(Number(after)).toBeLessThan(Number(before));
+  });
+
+  it('…where an ordinary target raises it instead', () => {
+    const vsEmboar = loadBattle({foeEmboar: true, myNoivernHpPercent: 0.3});
+    const html = buildMoveSection(vsEmboar.battle, vsEmboar.active('Noivern'), 'Strength Sap', dataWithEmboar);
+    const [, before, after] = /you ([\d.]+)% → ([\d.]+)%/.exec(html)!;
+    expect(Number(after)).toBeGreaterThan(Number(before));
+    expect(html).not.toContain('hichu-note');
+  });
+
+  it('splits the sap when the target’s surviving roles disagree about its Attack', () => {
+    // Amoonguss's Bulky Support carries no Attack investment at all and its Bulky Attacker
+    // carries the flat 85, so the same Pokémon siphons two different amounts — a gap no
+    // damage surface can see, since neither role attacks with the stat.
+    const vs = loadBattle({foeAmoonguss: true, myNoivernHpPercent: 0.3});
+    const html = buildMoveSection(vs.battle, vs.active('Noivern'), 'Strength Sap', scenarioDataWithAmoonguss);
+    expect(html).toContain('Strength Sap (Bulky Attacker):');
+    expect(html).toContain('Strength Sap (Bulky Support):');
+    const afters = [...html.matchAll(/→ ([\d.]+)%/g)].map((m) => Number(m[1]));
+    expect(afters).toHaveLength(2);
+    expect(afters[0]).toBeGreaterThan(afters[1]!); // the investing role siphons more
   });
 
   it('shows the real number for a damage-callback move (Super Fang, which the calc computes as nothing)', () => {

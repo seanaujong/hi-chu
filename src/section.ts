@@ -18,6 +18,7 @@ import {inferSets} from './core/knowledge.js';
 import {bucketByDamage, type DamageBucket} from './core/variants.js';
 import {compareSpeed, finalSpeed, speedBuckets, type SpeedOrder} from './core/speed.js';
 import {illusionSuspects, type IllusionSuspect} from './core/illusion.js';
+import {strengthSap} from './core/strengthsap.js';
 import {buildableAbilities} from './core/narrow.js';
 import {
   renderMoveSection,
@@ -26,6 +27,7 @@ import {
   renderPainSplit,
   renderSetsSection,
   renderSpeedSection,
+  renderStrengthSap,
   type CandidateBlock,
   type MoveKnowledgeRow,
   type SpeedLineModel,
@@ -1280,6 +1282,14 @@ function moveVsFoe(
     ...resolveVariants(defenderFacts, entryOrMinimal(defenderEntry, defenderFacts)),
     ...illusionVariants(defenderFacts, defenderEntry, data),
   ];
+
+  // Strength Sap deals no damage either — it siphons the target's Attack as HP, so the
+  // calc's zero says nothing and the swing replaces it. It reads the same variants the
+  // damage path does, because the axis that splits it is the target's own spread.
+  if (toId(moveName) === 'strengthsap') {
+    return renderStrengthSap(strengthSap(attacker, defenderVariants, format.gen), targetLabel);
+  }
+
   const field = readFieldFacts(battle, defenderMon.side);
   return moveSectionHtml(attacker, defenderFacts, defenderVariants, moveName, format, field, targetLabel);
 }

@@ -916,6 +916,8 @@ export function usedDifferentMovesSinceSwitchIn(battle: ClientBattle, mon: {read
 // status/item/ability/forme facts no longer describe the state that hit happened under —
 // comparing against them would be guessing, not reading, so `mostRecentCleanHit` treats
 // the hit as stale rather than risk a false rule-out downstream (core/itemreveal.ts).
+// Membership is necessary but not sufficient: read it through `changesState`, which drops
+// the one line here that announces a state rather than moving it.
 const STATE_CHANGING_TAGS = new Set([
   '-weather', '-fieldstart', '-fieldend',
   '-boost', '-unboost', '-setboost', '-swapboost',
@@ -926,6 +928,22 @@ const STATE_CHANGING_TAGS = new Set([
   '-terastallize', '-formechange', 'detailschange',
   '-item', '-enditem',
 ]);
+
+/**
+ * Whether a line in `STATE_CHANGING_TAGS` really MOVED the state, as opposed to merely
+ * announcing that it is still there. The set above is matched by tag alone, and one tag in
+ * it lies: PS re-announces the standing weather at the end of EVERY turn it is up, tagged
+ * `[upkeep]` (`data/conditions.ts` adds it on the residual and nowhere else — a start line
+ * carries `[from]`/`[of]` or no attribute at all, and an end line reads `|-weather|none`).
+ * Nothing differs either side of that tick, so counting it made a single weather lead cost
+ * every reading below it for the rest of the game: a Snow Warning Abomasnow permanently
+ * disabled the damage-magnitude item reveal, one turn at a time, in a battle where the
+ * observed damage did rule a Choice Specs out.
+ */
+function changesState(tag: string, parts: readonly string[]): boolean {
+  if (tag === '-weather' && parts.includes('[upkeep]')) return false;
+  return STATE_CHANGING_TAGS.has(tag);
+}
 
 /** "245/312 par" / "48/100" / "0 fnt" → the HP fraction, or undefined if unparseable. */
 function hpToken(token: string | undefined): number | undefined {
@@ -1003,7 +1021,7 @@ export function mostRecentCleanHit(
         }
       }
       if (who && frac !== undefined) hp[who] = frac;
-    } else if (STATE_CHANGING_TAGS.has(tag)) {
+    } else if (changesState(tag, parts)) {
       if (found) stale = true;
     }
   }
@@ -1027,7 +1045,7 @@ function affectsSpeed(tag: string, parts: readonly string[]): boolean {
     const what = toId(parts[3] ?? '');
     return what.startsWith('quarkdrive') || what.startsWith('protosynthesis') || what === 'slowstart';
   }
-  return STATE_CHANGING_TAGS.has(tag);
+  return changesState(tag, parts);
 }
 
 /** Moves that hand somebody else's turn around, so the order they produce is not a speed

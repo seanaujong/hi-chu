@@ -78,7 +78,7 @@ function probeLiveClient() {
   // Which of the rarer client shapes this replay actually exercised — a random replay
   // usually has no transformed or forme-changed Pokémon, and a probe that never fired is
   // not a probe that passed. Reported, not failed on.
-  const seen = {formeChange: false, transform: false, calledMove: false, balloonAnnounce: false, statusLine: false, substitute: false, shedTail: false, typeChange: false, proteanLine: false, roost: false};
+  const seen = {formeChange: false, transform: false, calledMove: false, balloonAnnounce: false, statusLine: false, substitute: false, shedTail: false, typeChange: false, proteanLine: false, roost: false, weatherUpkeep: false};
 
   const format = R.detectFormat(b);
   if (!format || format.kind !== 'randbats' || !/^gen\d+random/.test(format.formatId)) {
@@ -127,6 +127,23 @@ function probeLiveClient() {
       break;
     }
     if (parts[3].replace(/[^a-z0-9]+/gi, '').toLowerCase() === 'airballoon') seen.balloonAnnounce = true;
+  }
+
+  // Both log-derived readings — the damage MAGNITUDE reveal and the move ORDER one — treat a
+  // `|-weather|` line as a state change, EXCEPT the residual tick, which PS marks `[upkeep]`
+  // and emits at the end of every turn the weather stands. That attribute is the only thing
+  // separating "the weather is still here" from "the weather changed", so assert the line's
+  // layout and report whether a tick was actually among them. The failure is the quiet
+  // direction — losing the attribute puts us back to treating every tick as a change, which
+  // costs rule-outs rather than inventing them — but quiet is exactly why it is worth naming:
+  // a single Snow Warning lead silently disabled the item reveal for a whole game.
+  for (const line of (b.stepQueue || []).filter((l) => typeof l === 'string' && l.startsWith('|-weather|'))) {
+    const parts = line.split('|');
+    if (!parts[2]) {
+      problems.push(`|-weather| line not in "|-weather|<weather>" shape: ${JSON.stringify(line)}`);
+      break;
+    }
+    if (parts.slice(3).includes('[upkeep]')) seen.weatherUpkeep = true;
   }
 
   // The status-orb rule-out reads TWO shapes, and leans on each in its own dangerous
@@ -429,6 +446,11 @@ async function main() {
     // Ursaluna in it, which announces the orb on the same line.
     console.log(`  |upkeep| lines: present, |-status| layout ` +
       `${seen.statusLine ? 'SEEN — checked' : 'absent (not exercised)'}`);
+    // The weather tick both log readings must NOT mistake for a change. A replay with no
+    // weather at all leaves it unexercised — to exercise it, pick one with a Torkoal,
+    // Abomasnow, Tyranitar or Pelipper in it, which sets weather on the way in.
+    console.log(`  |-weather| lines: layout checked, [upkeep] tick ` +
+      `${seen.weatherUpkeep ? 'SEEN — checked' : 'absent (not exercised)'}`);
     // The retype pair. A random replay often has neither — to exercise them, pick one with a
     // Greninja or a Cinderace in it, which converts on its very first move.
     console.log(`  typechange: volatile ${seen.typeChange ? 'SEEN — checked' : 'absent (not exercised)'}, ` +

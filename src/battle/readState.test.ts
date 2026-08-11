@@ -494,6 +494,28 @@ describe('mostRecentCleanHit (an observed hit’s MAGNITUDE reveals an item)', (
     expect(mostRecentCleanHit(withLog([...hit, '|-enditem|p2a: Weavile|Life Orb']), attacker, defender)).toBeUndefined();
   });
 
+  it('survives the standing weather\u2019s end-of-turn tick, which moves nothing', () => {
+    // The residual re-announcement, tagged `[upkeep]`. It fires every turn the weather is
+    // up, so counting it as a change made one Snow Warning lead cost the reading for the
+    // whole game \u2014 see `changesState`.
+    const log = [
+      '|move|p2a: Weavile|Icicle Crash|p1a: Skarmory',
+      '|-damage|p1a: Skarmory|60/100',
+      '|-weather|Snowscape|[upkeep]',
+      '|upkeep',
+      '|turn|4',
+    ];
+    expect(mostRecentCleanHit(withLog(log), attacker, defender)).toEqual({move: 'Icicle Crash', damageFraction: 0.4});
+  });
+
+  it('still goes stale when the weather actually STARTS or ENDS', () => {
+    // The two lines that carry no `[upkeep]`, and both really do move the state.
+    const hit = ['|move|p2a: Weavile|Icicle Crash|p1a: Skarmory', '|-damage|p1a: Skarmory|60/100'];
+    const started = '|-weather|Snowscape|[from] ability: Snow Warning|[of] p2a: Abomasnow';
+    expect(mostRecentCleanHit(withLog([...hit, started]), attacker, defender)).toBeUndefined();
+    expect(mostRecentCleanHit(withLog([...hit, '|-weather|none']), attacker, defender)).toBeUndefined();
+  });
+
   it('picks the MOST RECENT clean hit, not the first', () => {
     const log = [
       '|move|p2a: Weavile|Icicle Crash|p1a: Skarmory',

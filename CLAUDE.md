@@ -911,6 +911,7 @@ was always undefined.
 | A turn that ended with its holder un-statused rules out Flame Orb AND Toxic Orb — the same silence, at a moment that comes round every turn | ✅ | `core/deductions.ts`, `battle/readState.ts` (`endedTurnUnstatused`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts`, `section.test.ts` |
 | A deduction narrows the candidate roles but never empties them — nor the item pool a chosen role calcs with | ✅ | `core/narrow.ts` (`consistentRoles`, `candidateItems`) | `resolve.test.ts` |
 | ONE rule decides a candidate's item pool, so the block's Items line and its damage can't disagree | ✅ | `core/narrow.ts` (`candidateItems`) | `resolve.test.ts`, `section.test.ts` |
+| A log reading goes stale only when the state really MOVED — the weather's end-of-turn tick announces the weather, it does not change it | ✅ | `battle/readState.ts` (`changesState`, `STATE_CHANGING_TAGS`) | `readState.test.ts`, `npm run drift-check` |
 | Move ORDER rules out a Choice Scarf — the one axis damage can never reveal | ✅ | `core/speedreveal.ts`, `battle/readState.ts` (`mostRecentCleanOrder`) | `speedreveal.test.ts`, `readState.test.ts`, `section.test.ts` |
 | A priority bracket is an ALIBI: any variant whose bracket explains the order survives without its speed being consulted | ✅ | `core/speedreveal.ts` (`bracket`, `UNREADABLE_ABILITIES`) | `speedreveal.test.ts` |
 | A move's priority is read from the CLIENT dex — @smogon/calc's own data zeroes every negative bracket | ✅ | `battle/readState.ts` (`readMoveOrder`) | `readState.test.ts`, `speedreveal.test.ts` |
@@ -1014,7 +1015,12 @@ rather than in our code. Run the named check by hand after a Showdown client upd
   burned Pokémon looking clean and rule out the very orb that had just fired. And `turnstatuses`, which is where Roost's
   one-turn grounding lives — a table the client WIPES at end of turn, so unlike every other
   read here it is only ever visible mid-turn and its absence proves nothing; the
-  `|-singleturn|…|move: Roost` line is probed alongside it as the durable trace. And
+  `|-singleturn|…|move: Roost` line is probed alongside it as the durable trace. And the
+  `|-weather|` line's own layout, for the `[upkeep]` attribute that separates the standing
+  weather's end-of-turn tick from a real change — read in the QUIET direction, since losing
+  it only puts both log readings back to treating every tick as a change, but quiet is the
+  point: one Snow Warning lead used to disable the damage-magnitude item reveal for a whole
+  game without saying anything. And
   `volatiles.typechange`, whose
   `'/'`-joined payload is a Pokémon's real types — read in the DANGEROUS direction, since a
   layout change would leave a converted Greninja calculated as Water/Dark and call a Psychic

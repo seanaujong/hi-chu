@@ -26,9 +26,11 @@ The design is a small pure core behind a thin shell, and the shell itself splits
 `content.ts` is the only *impure* piece — it monkey-patches Showdown's tooltip and touches
 the DOM/network directly — but it hands the actual work to `section.ts`, which is pure
 (no DOM, no cache, no network of its own) and does the real folding. Below that, three
-steps stay strictly separate — **fetch** (the live page, the network), **reason** (the
+steps stay strictly separate — **read** (the live page, the network), **reason** (the
 domain logic), **render** (model → HTML) — so a step never reaches into the DOM or the
-network unless that IS its job. Dependencies only ever point downward:
+network unless that IS its job.
+
+### Producing a damage number
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
@@ -41,13 +43,13 @@ network unless that IS its job. Dependencies only ever point downward:
 ┌───────────────────────────────────────────────────────────────┐
 │ section.ts                                  pure orchestrator │
 │ given the battle, the hover, and the data                     │
-│ → folds FETCH → REASON → RENDER into one HTML string          │
+│ → folds READ → REASON → RENDER into one HTML string           │
 └───────────────────────────────────────────────────────────────┘
-──────────── the pipeline — FETCH → REASON → RENDER ─────────────
+──────────── the pipeline — READ → REASON → RENDER ──────────────
                                 │
                                 ▼
 ┌───────────────────────────────────────────────────────────────┐
-│ FETCH                            reads the page + the network │
+│ READ                            the live page + the sets feed │
 │ ┌───────────────────────────┐   ┌───────────────────────────┐ │
 │ │ battle/readState.ts       │   │ data/randbats.ts          │ │
 │ │ client Pokemon objects    │   │ fetch + cache             │ │
@@ -100,7 +102,7 @@ network unless that IS its job. Dependencies only ever point downward:
 └───────────────────────────────────────────────────────────────┘
                                 │ tooltip HTML
                                 ▼
-──────────── the pipeline — FETCH → REASON → RENDER ─────────────
+──────────── the pipeline — READ → REASON → RENDER ──────────────
 ┌───────────────────────────────────────────────────────────────┐
 │ section.ts                                  pure orchestrator │
 │ the folded pipeline result                                    │
@@ -108,20 +110,55 @@ network unless that IS its job. Dependencies only ever point downward:
 └───────────────────────────────────────────────────────────────┘
 ```
 
-The only thing a battle's format changes is *where the foe's possibilities come
-from* — a real set feed (`resolve.ts`) vs. two bracketing assumptions with none
-(`assume.ts`) — everything below that fork in REASON is shared.
+### Narrowing what the foe could be
 
-The diagram above is the **pipeline** — what flows where. It is deliberately not the import
-graph: the two answer different questions, and only one of them rots. For *which module
-actually imports which*, see [`docs/architecture-graph.md`](docs/architecture-graph.md),
-generated from the source by `npm run graph` and re-diffed by CI so it cannot drift. For what
-the layers MEAN — why `facts.ts` is a leaf, why every behavioural deduction routes through
-`narrow.ts` — read `CLAUDE.md`'s Architecture section, kept current file-by-file as the
-codebase grows. Those layering rules are enforced, not just described:
-`fitness/dependency-boundaries.test.ts` holds this project's named ones and
-`.dependency-cruiser.cjs` the structural ones (no cycles, no orphans); both run in
-`npm run check`.
+The pipeline above answers *what would this move do*. The half that makes the tooltip worth
+reading answers *what could that Pokémon even be*.
+
+```
+────────── inside READ → REASON — observe, then judge ───────────
+┌───────────────────────────────────────────────────────────────┐
+│ battle/readState.ts                               public only │
+│ the protocol log — evidence about turns already FOUGHT,       │
+│ which is a different output from the LiveFacts snapshot       │
+│ of how things stand now                                       │
+└───────────────────────────────────────────────────────────────┘
+         ┌──────────────────────┼──────────────────────┐
+         │                      │                      │
+         ▼                      ▼                      ▼
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│ deductions.ts   │    │ itemreveal.ts   │    │ speedreveal.ts  │
+│ did a side      │    │ what NUMBER did │    │ who moved       │
+│ effect fire?    │    │ a hit deal?     │    │ first?          │
+│                 │    │ (asks the calc) │    │                 │
+│                 │    │                 │    │                 │
+│ Life Orb recoil,│    │ theirs into us: │    │ Choice Scarf —  │
+│ hazard damage,  │    │ Choice Specs;   │    │ the one axis a  │
+│ an orb that     │    │ ours into them: │    │ damage number   │
+│ stayed silent   │    │ Assault Vest    │    │ can never show  │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         └──────────────────────┴──────────────────────┘
+                                │ per still-possible set
+                                ▼
+┌───────────────────────────────────────────────────────────────┐
+│ the sets still standing                         never emptied │
+│ a deduction lands via narrow.ts BEFORE a set is built, so     │
+│ a role whose item pool empties is dropped whole. The other    │
+│ two judge sets already built. None of them may narrow the     │
+│ candidates to nothing — a rule-out is an inference from       │
+│ something that did NOT happen, so one that kills every set    │
+│ is likelier wrong than the species impossible                 │
+└───────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌───────────────────────────────────────────────────────────────┐
+│ back into REASON                 one narrowing, every surface │
+│ the same pool the pipeline above calculates with, so the      │
+│ speed verdict, the damage and the Items line cannot           │
+│ disagree about one set                                        │
+└───────────────────────────────────────────────────────────────┘
+─────── narrowing needs a set feed — Random Battles only ────────
+```
 
 For exact shapes and signatures, read the source and the `*.test.ts` next to each module —
 the tests double as worked examples, pinned against real Showdown numbers.

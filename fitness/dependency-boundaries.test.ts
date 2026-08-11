@@ -52,14 +52,27 @@ function coreImportsOf(path: string): string[] {
     .filter((name): name is string => name !== undefined);
 }
 
-/** Each core module's own sibling imports, keyed by bare name. */
-function coreImportGraph(): Record<string, string[]> {
-  return Object.fromEntries(coreModules().map((m) => [m, coreImportsOf(`src/core/${m}.ts`)]));
-}
-
-/** Every module under `src/core`, by bare name. */
-function coreModules(): string[] {
-  return allSourceFiles('src/core').map((p) => p.replace(/^src\/core\//, '').replace(/\.ts$/, ''));
+/**
+ * The same graph one scope wider: every file under `src/` keyed by path, mapped to the core
+ * modules it imports — a sibling's `./narrow.js`, `section.ts`'s `./core/narrow.js`, and
+ * `battle/`'s `../core/narrow.js` alike.
+ *
+ * `coreImportGraph` maps core modules to core modules, so a rule built on it can only ever
+ * speak about the core talking to itself — it is silent about the SHELL reaching in, which
+ * for the two rules below is the direction that matters most. Both said "nothing else may
+ * import" and meant it; only this reader makes that true.
+ */
+function coreImportersAcrossSrc(): Record<string, string[]> {
+  const viaCore = new RegExp(`(?:^|/)core/(${CORE_MODULE})\\.js$`);
+  const sibling = new RegExp(`^\\./(${CORE_MODULE})\\.js$`);
+  return Object.fromEntries(
+    allSourceFiles('src').map((path) => [
+      path.replace(/^src\//, ''),
+      localImports(path)
+        .map((s) => (viaCore.exec(s.specifier) ?? (path.startsWith('src/core/') ? sibling.exec(s.specifier) : null))?.[1])
+        .filter((name): name is string => name !== undefined),
+    ]),
+  );
 }
 
 describe('the @smogon/calc dependency stays confined to the modules that need its formulas', () => {
@@ -147,8 +160,21 @@ describe('a core module is named so the layering rules can see it', () => {
 
 describe('the set-inference layering holds as an import graph, not just a description', () => {
   it('routes every deduction through narrow.ts — nothing else may import deductions.ts', () => {
-    // The rule that would have caught the item-pool split the day it was written.
-    expect(importersOf('deductions', coreImportGraph())).toEqual(['narrow']);
+    // The rule that would have caught the item-pool split the day it was written. Read over
+    // the whole tree rather than core's own siblings: "nothing else" has to include the
+    // shell, and `section.ts` importing `deductions.ts` is exactly the shape of second
+    // opinion this forbids.
+    expect(importersOf('deductions', coreImportersAcrossSrc())).toEqual(['core/narrow.ts']);
+  });
+
+  it('composes every log-derived reveal in reveals.ts — nothing else may import them', () => {
+    // The same shape one layer out. `itemreveal.ts` and `speedreveal.ts` each judge one kind
+    // of evidence and know nothing of the others; which of OUR resolutions each is judged
+    // against, and which orientation of the field belongs to which direction, is a law of
+    // its own. Reaching past `reveals.ts` for one of them is how a caller ends up deciding
+    // that again, differently, somewhere else — which is where it lived before.
+    expect(importersOf('itemreveal', coreImportersAcrossSrc())).toEqual(['core/reveals.ts']);
+    expect(importersOf('speedreveal', coreImportersAcrossSrc())).toEqual(['core/reveals.ts']);
   });
 
   it('keeps facts.ts a leaf, so the layers above need not depend on each other for it', () => {

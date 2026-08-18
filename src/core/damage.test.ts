@@ -523,6 +523,54 @@ describe('Guts negates burn (the bug the baseline gets wrong)', () => {
   });
 });
 
+describe('Quark Drive/Protosynthesis boosts damage only once armed via boostedStat (a calc gap: it refuses to activate at all otherwise, terrain or no terrain)', () => {
+  it('a Quark Drive attacker with boostedStat "spa" hits harder than the same mon unarmed', () => {
+    const target = mon({speciesForme: 'Blissey'});
+    const unarmed = calcDamage(mon({speciesForme: 'Iron Bundle', ability: 'Quark Drive'}), target, 'Hydro Pump');
+    const armed = calcDamage(
+      mon({speciesForme: 'Iron Bundle', ability: 'Quark Drive', boostedStat: 'spa'}),
+      target,
+      'Hydro Pump',
+    );
+    expect(armed.total.mean).toBeGreaterThan(unarmed.total.mean);
+  });
+
+  it('boosting a DIFFERENT stat leaves this move’s damage untouched', () => {
+    const target = mon({speciesForme: 'Blissey'});
+    const unarmed = calcDamage(mon({speciesForme: 'Iron Bundle', ability: 'Quark Drive'}), target, 'Hydro Pump');
+    const boostedAtk = calcDamage(
+      mon({speciesForme: 'Iron Bundle', ability: 'Quark Drive', boostedStat: 'atk'}),
+      target,
+      'Hydro Pump',
+    );
+    expect(boostedAtk.total.mean).toBe(unarmed.total.mean);
+  });
+});
+
+describe('Charge (Electromorphosis/Wind Power/the move Charge) doubles the NEXT Electric-type move — @smogon/calc has no concept of this at all', () => {
+  it('doubles an Electric move\'s damage while charged', () => {
+    const target = mon({speciesForme: 'Blissey'});
+    const uncharged = calcDamage(mon({speciesForme: 'Bellibolt', ability: 'Electromorphosis'}), target, 'Thunderbolt');
+    const charged = calcDamage(
+      mon({speciesForme: 'Bellibolt', ability: 'Electromorphosis', charged: true}),
+      target,
+      'Thunderbolt',
+    );
+    expect(charged.total.mean).toBeGreaterThan(uncharged.total.mean);
+  });
+
+  it('leaves a non-Electric move untouched — the boost belongs to the MOVE, not the mon', () => {
+    const target = mon({speciesForme: 'Blissey'});
+    const uncharged = calcDamage(mon({speciesForme: 'Bellibolt', ability: 'Electromorphosis'}), target, 'Acid Spray');
+    const charged = calcDamage(
+      mon({speciesForme: 'Bellibolt', ability: 'Electromorphosis', charged: true}),
+      target,
+      'Acid Spray',
+    );
+    expect(charged.total.mean).toBe(uncharged.total.mean);
+  });
+});
+
 describe('a live retype (Protean, Soak, Reflect Type) — the types on the field, not the record', () => {
   const blissey = mon({speciesForme: 'Blissey'});
   // Greninja is Water/Dark. Protean converts it to whatever it throws; after Ice Beam it is

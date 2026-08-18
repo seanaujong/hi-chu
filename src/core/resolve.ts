@@ -102,6 +102,8 @@ export function buildResolved(
     ability,
     item,
     ...(unburdenActive(facts, ability) ? {abilityOn: true} : {}),
+    ...(facts.boostedStat ? {boostedStat: facts.boostedStat} : {}),
+    ...(facts.charged ? {charged: true} : {}),
     status: facts.status,
     boosts: facts.boosts,
     hpPercent: facts.hpPercent,

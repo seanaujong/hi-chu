@@ -9,6 +9,9 @@
 export type StatID = 'hp' | 'atk' | 'def' | 'spa' | 'spd' | 'spe';
 export type StatsTable = Partial<Record<StatID, number>>;
 export type FullStats = Record<StatID, number>;
+/** Quark Drive and Protosynthesis can never boost HP — the same restriction
+ *  `@smogon/calc`'s own `StatIDExceptHP` names. */
+export type BoostableStat = Exclude<StatID, 'hp'>;
 
 export type StatusName = 'brn' | 'par' | 'psn' | 'tox' | 'slp' | 'frz';
 
@@ -275,6 +278,24 @@ export interface LiveFacts {
    */
   readonly accuracyBoost?: number;
   readonly evasionBoost?: number;
+  /**
+   * The stat Quark Drive or Protosynthesis is CURRENTLY boosting, read straight off the
+   * client's `quarkdrive<stat>`/`protosynthesis<stat>` volatile — the sim folds "is the
+   * ability active" and "which stat" into one composite id, so there is nothing left to
+   * derive. Recomputing from current terrain/weather instead would miss the case a
+   * Booster Energy armed the boost and the terrain later ended: the ability then stays
+   * active until switch-out regardless of the field. See `ResolvedMon.boostedStat` for
+   * why the calc needs this passed explicitly at all.
+   */
+  readonly boostedStat?: BoostableStat;
+  /**
+   * True while this Pokémon is CHARGED — its next Electric-type move doubled — from
+   * Electromorphosis, Wind Power, or the move Charge itself. All three share one sim
+   * volatile, so this is presence-or-absence with no further decoding, unlike
+   * `boostedStat`. See `ResolvedMon.charged` for why the calc needs this passed
+   * explicitly: unlike Quark Drive, `@smogon/calc` has no Charge mechanic to arm at all.
+   */
+  readonly charged?: boolean;
 }
 
 /**
@@ -522,6 +543,27 @@ export interface ResolvedMon {
    * mon that started itemless). Absent/false means "not applicable — off".
    */
   readonly abilityOn?: boolean;
+  /**
+   * The stat Quark Drive or Protosynthesis is currently boosting — a SEPARATE toggle from
+   * `abilityOn` above, because `@smogon/calc` gives these two abilities their own explicit
+   * field rather than folding them into the generic one: `getFinalSpeed`'s `isQPActive`
+   * refuses to activate at all while `boostedStat` is unset, terrain or no terrain, so
+   * leaving it out silently drops the whole ability from every calc — speed and damage
+   * alike — for every Paradox Pokémon. Passed straight through from `LiveFacts.boostedStat`,
+   * which is itself read straight off the client's volatile; nothing here re-derives it.
+   */
+  readonly boostedStat?: BoostableStat;
+  /**
+   * True when this Pokémon is CHARGED (Electromorphosis, Wind Power, or the move Charge),
+   * doubling the base power of its next Electric-type move. Unlike `boostedStat`,
+   * `@smogon/calc` has NO concept of this at all — neither ability appears in its
+   * `onBasePower` table, and it models no volatile-status power modifiers — so this isn't
+   * an unset flag on an existing mechanism, it's a mechanic hi-chu computes by hand. See
+   * `core/damage.ts`'s `chargedPower`, which reads this to double `overrides.basePower`
+   * for the move actually being calculated, since doubling belongs to the MOVE (only an
+   * Electric one), not to the Pokémon generally.
+   */
+  readonly charged?: boolean;
   readonly status: StatusName | undefined;
   readonly boosts: Readonly<Partial<Record<StatID, number>>>;
   readonly hpPercent: number;

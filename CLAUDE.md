@@ -916,7 +916,10 @@ should arguably handle and doesn't — is ours to own, and each one is a row bel
 multi-hit hit-count model, the item id→name quirk, the nHKO ladder, Pain Split, Rage Fist,
 variable-power multi-hit, damage-callback moves, Substitute (its move table has one as a 0-BP
 status move and stops there), gen 9's once-per-switch-in Protean/Libero (it still applies the
-gen 6-8 rule, which grants STAB to every move the holder owns), and unknown species/items. A third kind hides between those two and
+gen 6-8 rule, which grants STAB to every move the holder owns), Charge/Electromorphosis/Wind
+Power (no `onBasePower` entry for either ability, and no volatile-status power modifier of any
+kind — unlike Quark Drive below, there is no flag to arm, only a base-power override to hand-roll,
+the same shape as Rage Fist), and unknown species/items. A third kind hides between those two and
 is the easiest to ship by accident: the calc answering EXACTLY what we asked, where the asking
 itself was wrong. Requesting one hit of a multi-hit move is that — the calc then reads it as a
 single-hit move and applies the Tera 60 BP floor. So is leaving the ATTACKER's `curHP` unset:
@@ -1012,6 +1015,7 @@ was always undefined.
 | Variable-power multi-hit is computed per hit, through a stand-in move — which must match the real move on CONTACT and be genuinely multi-hit | ✅ | `core/damage.ts` | `damage.test.ts` |
 | One hit of a multi-hit move is asked for as TWO — a single hit takes gen 9's Tera 60 BP floor, which no multi-hit move ever takes | ✅ | `core/damage.ts` (`TERA_FLOOR_SAFE_HITS`) | `damage.test.ts` |
 | Rage Fist's power scales with the ATTACKER's own hits taken | ✅ | `core/damage.ts` (`rageFistPower`), `battle/readState.ts` (`timesAttacked`) | `damage.test.ts`, `readState.test.ts`, `transform.test.ts` |
+| Charge (Electromorphosis/Wind Power/the move Charge) doubles the ATTACKER's next Electric-type move — a full calc gap, not an unset flag: `@smogon/calc` has no Charge mechanic to arm at all | ✅ | `core/damage.ts` (`chargedPower`), `battle/readState.ts` (`readCharged`) | `damage.test.ts`, `readState.test.ts`, `resolve.test.ts` |
 | A move with NO base power takes its damage from a callback over current HP — one exact amount, no nHKO ladder, but still stopped by an immunity | ✅ | `core/moves.ts` (`damageCallback`), `core/damage.ts` (`connects`) | `damage.test.ts`, `section.test.ts` |
 | Strength Sap heals by the target's Attack with BOOSTS applied and every other modifier skipped — exact per set, so distinct outcomes bucket rather than a range | ✅ | `core/strengthsap.ts` (`sappedAttack`, `strengthSap`), `core/render.ts` (`renderStrengthSap`) | `strengthsap.test.ts`, `render.test.ts`, `section.test.ts` |
 | A Substitute is a shield, and the tooltip says ONE thing about it: how many hits break the doll — cumulative per HIT, never spilled over | ✅ | `core/substitute.ts`, `core/damage.ts` (`substituteStanding`) | `substitute.test.ts`, `damage.test.ts`, `section.test.ts` |
@@ -1020,6 +1024,7 @@ was always undefined.
 | Speed order: arithmetic delegated, ORDER owned, a fact about the PAIR | ✅ | `core/speed.ts`, `section.ts` (`speedSection`, `ownMovesSection`) | `speed.test.ts`, `render.test.ts`, `section.test.ts` |
 | An "if …" aside exists to CONTRADICT the ⚡ verdict — a set reaching the same answer is dropped, so no asides means the verdict holds under EVERY still-possible set | ✅ | `core/render.ts` (`speedLine`) | `render.test.ts` |
 | Unburden's ×2 Speed is armed via an explicit `abilityOn` flag, not inferred from `item` | ✅ | `core/resolve.ts` (`buildResolved`), `core/damage.ts` (`buildPokemon`) | `resolve.test.ts`, `speed.test.ts` |
+| Quark Drive/Protosynthesis are armed via an explicit `boostedStat` flag — a SEPARATE toggle from `abilityOn`, read off the client's own volatile, since `@smogon/calc` refuses to activate either ability at all while it's unset | ✅ | `battle/readState.ts` (`readParadoxBoost`), `core/resolve.ts` (`buildResolved`), `core/damage.ts` (`buildPokemon`) | `readState.test.ts`, `resolve.test.ts`, `damage.test.ts`, `speed.test.ts` |
 | A package is reached past its PUBLISHED surface from ONE module, against a contract stated in that package's public types | ✅ | `core/calcinternals.ts` | `dependency-boundaries.test.ts`, `npm run typecheck` |
 | The read/reason/render split is a checked import graph, not just a description | ✅ | `fitness/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |
 | Every behavioural deduction is reached through `narrow.ts` — nothing else imports `deductions.ts` | ✅ | `fitness/dependency-boundaries.test.ts` | `dependency-boundaries.test.ts` |
@@ -1107,7 +1112,19 @@ rather than in our code. Run the named check by hand after a Showdown client upd
   still be found once using it took them off the field), and the `|-start|…|Substitute` and
   `|-activate|…|move: Substitute|[damage]` layouts — the first tells a fresh doll from a
   battered one, the second's `[damage]` tag is all that separates an absorbed hit from a
-  status move the sub merely blocked.
+  status move the sub merely blocked. And the ten `volatiles.quarkdrive<stat>` /
+  `volatiles.protosynthesis<stat>` keys — read in the DANGEROUS direction, since the whole
+  point of `readParadoxBoost` is that `@smogon/calc` refuses to apply either ability's boost
+  at all while it's unset, so a renamed or reshaped key would silently drop Quark Drive and
+  Protosynthesis from every speed and damage calc again, exactly the bug this probe exists to
+  catch. To exercise it, pick a replay with a Paradox Pokémon (e.g. Iron Bundle, Flutter Mane,
+  Roaring Moon) that switches in under its terrain/weather or holding a Booster Energy. And
+  `volatiles.charge` — presence-only, same shape and same DANGEROUS direction as Substitute's:
+  Electromorphosis, Wind Power and the move Charge all set it, and `readCharged` doesn't
+  distinguish which one, so a renamed key would silently stop doubling every charged Electric
+  move regardless of source. To exercise it, pick a replay with a Bellibolt or Kilowattrel
+  that has taken a hit (Electromorphosis) or used a wind move / seen Tailwind start on its own
+  side (Wind Power).
 - **`npm run player-check`** (a real two-account battle on a self-hosted server) — anything
   behind `battle.myPokemon`, which a replay has no access to at all: the
   `ClientServerPokemon` contract incl. `stats`, the switch-menu hover and its ⚡ bench

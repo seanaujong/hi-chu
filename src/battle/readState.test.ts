@@ -6,6 +6,8 @@ import {
   readLiveForme,
   readLiveTypes,
   readRoosting,
+  readParadoxBoost,
+  readCharged,
   proteanAlreadyFired,
   readTransformTarget,
   readSpeciesData,
@@ -170,6 +172,28 @@ describe('toLiveFacts', () => {
     expect(readRoosting(clientMon({turnstatuses: {protect: ['protect']}}))).toBe(false);
     expect(toLiveFacts(clientMon({turnstatuses: {roost: ['roost']}})).roosting).toBe(true);
     expect(toLiveFacts(clientMon()).roosting).toBeUndefined();
+  });
+
+  it('reads which stat Quark Drive/Protosynthesis is boosting off the composite volatile id', () => {
+    // The sim's `-start` line names id + stat as one token (`quarkdrivespe`), so the
+    // client's volatile key IS the fact — there is no separate "is it on" to check.
+    expect(readParadoxBoost(clientMon({volatiles: {quarkdrivespe: ['quarkdrivespe']}}))).toBe('spe');
+    expect(readParadoxBoost(clientMon({volatiles: {protosynthesisatk: ['protosynthesisatk']}}))).toBe('atk');
+    expect(readParadoxBoost(clientMon())).toBeUndefined();
+    expect(readParadoxBoost(clientMon({volatiles: {}}))).toBeUndefined();
+    // A Paradox mon with neither ability active (terrain/weather absent, no Booster Energy
+    // used) carries no such volatile at all — distinct from "has the ability but it's off".
+    expect(readParadoxBoost(clientMon({ability: 'Quark Drive', volatiles: {}}))).toBeUndefined();
+    expect(toLiveFacts(clientMon({volatiles: {quarkdrivespa: ['quarkdrivespa']}})).boostedStat).toBe('spa');
+    expect(toLiveFacts(clientMon()).boostedStat).toBeUndefined();
+  });
+
+  it('reads Charge as bare presence — Electromorphosis, Wind Power and the move Charge all share one volatile', () => {
+    expect(readCharged(clientMon({volatiles: {charge: ['charge']}}))).toBe(true);
+    expect(readCharged(clientMon())).toBe(false);
+    expect(readCharged(clientMon({volatiles: {}}))).toBe(false);
+    expect(toLiveFacts(clientMon({volatiles: {charge: ['charge']}})).charged).toBe(true);
+    expect(toLiveFacts(clientMon()).charged).toBeUndefined();
   });
 
   it('reads the Transform target straight out of the volatile', () => {

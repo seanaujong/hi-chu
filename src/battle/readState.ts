@@ -6,7 +6,7 @@
 // `toLiveFacts` is pure and unit-tested with a stub; the navigation helpers are
 // thin and defensive (the client's shape can shift between releases).
 
-import type {FieldFacts, FullStats, IsStatusMove, LiveFacts, ObservedHit, OrderedMove, SpeciesData, StatID, StatusName, TerrainName, TurnOrder, WeatherName} from '../core/types.js';
+import type {BoostableStat, FieldFacts, FullStats, IsStatusMove, LiveFacts, ObservedHit, OrderedMove, SpeciesData, StatID, StatusName, TerrainName, TurnOrder, WeatherName} from '../core/types.js';
 import {isMegaForme} from '../core/facts.js';
 import {multiHitProfile} from '../core/moves.js';
 import type {OwnSideHazards} from '../core/hazards.js';
@@ -309,6 +309,41 @@ export function readRoosting(p: ClientPokemon): boolean {
 }
 
 /**
+ * The stat Quark Drive or Protosynthesis is currently boosting, or undefined while neither
+ * is active. The sim emits one composite `-start` id per activation — `quarkdrivespe`,
+ * `protosynthesisatk`, … — so the client stores "is it on" and "which stat" as a single
+ * volatile key rather than two fields; reading that key straight is the whole job, and the
+ * only honest one: recomputing "is Electric Terrain up right now" would miss a Booster
+ * Energy activation surviving past the terrain ending, since the real ability stays active
+ * until switch-out regardless of the field once armed.
+ *
+ * Spelled out as ten literal keys rather than built with a template — `${stat}` inside a
+ * bracket access is invisible to `clientFieldsRead`'s regex (it only matches a quoted
+ * string literal), so a dynamic version of this function would read a real client field
+ * while looking, to the drift-probe obligation below, exactly like it read nothing at all.
+ */
+export function readParadoxBoost(p: ClientPokemon): BoostableStat | undefined {
+  if (p.volatiles?.['quarkdriveatk'] !== undefined || p.volatiles?.['protosynthesisatk'] !== undefined) return 'atk';
+  if (p.volatiles?.['quarkdrivedef'] !== undefined || p.volatiles?.['protosynthesisdef'] !== undefined) return 'def';
+  if (p.volatiles?.['quarkdrivespa'] !== undefined || p.volatiles?.['protosynthesisspa'] !== undefined) return 'spa';
+  if (p.volatiles?.['quarkdrivespd'] !== undefined || p.volatiles?.['protosynthesisspd'] !== undefined) return 'spd';
+  if (p.volatiles?.['quarkdrivespe'] !== undefined || p.volatiles?.['protosynthesisspe'] !== undefined) return 'spe';
+  return undefined;
+}
+
+/**
+ * True while this Pokémon is CHARGED — its next Electric-type move doubled — from
+ * Electromorphosis, Wind Power, or the move Charge itself. All three share one sim
+ * volatile (`charge`), so the reader doesn't need to know or care which one set it: unlike
+ * `readParadoxBoost`, there is no composite key to decompose, just presence-or-absence, the
+ * same shape as `readRoosting`. See `core/damage.ts`'s `chargedPower` for why this needs
+ * reading at all — @smogon/calc has no concept of Charge, Electromorphosis or Wind Power.
+ */
+export function readCharged(p: ClientPokemon): boolean {
+  return p.volatiles?.['charge'] !== undefined;
+}
+
+/**
  * The Pokémon this one has TRANSFORMED into, or undefined. The client keeps the target's
  * live `Pokemon` object right in the volatile — `['transform', target, shiny, gender,
  * level]` — so the copy can be read with exactly the machinery every other Pokémon on the
@@ -405,6 +440,8 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, spe
   const liveForme = readLiveForme(p);
   const liveTypes = readLiveTypes(p);
   const roosting = readRoosting(p);
+  const boostedStat = readParadoxBoost(p);
+  const charged = readCharged(p);
 
   // `?? {}` because the client does not always have it — see the `boosts` field's own note.
   // An absent boost table means "no boosts", which is the honest reading and the common case.
@@ -453,6 +490,8 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, spe
     ...(speciesData ? {speciesData} : {}),
     ...(live['accuracy'] ? {accuracyBoost: live['accuracy']} : {}),
     ...(live['evasion'] ? {evasionBoost: live['evasion']} : {}),
+    ...(boostedStat ? {boostedStat} : {}),
+    ...(charged ? {charged: true} : {}),
     // `shedTailMaker` deliberately does not come along: LiveFacts names no other Pokémon by
     // ident, and turning that ident into the max HP it stands for takes the feed. The shell
     // (`section.factsReader`) resolves it and overlays `sizedOnMaxHP`, exactly as it does for

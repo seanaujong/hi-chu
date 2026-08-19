@@ -78,7 +78,7 @@ function probeLiveClient() {
   // Which of the rarer client shapes this replay actually exercised — a random replay
   // usually has no transformed or forme-changed Pokémon, and a probe that never fired is
   // not a probe that passed. Reported, not failed on.
-  const seen = {formeChange: false, transform: false, calledMove: false, balloonAnnounce: false, statusLine: false, substitute: false, shedTail: false, typeChange: false, proteanLine: false, roost: false, weatherUpkeep: false};
+  const seen = {formeChange: false, transform: false, calledMove: false, balloonAnnounce: false, statusLine: false, substitute: false, shedTail: false, typeChange: false, proteanLine: false, roost: false, weatherUpkeep: false, paradoxBoost: false, charge: false};
 
   const format = R.detectFormat(b);
   if (!format || format.kind !== 'randbats' || !/^gen\d+random/.test(format.formatId)) {
@@ -362,6 +362,47 @@ function probeLiveClient() {
     } else if (R.readSubstitute(b, mon) !== undefined) {
       problems.push(`readSubstitute(${f.speciesForme || '?'}) invented a sub with no volatile to justify it`);
     }
+    // Quark Drive / Protosynthesis fold "is it on" and "which stat" into ONE composite
+    // volatile key (`quarkdrivespe`, `protosynthesisatk`, …) rather than two fields — see
+    // readParadoxBoost. The shape contract is a bare `[id]` tuple, same as Substitute's.
+    // Spelled out as ten literal keys for the same reason readParadoxBoost is: a template
+    // literal here would satisfy nothing the drift-probe rule can see.
+    for (const [key, v] of [
+      ['quarkdriveatk', mon.volatiles?.['quarkdriveatk']],
+      ['quarkdrivedef', mon.volatiles?.['quarkdrivedef']],
+      ['quarkdrivespa', mon.volatiles?.['quarkdrivespa']],
+      ['quarkdrivespd', mon.volatiles?.['quarkdrivespd']],
+      ['quarkdrivespe', mon.volatiles?.['quarkdrivespe']],
+      ['protosynthesisatk', mon.volatiles?.['protosynthesisatk']],
+      ['protosynthesisdef', mon.volatiles?.['protosynthesisdef']],
+      ['protosynthesisspa', mon.volatiles?.['protosynthesisspa']],
+      ['protosynthesisspd', mon.volatiles?.['protosynthesisspd']],
+      ['protosynthesisspe', mon.volatiles?.['protosynthesisspe']],
+    ]) {
+      if (v === undefined) continue;
+      if (!Array.isArray(v) || v[0] !== key) {
+        problems.push(`${f.speciesForme || '?'}.volatiles.${key} = ${JSON.stringify(v)} (expected ['${key}'])`);
+      }
+      if (R.readParadoxBoost(mon) === undefined) {
+        problems.push(`readParadoxBoost(${f.speciesForme || '?'}) missed the ${key} volatile`);
+      }
+      seen.paradoxBoost = true;
+    }
+    // Charge (Electromorphosis, Wind Power, or the move Charge) is PRESENCE only, same
+    // shape as Substitute — the same volatile whichever of the three set it, so there is
+    // nothing ability-specific to distinguish here.
+    const charge = mon.volatiles?.['charge'];
+    if (charge !== undefined) {
+      if (!Array.isArray(charge) || charge[0] !== 'charge') {
+        problems.push(`${f.speciesForme || '?'}.volatiles.charge = ${JSON.stringify(charge)} (expected ['charge'])`);
+      }
+      if (!R.readCharged(mon)) {
+        problems.push(`readCharged(${f.speciesForme || '?'}) missed a charge the volatile plainly shows`);
+      }
+      seen.charge = true;
+    } else if (R.readCharged(mon)) {
+      problems.push(`readCharged(${f.speciesForme || '?'}) invented a charge with no volatile to justify it`);
+    }
     // The transform volatile holds the TARGET's own Pokemon object — that is what makes a
     // copy resolvable at all (we go and read the Pokémon it copied).
     if (mon.volatiles?.transform !== undefined) {
@@ -463,6 +504,12 @@ async function main() {
     // an Orthworm in it.
     console.log(`  Substitute: ${seen.substitute ? 'SEEN — checked' : 'absent (not exercised)'}, ` +
       `Shed Tail hand-off ${seen.shedTail ? 'SEEN — checked' : 'absent (not exercised)'}`);
+    // Quark Drive/Protosynthesis need Electric Terrain, Sun, or a Booster Energy holder
+    // on the field — to exercise this, pick a replay with a Paradox Pokémon in it.
+    console.log(`  Quark Drive/Protosynthesis boost: ${seen.paradoxBoost ? 'SEEN — checked' : 'absent (not exercised)'}`);
+    // Charge needs a Bellibolt/Kilowattrel (or anything that used the move Charge) to have
+    // taken a hit or otherwise activated it — to exercise this, pick a replay with one.
+    console.log(`  Charge: ${seen.charge ? 'SEEN — checked' : 'absent (not exercised)'}`);
 
     if (problems.length) {
       console.error('\n✗ DRIFT DETECTED — readState.ts no longer matches the live client:');

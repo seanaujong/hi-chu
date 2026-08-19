@@ -324,6 +324,23 @@ function rageFistPower(timesAttacked: number): number {
   return Math.min(RAGE_FIST_MAX_POWER, RAGE_FIST_BASE_POWER + RAGE_FIST_POWER_PER_HIT * timesAttacked);
 }
 
+const CHARGE_MULTIPLIER = 2;
+
+/**
+ * Electromorphosis, Wind Power and the move Charge all set the same `charge` volatile,
+ * which doubles the user's NEXT Electric-type move — a mechanic @smogon/calc does not
+ * model AT ALL, unlike Quark Drive/Protosynthesis: neither ability appears in its
+ * `onBasePower` table, and it carries no notion of a volatile-status power modifier to
+ * arm. So this isn't a flag the calc reads once set; it's a base-power override hi-chu
+ * computes by hand, the same shape as `rageFistPower`. Doubling belongs to the MOVE, not
+ * the mon generally — an Electric move gets it, a Fire move from the same charged
+ * attacker does not — so this takes the dex's own base power for the move actually being
+ * calculated rather than reading anything off `charged` alone.
+ */
+function chargedPower(dexMove: Move, charged: boolean | undefined): number | undefined {
+  return charged && dexMove.hasType('Electric') ? dexMove.bp * CHARGE_MULTIPLIER : undefined;
+}
+
 /**
  * One species' body as the calc knows it — base stats, types, weight. The calc's own dex
  * first; the client-dex reading the caller supplies (`SpeciesData`) fills in for a species
@@ -397,6 +414,7 @@ export function buildPokemon(gen: Gen, mon: ResolvedMon, curHP?: number): Pokemo
     ...(ability !== undefined ? {ability} : {}),
     ...(item !== undefined ? {item} : {}),
     ...(mon.abilityOn ? {abilityOn: true} : {}),
+    ...(mon.boostedStat ? {boostedStat: mon.boostedStat} : {}),
     ...(mon.status !== undefined ? {status: mon.status} : {}),
     boosts: mon.boosts,
     // teraType is only ever set when the Tera is ACTIVE for this calc — actually
@@ -634,9 +652,16 @@ export function calcDamage(
     });
   }
 
-  // Rage Fist's actual power, not the dex's flat 50 — see `rageFistPower`.
+  // Rage Fist's actual power, not the dex's flat 50 — see `rageFistPower`. A Charge
+  // doubling — see `chargedPower` — takes the SAME override slot; the two never collide
+  // (Rage Fist is Ghost-type, so it never qualifies for the Electric-only double).
+  const charge = chargedPower(dexMove, attacker.charged);
   const powerOverride =
-    toID(moveName) === 'ragefist' ? {overrides: {basePower: rageFistPower(attacker.timesAttacked)}} : {};
+    toID(moveName) === 'ragefist'
+      ? {overrides: {basePower: rageFistPower(attacker.timesAttacked)}}
+      : charge !== undefined
+        ? {overrides: {basePower: charge}}
+        : {};
 
   const run = (hits?: number) =>
     calculate(gen, atk, def, new Move(gen, moveName, {...(hits !== undefined ? {hits} : {}), ...powerOverride}), field);
@@ -699,6 +724,9 @@ export function calcDamage(
   // Asking for one hit is what the uniform path must avoid too: ask for one and Tera Grass
   // Bullet Seed prices every hit at 60 BP instead of 25, an error the convolution below then
   // multiplies across the whole hit count.
+  // `chargedPower` is deliberately not applied here: it belongs to the uniform-power path's
+  // shared `powerOverride` above `run()`, and no variable-power move (Triple Axel and its
+  // kind) is Electric-type in mainline gen 9 — there is nothing today for it to double.
   const perHitPmfs = profile.perHitPowers
     ? profile.perHitPowers.map((basePower) => {
         const standIn = new Move(gen, 'Fury Swipes', {

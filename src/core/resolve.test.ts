@@ -101,6 +101,21 @@ describe('resolveMon', () => {
     const otherAbility = resolveMon(dragoniteFacts({ability: 'Multiscale', prevItem: 'Heavy-Duty Boots'}), DRAGONITE);
     expect(otherAbility.abilityOn).toBeUndefined();
   });
+
+  it('passes Quark Drive/Protosynthesis boostedStat straight through — a SEPARATE toggle from abilityOn', () => {
+    const boosted = resolveMon(dragoniteFacts({ability: 'Quark Drive', boostedStat: 'spe'}), DRAGONITE);
+    expect(boosted.boostedStat).toBe('spe');
+    expect(boosted.abilityOn).toBeUndefined();
+    const notActive = resolveMon(dragoniteFacts({ability: 'Quark Drive'}), DRAGONITE);
+    expect(notActive.boostedStat).toBeUndefined();
+  });
+
+  it('passes Charge straight through — live state, not derived from the ability', () => {
+    const charged = resolveMon(dragoniteFacts({ability: 'Electromorphosis', charged: true}), DRAGONITE);
+    expect(charged.charged).toBe(true);
+    const notCharged = resolveMon(dragoniteFacts({ability: 'Electromorphosis'}), DRAGONITE);
+    expect(notCharged.charged).toBeUndefined();
+  });
 });
 
 describe('resolveMon reflects the same narrowing/deductions the display does', () => {

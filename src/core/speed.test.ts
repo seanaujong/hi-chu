@@ -71,6 +71,15 @@ describe('finalSpeed', () => {
     expect(finalSpeed(bare)).toBe(273); // item never lost (abilityOn unset) — no boost
     expect(finalSpeed(mon({ability: 'Unburden', abilityOn: true}))).toBe(546);
   });
+
+  it('boosts Speed ×1.5 for Quark Drive/Protosynthesis once armed via boostedStat — a SEPARATE flag from abilityOn, not derived from terrain', () => {
+    const bare = mon({ability: 'Quark Drive'});
+    expect(finalSpeed(bare)).toBe(273); // not currently active (boostedStat unset) — no boost
+    expect(finalSpeed(mon({ability: 'Quark Drive', boostedStat: 'spe'}))).toBe(409);
+    expect(finalSpeed(mon({ability: 'Protosynthesis', boostedStat: 'spe'}))).toBe(409);
+    // Boosting a DIFFERENT stat leaves Speed untouched.
+    expect(finalSpeed(mon({ability: 'Quark Drive', boostedStat: 'atk'}))).toBe(273);
+  });
 });
 
 describe('speedBuckets', () => {

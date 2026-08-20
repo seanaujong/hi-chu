@@ -307,6 +307,25 @@ describe('resolveVariants — the still-possible sets to calc over', () => {
     expect(items(quiet)).toEqual(['Eviolite']);
   });
 
+  it('drops the Leftovers ITEM once a damaged turn has ended unhealed', () => {
+    // Toedscruel's real gen9randombattle entry: one role, two items — the case that
+    // motivated the rule. A hit had already landed and the log already showed the turn end
+    // with no Leftovers heal, and the tooltip never narrowed.
+    const toedscruel: RandbatsEntry = {
+      level: 87,
+      abilities: ['Mycelium Might'],
+      items: [],
+      roles: {
+        'Bulky Support': {abilities: ['Mycelium Might'], items: ['Assault Vest', 'Leftovers'], teraTypes: ['Water'], moves: ['Giga Drain']},
+      },
+    };
+    const facts = liveFacts({speciesForme: 'Toedscruel', revealedMoves: ['Giga Drain']});
+    expect(items(resolveVariants(facts, toedscruel))).toEqual(['Assault Vest', 'Leftovers']);
+    const quiet = resolveVariants({...facts, endedTurnDamagedWithoutLeftoversHeal: true}, toedscruel);
+    expect(quiet.map((v) => v.role)).toEqual(['Bulky Support']);
+    expect(items(quiet)).toEqual(['Assault Vest']);
+  });
+
   it('lets a deduction NARROW the roles but never empty them', () => {
     // Gliscor's real entry: both roles are Toxic Orb, so the rule-out has nothing left to
     // leave standing. A deduction is an inference from something that did NOT happen, so

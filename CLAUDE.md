@@ -663,10 +663,11 @@ picture and not in this list, this list is the thing that's wrong.
     - `deductions.ts` — the behavioural deduction layer: items deduced ABSENT from public
       behaviour — a rule-out can empty a role's whole item pool, which is how `narrow` drops
       the ROLE, not just the item line. Most are SILENT items read through a side effect
-      (Life Orb, Heavy-Duty Boots, the three Choice items); Air Balloon and the two status
-      orbs are the inversion, the items that announce themselves — the balloon on the way in,
-      so a switch-in it stayed quiet through rules it out, and an orb at every end of turn,
-      so a turn that ended with its holder un-statused rules both out.
+      (Life Orb, Heavy-Duty Boots, the three Choice items); Air Balloon, the two status orbs
+      and Leftovers are the inversion, the items that announce themselves — the balloon on
+      the way in, so a switch-in it stayed quiet through rules it out; an orb at every end of
+      turn, so a turn that ended with its holder un-statused rules both out; and Leftovers at
+      every DAMAGED end of turn, so a damaged turn that ended unhealed rules it out.
       `ruledOutItems`/`survivingItems`; adding
       a deduction = one predicate + one line in `ruledOutItems`, its unit test in the
       colocated `deductions.test.ts` (hand-built facts via `sets.testfixtures.ts`'s
@@ -980,6 +981,7 @@ was always undefined.
 | Two freely-chosen moves in ONE stint rule out all three Choice items — scoped per stint, since the lock dies on switch-out | ✅ | `core/deductions.ts`, `battle/readState.ts` (`usedDifferentMovesSinceSwitchIn`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts` |
 | A switch-in that announced nothing rules Air Balloon out — the one item that always reveals itself, so SILENCE is the evidence | ✅ | `core/deductions.ts`, `battle/readState.ts` (`switchedInWithoutAnnouncingBalloon`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts`, `section.test.ts` |
 | A turn that ended with its holder un-statused rules out Flame Orb AND Toxic Orb — the same silence, at a moment that comes round every turn | ✅ | `core/deductions.ts`, `battle/readState.ts` (`endedTurnUnstatused`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts`, `section.test.ts` |
+| A damaged turn that ended unhealed rules Leftovers out — the same silence, keyed to HP instead of status | ✅ | `core/deductions.ts`, `battle/readState.ts` (`endedTurnDamagedWithoutLeftoversHeal`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts`, `section.test.ts` |
 | A status move rules out all three Choice items — a claim about how the set was BUILT, so it needs no ability guard and settles on the FIRST such move | ✅ | `core/choiceitems.ts` (`choiceRuledOutByStatusMoves`), `core/deductions.ts` (`choiceRuledOutBySetShape`) | `choiceitems.test.ts`, `deductions.test.ts`, `resolve.test.ts`, `section.test.ts` |
 | …and the same law backwards: a revealed Choice item rules the status moves out of what the set could still be RUNNING, pruned against the very Items line the block prints | ✅ | `core/choiceitems.ts` (`movesUnderChoiceItem`), `core/narrow.ts` (`candidateMoves`) | `choiceitems.test.ts`, `knowledge.test.ts`, `section.test.ts` |
 | The seven status moves a Choice set DOES hold are measured from Showdown's own generator, never recalled — a missing one is a FALSE deduction | ✅ | `core/choiceitems.ts` (`PAIRS_WITH_CHOICE`), `scripts/choice-exclusions.mjs` | `choiceitems.test.ts`, `npm run choice-exclusions` |
@@ -1092,7 +1094,12 @@ rather than in our code. Run the named check by hand after a Showdown client upd
   marker, and losing it would only take the deduction permanently (and silently) quiet, but
   the `|-status|` line's layout is read in the DANGEROUS direction — the rule turns on there
   being no status at that moment, so an ident or status id that moved would leave a visibly
-  burned Pokémon looking clean and rule out the very orb that had just fired. And `turnstatuses`, which is where Roost's
+  burned Pokémon looking clean and rule out the very orb that had just fired. The Leftovers
+  rule-out shares that pair's `|upkeep|` marker and adds its own dangerous-direction half:
+  the `|-heal|…|[from] item: Leftovers` line's layout, since the rule reads its ABSENCE on a
+  damaged turn as evidence — a client that stopped tagging that heal, or moved its HP field,
+  would leave a Leftovers holder that had just healed looking like it never did. And
+  `turnstatuses`, which is where Roost's
   one-turn grounding lives — a table the client WIPES at end of turn, so unlike every other
   read here it is only ever visible mid-turn and its absence proves nothing; the
   `|-singleturn|…|move: Roost` line is probed alongside it as the durable trace. And the

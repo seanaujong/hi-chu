@@ -597,6 +597,53 @@ describe('the sets view narrows a foe\u2019s item pool by what OUR OWN hit dealt
   });
 });
 
+describe('the MOVE TOOLTIP narrows the same way — it never called revealsAgainst at all', () => {
+  // moveVsFoe built its defender fan-out straight from resolveVariants/illusionVariants and
+  // never consulted revealsAgainst, even though the docstring right above foeReveals already
+  // claimed "the move tooltip's defender fan-out" was one of the surfaces it reached. It
+  // wasn't — hovering a move against a foe whose log had already settled Assault Vest vs
+  // Leftovers went on showing both split lines forever. Same fixture as the sets-view block
+  // above, so the same hit that collapses the Items line there must collapse this too.
+  const feed: RandbatsData = {
+    Skarmory: {level: 78, abilities: ['Sturdy'], items: ['Leftovers'], moves: ['Flash Cannon']},
+    Weavile: {level: 78, abilities: ['Pressure'], items: ['Assault Vest', 'Leftovers'], moves: ['Icicle Crash']},
+  };
+  const near = {isFar: false, sideConditions: {}, active: [] as unknown[]};
+  const far = {isFar: true, sideConditions: {}, active: [] as unknown[]};
+  const ourActive = {
+    speciesForme: 'Skarmory', level: 78, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p1: Skarmory', side: near,
+  } as unknown as ClientPokemon;
+  const foeWeavile = {
+    speciesForme: 'Weavile', level: 78, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p2: Weavile', side: far,
+  } as unknown as ClientPokemon;
+  near.active = [ourActive];
+  far.active = [foeWeavile];
+  const myPokemon = [{ident: 'p1: Skarmory', item: 'leftovers'}];
+
+  it('splits the damage line in two with nothing observed (the baseline)', () => {
+    const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far], myPokemon} as unknown as ClientBattle;
+    const html = buildMoveSection(battle, ourActive, 'Flash Cannon', feed);
+    expect(html).toContain('Damage (Assault Vest):');
+    expect(html).toContain('Damage (Leftovers):');
+  });
+
+  it('collapses to the single Assault Vest line once our own hit was too small for bare SpD', () => {
+    // Same 38% hit as the sets-view block above: too small for bare SpD's 35.4-41.4%,
+    // squarely inside Assault Vest's 23.6-28.7% — only the vested range holds.
+    const stepQueue = [
+      '|switch|p2a: Weavile|Weavile, L78|100/100',
+      '|move|p1a: Skarmory|Flash Cannon|p2a: Weavile',
+      '|-damage|p2a: Weavile|62/100',
+    ];
+    const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far], stepQueue, myPokemon} as unknown as ClientBattle;
+    const html = buildMoveSection(battle, ourActive, 'Flash Cannon', feed);
+    expect(html).toContain('<small>Damage:</small>');
+    expect(html).not.toContain('Damage (');
+  });
+});
+
 describe('a silent switch-in drops the Air Balloon bucket (core/deductions.ts)', () => {
   // Heatran's real gen9randombattle role, item pool and all. The balloon is the one item
   // that announces itself on the way in, so the tooltip should stop hedging about it the
@@ -720,6 +767,76 @@ describe('a turn ended un-statused drops the status-orb role (core/deductions.ts
     const after = buildPokemonSection(battleWith(QUIET_TURN), foeHariyama, feed);
     expect(after).not.toContain('Wallbreaker');
     expect(after).toContain('AV Pivot');
+  });
+});
+
+describe('a damaged turn ended unhealed drops the Leftovers item (core/deductions.ts)', () => {
+  // Toedscruel's real gen9randombattle entry — the case that motivated the rule: a special
+  // hit had already landed and the log already showed the turn end with no Leftovers heal,
+  // and the tooltip's damage split never collapsed.
+  const feed: RandbatsData = {
+    Toedscruel: {
+      level: 87,
+      abilities: ['Mycelium Might'],
+      items: [],
+      roles: {
+        'Bulky Support': {abilities: ['Mycelium Might'], items: ['Assault Vest', 'Leftovers'], teraTypes: ['Water'], moves: ['Giga Drain']},
+      },
+    },
+    Gengar: {level: 82, abilities: ['Cursed Body'], items: ['Choice Specs'], moves: ['Shadow Ball']},
+  };
+  const near = {isFar: false, sideConditions: {}, active: [] as unknown[]};
+  const far = {isFar: true, sideConditions: {}, active: [] as unknown[]};
+  const ourGengar = {
+    speciesForme: 'Gengar', level: 82, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p1: Gengar', side: near,
+  } as unknown as ClientPokemon;
+  const foeToedscruel = {
+    speciesForme: 'Toedscruel', level: 87, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p2: Toedscruel', side: far,
+  } as unknown as ClientPokemon;
+  near.active = [ourGengar];
+  far.active = [foeToedscruel];
+
+  const battleWith = (stepQueue: string[]): ClientBattle =>
+    ({gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far], stepQueue} as unknown as ClientBattle);
+  const IN = '|switch|p2a: Toedscruel|Toedscruel, L87, F|100/100';
+  const OURS_IN = '|switch|p1a: Gengar|Gengar|100/100';
+  // A CRIT hit, deliberately: itemreveal.ts's own damage-MAGNITUDE reveal excludes crits (a
+  // flat ×1.5 with nothing to do with a held item), so this isolates the behavioural
+  // silence-based rule this block is testing — a clean hit here would narrow the pool via
+  // the damage-magnitude reveal before the turn ever ends, confounding the isolation.
+  const HIT = ['|move|p1a: Gengar|Shadow Ball|p2a: Toedscruel', '|-crit|p2a: Toedscruel', '|-damage|p2a: Toedscruel|70/100'];
+  const DAMAGED_QUIET_TURN = ['|start', OURS_IN, IN, '|turn|1', ...HIT, '|', '|upkeep', '|turn|2'];
+
+  it('brackets both items until a damaged turn has ended — the honest baseline', () => {
+    const html = buildMoveSection(battleWith(['|start', OURS_IN, IN, '|turn|1', ...HIT]), ourGengar, 'Shadow Ball', feed);
+    expect(html).toContain('(Assault Vest)');
+    expect(html).toContain('(Leftovers)');
+  });
+
+  it('collapses to the one real number once a damaged turn ends unhealed', () => {
+    const html = buildMoveSection(battleWith(DAMAGED_QUIET_TURN), ourGengar, 'Shadow Ball', feed);
+    expect(html).not.toContain('(Assault Vest)'); // one item left ⇒ no per-item labels at all
+    expect(html).not.toContain('(Leftovers)');
+  });
+
+  it('keeps both when Leftovers actually heals — the heal lands on the same line', () => {
+    const html = buildMoveSection(battleWith([
+      '|start', OURS_IN, IN, '|turn|1', ...HIT, '|',
+      '|-heal|p2a: Toedscruel|76/100|[from] item: Leftovers', '|upkeep', '|turn|2',
+    ]), ourGengar, 'Shadow Ball', feed);
+    expect(html).toContain('(Assault Vest)');
+    expect(html).toContain('(Leftovers)');
+  });
+
+  it('drops it from the sets view too, not just the move tooltip', () => {
+    const before = buildPokemonSection(battleWith(['|start', OURS_IN, IN, '|turn|1', ...HIT]), foeToedscruel, feed);
+    expect(before).toContain('Assault Vest');
+    expect(before).toContain('Leftovers');
+    const after = buildPokemonSection(battleWith(DAMAGED_QUIET_TURN), foeToedscruel, feed);
+    expect(after).toContain('Assault Vest');
+    expect(after).not.toContain('Leftovers');
   });
 });
 

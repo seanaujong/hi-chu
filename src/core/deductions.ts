@@ -1,10 +1,10 @@
 // The behavioural deduction layer: items deduced ABSENT from the public mark their presence
 // would (or wouldn't) have left. Most are SILENT items, ones that never reveal themselves
 // and so can only be read through a side effect (Life Orb's recoil, Heavy-Duty Boots'
-// hazard immunity, a Choice lock). Air Balloon and the two status orbs are the opposite and
-// the same rule reversed: they announce themselves — the balloon on every switch-in, an orb
-// at every end of turn — so their SILENCE is the mark. Each rule turns a
-// LiveFacts observation into a "this item can't be here"
+// hazard immunity, a Choice lock). Air Balloon, the two status orbs and Leftovers are the
+// opposite and the same rule reversed: they announce themselves — the balloon on every
+// switch-in, an orb at every end of turn, Leftovers at every damaged end of turn — so their
+// SILENCE is the mark. Each rule turns a LiveFacts observation into a "this item can't be here"
 // constraint; the narrowing and resolution layers consume the union through
 // `survivingItems`, so the matcher itself stays general (it filters a pool, it doesn't
 // know Pokémon mechanics). Adding a deduction = one predicate + one line in `ruledOutItems`.
@@ -155,6 +155,21 @@ function statusOrbsRuledOut(facts: LiveFacts, roleAbilities: readonly string[]):
 }
 
 /**
+ * Leftovers restores its own holder 1/16 max HP at the end of every damaged turn and
+ * announces itself doing it, so a damaged turn that ended in silence rules it out — the
+ * same silence-is-evidence shape as the rule above, just keyed to HP instead of status.
+ *
+ * The reader owns everything time-scoped that would have muffled it (Heal Block, Magic
+ * Room, Embargo). Left here is the ability half — Klutz, the only ability that suppresses a
+ * held item's effect outright — judged against the known innate ability, else against the
+ * role's whole pool ("never lie", exactly as for the rules above).
+ */
+function leftoversRuledOut(facts: LiveFacts, roleAbilities: readonly string[]): boolean {
+  if (!facts.endedTurnDamagedWithoutLeftoversHeal || !itemStillHidden(facts)) return false;
+  return noExcuse(facts, roleAbilities, ITEM_IGNORING_ABILITIES);
+}
+
+/**
  * A status move rules the three Choice items out, because the team generator never builds
  * a set holding both — the law, its measurement and its seven exceptions all live in
  * `choiceitems.ts`. Two things separate it from the Choice rule directly above, which
@@ -180,6 +195,7 @@ export function ruledOutItems(facts: LiveFacts, roleAbilities: readonly string[]
   }
   if (airBalloonRuledOut(facts, roleAbilities)) out.add('airballoon');
   if (statusOrbsRuledOut(facts, roleAbilities)) for (const i of STATUS_ORBS) out.add(i);
+  if (leftoversRuledOut(facts, roleAbilities)) out.add('leftovers');
   return out;
 }
 

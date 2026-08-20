@@ -231,6 +231,20 @@ export interface LiveFacts {
    */
   readonly endedTurnUnstatused: boolean;
   /**
+   * True once the log shows this Pokémon finishing a turn on the field, below max HP, with
+   * no Leftovers heal shown. Leftovers restores 1/16 max HP at the end of EVERY turn it
+   * would help and announces itself doing it (`|-heal|<mon>|.../..|[from] item: Leftovers`),
+   * so a damaged turn that ended in silence rules it out — the same silence-is-evidence
+   * shape as `endedTurnUnstatused`, keyed to HP instead of status. A turn spent at full HP
+   * proves nothing (the residual does nothing there), so this only speaks about a damaged
+   * one.
+   *
+   * The suppressors — Heal Block, Magic Room, Embargo — are all judged in the reader, since
+   * each is time-scoped. Klutz is applied downstream against the role's ability pool, so
+   * this stays a raw fact.
+   */
+  readonly endedTurnDamagedWithoutLeftoversHeal: boolean;
+  /**
    * True once the log shows Protean or Libero having ALREADY converted this Pokémon during
    * its current stint. Gen 9 fires them once per switch-in; @smogon/calc still models the
    * gen 6-8 rule and grants STAB to any move an owner throws, so this is what separates a

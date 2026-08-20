@@ -78,7 +78,7 @@ function probeLiveClient() {
   // Which of the rarer client shapes this replay actually exercised — a random replay
   // usually has no transformed or forme-changed Pokémon, and a probe that never fired is
   // not a probe that passed. Reported, not failed on.
-  const seen = {formeChange: false, transform: false, calledMove: false, balloonAnnounce: false, statusLine: false, substitute: false, shedTail: false, typeChange: false, proteanLine: false, roost: false, weatherUpkeep: false, paradoxBoost: false, charge: false};
+  const seen = {formeChange: false, transform: false, calledMove: false, balloonAnnounce: false, statusLine: false, substitute: false, shedTail: false, typeChange: false, proteanLine: false, roost: false, weatherUpkeep: false, paradoxBoost: false, charge: false, leftoversHeal: false};
 
   const format = R.detectFormat(b);
   if (!format || format.kind !== 'randbats' || !/^gen\d+random/.test(format.formatId)) {
@@ -164,6 +164,21 @@ function probeLiveClient() {
       break;
     }
     seen.statusLine = true;
+  }
+
+  // The Leftovers rule-out reads the same shape of silence, over `|-heal|` instead of
+  // `|-status|`: the residual fires at the SAME `|upkeep|`-terminated moment already
+  // asserted present above, so only the `|-heal|` layout itself needs its own check here. A
+  // client that stopped emitting `[from] item: Leftovers` on the tag, or moved the HP field,
+  // would leave a Leftovers holder that had just healed looking like it never did — ruling
+  // out the very item that just fired.
+  for (const line of (b.stepQueue || []).filter((l) => typeof l === 'string' && l.startsWith('|-heal|'))) {
+    const parts = line.split('|');
+    if (typeof parts[2] !== 'string' || !parts[2].includes(':') || !parts[3]) {
+      problems.push(`|-heal| line not in "|-heal|<ident>|<hp>|..." shape: ${JSON.stringify(line)}`);
+      break;
+    }
+    if (parts[4] === '[from] item: Leftovers') seen.leftoversHeal = true;
   }
 
   // A side's whole ROSTER, not just what is on the field. Only the Shed Tail sub reads it,
@@ -487,6 +502,11 @@ async function main() {
     // Ursaluna in it, which announces the orb on the same line.
     console.log(`  |upkeep| lines: present, |-status| layout ` +
       `${seen.statusLine ? 'SEEN — checked' : 'absent (not exercised)'}`);
+    // Leftovers' own silence-based rule, sharing |upkeep| with the status orbs above — only
+    // the |-heal| layout and the "did it actually fire" half are its own. To exercise it,
+    // pick a replay with a Leftovers holder that ends a turn below max HP.
+    console.log(`  |-heal| lines: layout checked, Leftovers heal ` +
+      `${seen.leftoversHeal ? 'SEEN — checked' : 'absent (not exercised)'}`);
     // The weather tick both log readings must NOT mistake for a change. A replay with no
     // weather at all leaves it unexercised — to exercise it, pick one with a Torkoal,
     // Abomasnow, Tyranitar or Pelipper in it, which sets weather on the way in.

@@ -41,10 +41,15 @@ export function koText(chance: number): string {
   return `${Math.round(chance * 100)}% to KO`;
 }
 
-/** The "≈3.1 hits" / per-hit detail for a multi-hit move. */
+/** The "2–5 hits" / per-hit detail for a multi-hit move. A single use always lands a
+ *  whole number of hits, so this states the range those hits can fall in rather than
+ *  an average across it — a move can land 3 hits or 4, never 3.1. */
 function multiHitDetail(r: DamageReport): string {
   if (!r.multiHit) return '';
-  const hits = `≈${Math.round(r.multiHit.hits.expected * 10) / 10} hits`;
+  const counts = r.multiHit.hits.distribution.map(([count]) => count);
+  const min = Math.min(...counts);
+  const max = Math.max(...counts);
+  const hits = min === max ? `${min} hit${min === 1 ? '' : 's'}` : `${min}–${max} hits`;
   const perHit = `${asPercent(r.multiHit.perHit.min, r.defenderMaxHP)}–${asPercent(r.multiHit.perHit.max, r.defenderMaxHP)}% per hit`;
   return `${hits} · ${perHit}`;
 }

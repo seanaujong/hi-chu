@@ -5,6 +5,13 @@ import type {FieldFacts, FullStats, ResolvedMon, StatID} from './types.js';
 
 const noField: FieldFacts = {defenderScreens: {reflect: false, lightScreen: false, auroraVeil: false}};
 
+/** Expected hit count from a `HitCountBreakdown.distribution` — a statistic the report no
+ *  longer stores (the tooltip states the hit-count RANGE, not a fractional average), but the
+ *  underlying probability math is still worth pinning here. */
+function expectedHits(distribution: readonly (readonly [number, number])[]): number {
+  return distribution.reduce((sum, [count, p]) => sum + count * p, 0);
+}
+
 /** A fully-specified ResolvedMon with sensible defaults, so tests state only what matters. */
 function mon(over: Partial<ResolvedMon> & {speciesForme: string}): ResolvedMon {
   return {
@@ -199,7 +206,7 @@ describe('uniform-power multi-hit (Bullet Seed, 2-5)', () => {
       [4, 0.15],
       [5, 0.15],
     ]);
-    expect(r.multiHit!.hits.expected).toBeCloseTo(3.1, 10);
+    expect(expectedHits(r.multiHit!.hits.distribution)).toBeCloseTo(3.1, 10);
   });
 
   it('total spans 2×min-hit to 5×max-hit', () => {
@@ -351,7 +358,7 @@ describe('variable-power multi-hit (Triple Axel 20/40/60) is computed per hit', 
     expect(distribution[0]![1]).toBeCloseTo(0.1, 10);
     expect(distribution[1]![1]).toBeCloseTo(0.09, 10);
     expect(distribution[2]![1]).toBeCloseTo(0.81, 10);
-    expect(r.multiHit!.hits.expected).toBeCloseTo(2.71, 10);
+    expect(expectedHits(distribution)).toBeCloseTo(2.71, 10);
   });
 
   it('total min is ONE min hit (the move can stop at hit 1); max is all three maxed', () => {
@@ -383,7 +390,7 @@ describe('variable-power multi-hit (Triple Axel 20/40/60) is computed per hit', 
 
   it('Triple Kick shares the law at 10/20/30', () => {
     const tk = calcDamage(mon({speciesForme: 'Hitmontop', nature: 'Adamant'}), tyranitar, 'Triple Kick');
-    expect(tk.multiHit!.hits.expected).toBeCloseTo(2.71, 10);
+    expect(expectedHits(tk.multiHit!.hits.distribution)).toBeCloseTo(2.71, 10);
     expect(tk.total.min).toBe(tk.multiHit!.perHit.min);
   });
 });
@@ -394,19 +401,19 @@ describe('Population Bomb checks 90% accuracy before every hit after the first',
 
   it('bare: ≈6.51 expected hits, all 10 only at 0.9⁹ — and no all-hits-land caveat', () => {
     const r = calcDamage(maushold, tyranitar, 'Population Bomb');
-    expect(r.multiHit!.hits.expected).toBeCloseTo((1 - 0.9 ** 10) / 0.1, 10);
+    expect(expectedHits(r.multiHit!.hits.distribution)).toBeCloseTo((1 - 0.9 ** 10) / 0.1, 10);
     expect(r.multiHit!.hits.distribution.find(([k]) => k === 10)![1]).toBeCloseTo(0.9 ** 9, 10);
     expect(r.notes).toEqual([]); // the old "assumes all 10 hits land" note is dead
   });
 
   it('Wide Lens (the real Maushold/Smeargle item) lifts each check to 99% — ≈9.56 hits', () => {
     const r = calcDamage(mon({...maushold, item: 'Wide Lens'}), tyranitar, 'Population Bomb');
-    expect(r.multiHit!.hits.expected).toBeCloseTo((1 - 0.99 ** 10) / 0.01, 10);
+    expect(expectedHits(r.multiHit!.hits.distribution)).toBeCloseTo((1 - 0.99 ** 10) / 0.01, 10);
   });
 
   it('Loaded Dice: uniform 4..10, no accuracy checks — 7 expected hits', () => {
     const r = calcDamage(mon({...maushold, item: 'Loaded Dice'}), tyranitar, 'Population Bomb');
-    expect(r.multiHit!.hits.expected).toBeCloseTo(7, 10);
+    expect(expectedHits(r.multiHit!.hits.distribution)).toBeCloseTo(7, 10);
     expect(r.multiHit!.hits.distribution).toHaveLength(7);
   });
 });
@@ -419,7 +426,7 @@ describe('Compound Eyes / Hustle / No Guard / accuracy boosts reach the multiacc
 
   it('Hustle: Triple Kick’s per-hit chance drops to 72% — ≈2.24 expected hits', () => {
     const r = calcDamage(mon({speciesForme: 'Hitmontop', nature: 'Adamant', ability: 'Hustle'}), tyranitar, 'Triple Kick');
-    expect(r.multiHit!.hits.expected).toBeCloseTo(1 + 0.72 + 0.72 ** 2, 10);
+    expect(expectedHits(r.multiHit!.hits.distribution)).toBeCloseTo(1 + 0.72 + 0.72 ** 2, 10);
   });
 
   it('No Guard on the ATTACKER guarantees all three Triple Axel hits', () => {
@@ -435,7 +442,7 @@ describe('Compound Eyes / Hustle / No Guard / accuracy boosts reach the multiacc
 
   it('a -1 accuracy stage alone drops Triple Kick’s per-hit chance to 67.5%', () => {
     const r = calcDamage(mon({speciesForme: 'Hitmontop', nature: 'Adamant', accuracyBoost: -1}), tyranitar, 'Triple Kick');
-    expect(r.multiHit!.hits.expected).toBeCloseTo(1 + 0.675 + 0.675 ** 2, 10);
+    expect(expectedHits(r.multiHit!.hits.distribution)).toBeCloseTo(1 + 0.675 + 0.675 ** 2, 10);
   });
 
   it('that same -1 stage silently drops a Compound Eyes bonus — same hit count as boost alone', () => {
@@ -449,7 +456,10 @@ describe('Compound Eyes / Hustle / No Guard / accuracy boosts reach the multiacc
       tyranitar,
       'Triple Kick',
     );
-    expect(withCompoundEyes.multiHit!.hits.expected).toBeCloseTo(boostedAlone.multiHit!.hits.expected, 10);
+    expect(expectedHits(withCompoundEyes.multiHit!.hits.distribution)).toBeCloseTo(
+      expectedHits(boostedAlone.multiHit!.hits.distribution),
+      10,
+    );
   });
 
   it('the DEFENDER’s evasion stage — not the attacker’s — feeds the per-hit check', () => {
@@ -458,7 +468,7 @@ describe('Compound Eyes / Hustle / No Guard / accuracy boosts reach the multiacc
       mon({...tyranitar, evasionBoost: 1}),
       'Triple Axel',
     );
-    expect(r.multiHit!.hits.expected).toBeCloseTo(1 + 0.675 + 0.675 ** 2, 10); // mirrors acc -1
+    expect(expectedHits(r.multiHit!.hits.distribution)).toBeCloseTo(1 + 0.675 + 0.675 ** 2, 10); // mirrors acc -1
   });
 });
 
@@ -971,7 +981,7 @@ describe('a defender behind a Substitute', () => {
     const r = calcDamage(mon({speciesForme: 'Iron Bundle', item: 'Choice Specs'}), subbed(), 'Tachyon Cutter');
     expect(r.substitute?.kind).toBe('absorbs');
     expect(r.substitute).toMatchObject({hits: {min: 3, max: 3}});
-    expect(r.multiHit?.hits.expected).toBe(2); // two hits a use: three hits is two uses
+    expect(r.multiHit?.hits.distribution).toEqual([[2, 1]]); // two hits a use: three hits is two uses
   });
 
   it('lets a SOUND move straight through', () => {

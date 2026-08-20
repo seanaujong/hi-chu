@@ -97,6 +97,12 @@ export const PREVIEWS: readonly Preview[] = [
     'Draco Meteor',
   ),
   moveHover(
+    'A multi-hit move, and the range it can’t escape',
+    'Icicle Spear lands 2, 3, 4, or 5 times, never anything in between — so the Hits line states that whole-number range rather than an average across it, the same bracket-not-guess principle the per-hit percent already follows.',
+    {},
+    'Icicle Spear',
+  ),
+  moveHover(
     'Item still unknown',
     'Tentacruel’s set can run Assault Vest or Leftovers, and the choice moves the number — so each distinct outcome gets its own labelled line instead of one averaged lie.',
     {tentacruelItem: ''},

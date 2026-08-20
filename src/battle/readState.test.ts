@@ -22,6 +22,7 @@ import {
   mostRecentCleanOrder,
   switchedInWithoutAnnouncingBalloon,
   endedTurnUnstatused,
+  endedTurnDamagedWithoutLeftoversHeal,
   readOwnItem,
   readOwnAbility,
   readOwnServerPokemon,
@@ -1236,6 +1237,95 @@ describe('endedTurnUnstatused (rules out Flame Orb / Toxic Orb)', () => {
     expect(endedTurnUnstatused(withLog(benched), ursaluna)).toBe(false);
     expect(endedTurnUnstatused(withLog([]), ursaluna)).toBe(false);
     expect(endedTurnUnstatused(withLog(['|start', IN, '|upkeep']), clientMon({}))).toBe(false);
+  });
+});
+
+describe('endedTurnDamagedWithoutLeftoversHeal (rules out Leftovers)', () => {
+  const withLog = (stepQueue: string[]): ClientBattle =>
+    ({gen: 9, tier: '[Gen 9] Random Battle', sides: [], stepQueue} as unknown as ClientBattle);
+  const toedscruel = clientMon({ident: 'p1: Toedscruel'});
+  const IN = '|switch|p1a: Toedscruel|Toedscruel, L87, F|281/281';
+  const FOE_IN = '|switch|p2a: Pelipper|Pelipper, L86, M|243/243';
+  const HIT = ['|move|p2a: Pelipper|Hurricane|p1a: Toedscruel', '|-damage|p1a: Toedscruel|95/281'];
+  const HEAL = '|-heal|p1a: Toedscruel|113/281|[from] item: Leftovers';
+
+  it('is true once a damaged turn ends with the holder still on the field and unhealed', () => {
+    const log = ['|start', IN, FOE_IN, '|turn|1', ...HIT, '|', '|upkeep', '|turn|2'];
+    expect(endedTurnDamagedWithoutLeftoversHeal(withLog(log), toedscruel)).toBe(true);
+  });
+
+  it('is false when Leftovers actually heals — the heal lands before |upkeep|', () => {
+    const log = ['|start', IN, FOE_IN, '|turn|1', ...HIT, '|', HEAL, '|upkeep', '|turn|2'];
+    expect(endedTurnDamagedWithoutLeftoversHeal(withLog(log), toedscruel)).toBe(false);
+  });
+
+  it('proves nothing about a turn the holder ended at full HP — the residual does nothing there', () => {
+    const log = ['|start', IN, FOE_IN, '|turn|1', '|', '|upkeep', '|turn|2'];
+    expect(endedTurnDamagedWithoutLeftoversHeal(withLog(log), toedscruel)).toBe(false);
+  });
+
+  it('does not count the opening switch-ins, which reach |turn|1 with no residual between', () => {
+    expect(endedTurnDamagedWithoutLeftoversHeal(withLog(['|start', IN, FOE_IN, '|turn|1', ...HIT]), toedscruel))
+      .toBe(false);
+  });
+
+  it('does not credit a faint replacement, which the sim brings in AFTER |upkeep|', () => {
+    const log = ['|start', '|switch|p1a: Magikarp|Magikarp, L5, M|19/19', FOE_IN, '|turn|1',
+      '|move|p2a: Pelipper|Hurricane|p1a: Magikarp', '|-damage|p1a: Magikarp|0 fnt',
+      '|faint|p1a: Magikarp', '|', '|upkeep', '|', IN, '|turn|2'];
+    expect(endedTurnDamagedWithoutLeftoversHeal(withLog(log), toedscruel)).toBe(false);
+  });
+
+  it('tracks HP along the LOG, so a returning Pokémon brings its own HP back with it', () => {
+    const log = ['|start', IN, FOE_IN, '|turn|1', ...HIT, '|', '|upkeep', '|turn|2',
+      '|switch|p1a: Skarmory|Skarmory, F|292/292', '|upkeep', '|turn|3',
+      '|switch|p1a: Toedscruel|Toedscruel, L87, F|95/281', '|upkeep', '|turn|4'];
+    expect(endedTurnDamagedWithoutLeftoversHeal(withLog(log), toedscruel)).toBe(true);
+  });
+
+  it('is not fooled by a heal from something OTHER than Leftovers', () => {
+    const drain = '|-heal|p1a: Toedscruel|150/281|[from] drain|[of] p2a: Pelipper';
+    const log = ['|start', IN, FOE_IN, '|turn|1', ...HIT, drain, '|', '|upkeep', '|turn|2'];
+    expect(endedTurnDamagedWithoutLeftoversHeal(withLog(log), toedscruel)).toBe(true);
+  });
+
+  it('ignores a turn under Heal Block, Magic Room or Embargo — each silences the residual', () => {
+    const suppressors = [
+      '|-start|p1a: Toedscruel|move: Heal Block',
+      '|-fieldstart|move: Magic Room|[of] p2a: Pelipper',
+      '|-start|p1a: Toedscruel|move: Embargo',
+    ];
+    for (const suppressor of suppressors) {
+      const log = ['|start', IN, FOE_IN, '|turn|1', ...HIT, suppressor, '|', '|upkeep', '|turn|2'];
+      expect(endedTurnDamagedWithoutLeftoversHeal(withLog(log), toedscruel)).toBe(false);
+    }
+  });
+
+  it('resumes reading once the suppressor ends', () => {
+    const log = ['|start', IN, FOE_IN, '|turn|1', ...HIT, '|-start|p1a: Toedscruel|move: Heal Block',
+      '|', '|upkeep', '|turn|2', '|-end|p1a: Toedscruel|move: Heal Block', '|', '|upkeep', '|turn|3'];
+    expect(endedTurnDamagedWithoutLeftoversHeal(withLog(log), toedscruel)).toBe(true);
+  });
+
+  it('keeps reading straight through a Tera — Leftovers has no type dependence to defuse', () => {
+    const tera = '|-terastallize|p1a: Toedscruel|Water';
+    const log = ['|start', IN, FOE_IN, '|turn|1', tera, ...HIT, '|', '|upkeep', '|turn|2'];
+    expect(endedTurnDamagedWithoutLeftoversHeal(withLog(log), toedscruel)).toBe(true);
+  });
+
+  it('tracks the field per SLOT, so a doubles partner switching does not evict the holder', () => {
+    const log = ['|start', IN, '|switch|p1b: Skarmory|Skarmory, F|292/292', FOE_IN, '|turn|1', ...HIT,
+      '|switch|p1b: Chansey|Chansey, F|100/100', '|', '|upkeep', '|turn|2'];
+    expect(endedTurnDamagedWithoutLeftoversHeal(withLog(log), toedscruel)).toBe(true);
+  });
+
+  it('is false while the holder is off the field, on an empty log, or with no ident', () => {
+    const benched = ['|start', '|switch|p1a: Skarmory|Skarmory, F|292/292', FOE_IN, '|turn|1',
+      '|upkeep', '|turn|2'];
+    expect(endedTurnDamagedWithoutLeftoversHeal(withLog(benched), toedscruel)).toBe(false);
+    expect(endedTurnDamagedWithoutLeftoversHeal(withLog([]), toedscruel)).toBe(false);
+    expect(endedTurnDamagedWithoutLeftoversHeal(withLog(['|start', IN, ...HIT, '|upkeep']), clientMon({})))
+      .toBe(false);
   });
 });
 

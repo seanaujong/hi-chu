@@ -183,6 +183,7 @@ export interface BehaviorSignals {
   readonly usedDifferentMovesSinceSwitchIn?: boolean;
   readonly switchedInWithoutAnnouncingBalloon?: boolean;
   readonly endedTurnUnstatused?: boolean;
+  readonly endedTurnDamagedWithoutLeftoversHeal?: boolean;
   readonly proteanAlreadyFired?: boolean;
   readonly timesAttacked?: number;
   readonly substitute?: SubstituteReading;
@@ -478,6 +479,7 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, spe
     usedDifferentMovesSinceSwitchIn: signals.usedDifferentMovesSinceSwitchIn ?? false,
     switchedInWithoutAnnouncingBalloon: signals.switchedInWithoutAnnouncingBalloon ?? false,
     endedTurnUnstatused: signals.endedTurnUnstatused ?? false,
+    endedTurnDamagedWithoutLeftoversHeal: signals.endedTurnDamagedWithoutLeftoversHeal ?? false,
     proteanAlreadyFired: signals.proteanAlreadyFired ?? false,
     timesAttacked: signals.timesAttacked ?? 0,
     ...(asStatus(p.status) ? {status: asStatus(p.status)!} : {}),
@@ -886,6 +888,81 @@ export function endedTurnUnstatused(battle: ClientBattle, mon: {readonly ident?:
     else if (tag === 'upkeep') {
       const onField = [...standing.values()].includes(me);
       if (onField && !status && !mistyTerrain && !magicRoom && !embargo) return true;
+    }
+  }
+  return false;
+}
+
+/** A `-start`/`-end` line naming Heal Block on `me` — it blocks Leftovers' residual (and
+ *  every other heal) outright, so a quiet turn under it proves nothing about the item. */
+function isHealBlockOn(parts: readonly string[], me: string): boolean {
+  return identKey(parts[2]) === me && parts.some((p) => p === 'move: Heal Block' || p === 'Heal Block');
+}
+
+/**
+ * Did `mon` finish a turn on the field, below max HP, with no Leftovers heal shown?
+ * Leftovers restores 1/16 max HP at the end of every turn it would help
+ * (`onResidualOrder: 5`) and announces itself doing it
+ * (`|-heal|<mon>|.../..|[from] item: Leftovers`), so a turn that ended below max HP with no
+ * such line rules it out — the same silence-at-a-recurring-event shape as the status orbs
+ * (`endedTurnUnstatused`, see deductions.ts), just keyed to HP instead of status. At full HP
+ * the residual does nothing, so a full-HP turn is silent either way and proves nothing.
+ *
+ * `|upkeep|` is the marker for the same reason it is there: the sim emits it only once every
+ * residual for the turn has already run.
+ *
+ * Suppressors, the same shape as `endedTurnUnstatused`'s — MINUS a Terastallize cutoff: that
+ * one stops at Tera because a Tera TYPE can defuse an orb (Tera Fire can't burn); Leftovers'
+ * heal has no type dependence at all, so an active Tera changes nothing about it.
+ *   - Heal Block, which blocks the residual outright — the one suppressor that rule has no
+ *     analogue for, since nothing blocks a status the same way.
+ *   - Magic Room / Embargo, the item-suspending pair `usedDifferentMovesSinceSwitchIn`
+ *     already tracks.
+ * Klutz, the third `ignoringItem()` case, is an ABILITY and so is judged downstream against
+ * the role's pool, the way it guards every other silence-based rule here.
+ *
+ * ONE quiet turn is enough and the rule never expires: Leftovers fires at the end of EVERY
+ * turn it would help, so a holder that was ever quiet while damaged was holding something
+ * else.
+ */
+export function endedTurnDamagedWithoutLeftoversHeal(battle: ClientBattle, mon: {readonly ident?: string}): boolean {
+  const me = identKey(mon.ident);
+  if (!me) return false;
+  const standing = new Map<string, string>(); // slot → who is in it
+  let hp = 1;
+  let healedByLeftovers = false;
+  let healBlock = false;
+  let magicRoom = false;
+  let embargo = false;
+  for (const line of battle.stepQueue ?? []) {
+    const parts = line.split('|');
+    const tag = parts[1] ?? '';
+    const who = identKey(parts[2]);
+    if (tag === '-fieldstart' || tag === '-fieldend') {
+      if (isMagicRoom(parts)) magicRoom = tag === '-fieldstart';
+    } else if (tag === '-start' && isHealBlockOn(parts, me)) healBlock = true;
+    else if (tag === '-end' && isHealBlockOn(parts, me)) healBlock = false;
+    else if (tag === '-start' && isEmbargoOn(parts, me)) embargo = true;
+    else if (tag === '-end' && isEmbargoOn(parts, me)) embargo = false;
+    else if (tag === 'switch' || tag === 'drag') {
+      const slot = slotKey(parts[2]);
+      if (slot && who) standing.set(slot, who);
+      if (who === me) {
+        hp = hpToken(parts[4]) ?? 1; // a returning mon brings its own HP back with it
+        healBlock = false;
+        embargo = false; // volatiles clear on the way out, so a fresh stint starts clean
+      }
+    } else if (tag === 'faint') {
+      const slot = slotKey(parts[2]);
+      if (slot) standing.delete(slot);
+    } else if ((tag === '-damage' || tag === '-heal' || tag === '-sethp') && who === me) {
+      const frac = hpToken(parts[3]);
+      if (frac !== undefined) hp = frac;
+      if (tag === '-heal' && parts.slice(4).some((p) => p === '[from] item: Leftovers')) healedByLeftovers = true;
+    } else if (tag === 'upkeep') {
+      const onField = [...standing.values()].includes(me);
+      if (onField && hp > 0 && hp < 1 && !healedByLeftovers && !healBlock && !magicRoom && !embargo) return true;
+      healedByLeftovers = false; // this turn's residual window is over either way
     }
   }
   return false;
@@ -1336,6 +1413,7 @@ export function readBehaviors(battle: ClientBattle, mon: ClientPokemon): Behavio
     usedDifferentMovesSinceSwitchIn: usedDifferentMovesSinceSwitchIn(battle, mon),
     switchedInWithoutAnnouncingBalloon: switchedInWithoutAnnouncingBalloon(battle, mon),
     endedTurnUnstatused: endedTurnUnstatused(battle, mon),
+    endedTurnDamagedWithoutLeftoversHeal: endedTurnDamagedWithoutLeftoversHeal(battle, mon),
     proteanAlreadyFired: proteanAlreadyFired(battle, mon),
     timesAttacked: timesAttacked(battle, mon),
     ...(substitute ? {substitute} : {}),
@@ -1516,6 +1594,8 @@ export function serverPokemonFacts(p: ClientServerPokemon, battle?: ClientBattle
     // about it could ever speak — the same reason the Boots signals are hard-coded here.
     switchedInWithoutAnnouncingBalloon: false,
     endedTurnUnstatused: false,
+    // Same reasoning: a switch candidate hasn't finished a turn on the field either.
+    endedTurnDamagedWithoutLeftoversHeal: false,
     // A switch CANDIDATE is off the field, and Protean's once-per-stint flag dies there —
     // so whatever it converted into last time it was out, it comes back in unspent.
     proteanAlreadyFired: false,

@@ -1081,11 +1081,16 @@ function moveVsFoe(
   }
 
   // The defender's hidden item/ability can each split the damage — enumerate the
-  // still-possible sets and let identical outcomes collapse back to one bucket.
-  const defenderVariants = [
+  // still-possible sets, narrow by whatever the log has already revealed about this foe
+  // (a past hit's magnitude or move order — the same reveals the sets view and the ⚡ line
+  // already apply), then let identical outcomes collapse back to one bucket. Without the
+  // narrowing step, the "Damage (Assault Vest):" / "Damage (Leftovers):" split would go on
+  // showing both long after a landed hit had already settled which one.
+  const all = [
     ...resolveVariants(defenderFacts, entryOrMinimal(defenderEntry, defenderFacts)),
     ...illusionVariants(defenderFacts, defenderEntry, feedSource(data)),
   ];
+  const defenderVariants = revealsAgainst(battle, defenderMon, data, format, readFacts)?.narrow(all) ?? all;
 
   // Strength Sap deals no damage either — it siphons the target's Attack as HP, so the
   // calc's zero says nothing and the swing replaces it. It reads the same variants the

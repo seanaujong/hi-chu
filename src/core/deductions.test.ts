@@ -198,3 +198,35 @@ describe('status-orb rule-out (a turn ended un-statused ⇒ holding neither orb)
       .toEqual(['Air Balloon', 'Life Orb']);
   });
 });
+
+describe('Leftovers rule-out (a damaged turn ended unhealed ⇒ not holding it)', () => {
+  // Toedscruel's real gen9randombattle pool is this pair — the case that motivated the
+  // rule: a special hit landed, the tooltip never collapsed the split, and the log already
+  // showed the turn end with no Leftovers heal.
+  const pool = ['Assault Vest', 'Leftovers'];
+  const damaged = (over = {}) => liveFacts({endedTurnDamagedWithoutLeftoversHeal: true, ...over});
+
+  it('drops Leftovers, narrowing a two-item pool to the other one', () => {
+    expect(survivingItems([], pool, damaged())).toEqual(['Assault Vest']);
+  });
+
+  it('keeps it when the known ability would have swallowed the item outright', () => {
+    expect(survivingItems(['Klutz'], pool, damaged({baseAbility: 'Klutz'}))).toEqual(pool);
+  });
+
+  it('never lies: keeps it while the ability is hidden and the pool could excuse it', () => {
+    expect(survivingItems(['Guts', 'Klutz'], pool, damaged())).toEqual(pool);
+  });
+
+  it('does nothing without the signal, at full HP, or once an item is revealed', () => {
+    expect(survivingItems([], pool, liveFacts())).toEqual(pool);
+    expect(survivingItems([], pool, damaged({item: 'Leftovers'}))).toEqual(pool);
+    expect(survivingItems([], pool, damaged({prevItem: 'Leftovers'}))).toEqual(pool);
+  });
+
+  it('is independent of the other rules — a damaged silent turn touches only Leftovers', () => {
+    const facts = damaged();
+    expect(survivingItems([], ['Air Balloon', 'Life Orb', 'Leftovers'], facts))
+      .toEqual(['Air Balloon', 'Life Orb']);
+  });
+});

@@ -1,6 +1,8 @@
 import {describe, it, expect} from 'vitest';
 import {calcDamage} from './damage.js';
 import {variantsConsistentWithDamageDealt, variantsConsistentWithDamageTaken} from './itemreveal.js';
+import {resolveMon, resolveVariants} from './resolve.js';
+import {NOIVERN, noivernFacts, TENTACRUEL, tentacruelFacts} from './sets.testfixtures.js';
 import type {FieldFacts, ObservedHit, ResolvedMon, SetVariant} from './types.js';
 
 const noField: FieldFacts = {defenderScreens: {reflect: false, lightScreen: false, auroraVeil: false}};
@@ -207,5 +209,43 @@ describe('the HP a reading is judged under is the OBSERVATION\u2019s too', () =>
     // nothing fits — so the pool comes back whole and the rule-out is quietly lost.
     const naive = {...observed, defenderHpPercent: 0.5};
     expect(variantsConsistentWithDamageTaken(pool, attacker, options, naive)).toEqual(pool);
+  });
+});
+
+describe('Noivern: Choice Specs vs Heavy-Duty Boots from damage MAGNITUDE alone, no hazard evidence', () => {
+  // Fast Attacker (Choice Specs) and Fast Support (Heavy-Duty Boots) share Flamethrower, so
+  // unlike Boomburst (Fast Attacker-only) the MOVE itself narrows nothing — only the ×1.5
+  // Specs boost on the number it deals can tell the two roles apart here. Neither item
+  // touches hazards at all, so this is deliberately a different reading than the
+  // Heavy-Duty-Boots-survives-Stealth-Rock rule-out in deductions.test.ts/section.test.ts.
+  const options = {gen: 9, field: {defenderScreens: {reflect: false, lightScreen: false, auroraVeil: false}}, doubles: false};
+  const defender = resolveMon(tentacruelFacts(), TENTACRUEL);
+  const variants = resolveVariants(noivernFacts(), NOIVERN);
+  const specs = variants.find((v) => v.role === 'Fast Attacker')!;
+  const boots = variants.find((v) => v.role === 'Fast Support')!;
+
+  const specsRange = calcDamage(specs.mon, defender, 'Flamethrower', options).percent;
+  const bootsRange = calcDamage(boots.mon, defender, 'Flamethrower', options).percent;
+
+  it('fixture sanity: Choice Specs really does hit harder than Heavy-Duty Boots with the SAME shared move', () => {
+    expect(specsRange.min).toBeGreaterThan(bootsRange.max);
+  });
+
+  it('a hit too hard for a bare set convicts Heavy-Duty Boots, keeping only Choice Specs', () => {
+    const observed = (specsRange.min + specsRange.max) / 200;
+    const result = variantsConsistentWithDamageDealt(variants, defender, options, hit('Flamethrower', observed));
+    // Fast Attacker's innate ability is fully known (Infiltrator alone), so this side never
+    // fans out — one surviving variant, and it's the Specs one.
+    expect(result).toEqual([specs]);
+  });
+
+  it('a hit too soft for the ×1.5 boost convicts Choice Specs, keeping only Heavy-Duty Boots', () => {
+    const observed = (bootsRange.min + bootsRange.max) / 200;
+    const result = variantsConsistentWithDamageDealt(variants, defender, options, hit('Flamethrower', observed));
+    // Fast Support's innate ability is still unknown (Frisk or Infiltrator), so this rule-out
+    // is judged on the ITEM alone, exactly like the invariant it guards — every surviving
+    // variant must still be the Boots role's item, whichever ability it fanned out under.
+    expect(result.every((v) => v.role === 'Fast Support' && v.mon.item === 'Heavy-Duty Boots')).toBe(true);
+    expect(result.some((v) => v.role === 'Fast Attacker')).toBe(false);
   });
 });

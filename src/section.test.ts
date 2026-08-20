@@ -597,6 +597,69 @@ describe('the sets view narrows a foe\u2019s item pool by what OUR OWN hit dealt
   });
 });
 
+describe('the sets view narrows a foe by role, not just by item — Choice Specs vs Heavy-Duty Boots, no hazards involved', () => {
+  // Fast Attacker (Choice Specs) and Fast Support (Heavy-Duty Boots) share Flamethrower, so
+  // unlike Boomburst (Fast Attacker-only) the move itself narrows nothing — the ×1.5 Specs
+  // boost on the number it dealt is the ONLY evidence. Deliberately a different reading from
+  // Heavy-Duty-Boots-survives-Stealth-Rock (deductions.test.ts): no hazard anywhere here, and
+  // the two roles differ ONLY by item, which is what makes a role-level rule-out possible —
+  // a single role with two candidate items (the Assault-Vest Weavile above) can only ever
+  // narrow its Items line, never disappear outright.
+  const feed: RandbatsData = {
+    Skarmory: {level: 78, abilities: ['Sturdy'], items: ['Leftovers'], moves: ['Flash Cannon']},
+    Noivern: {
+      level: 82, abilities: ['Infiltrator'], items: [],
+      roles: {
+        'Fast Attacker': {abilities: ['Infiltrator'], items: ['Choice Specs'], teraTypes: ['Normal'], moves: ['Flamethrower', 'Boomburst']},
+        'Fast Support': {abilities: ['Infiltrator'], items: ['Heavy-Duty Boots'], teraTypes: ['Fire'], moves: ['Flamethrower', 'Roost']},
+      },
+    },
+  };
+  const near = {isFar: false, sideConditions: {}, active: [] as unknown[]};
+  const far = {isFar: true, sideConditions: {}, active: [] as unknown[]};
+  const ourActive = {
+    speciesForme: 'Skarmory', level: 78, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p1: Skarmory', side: near,
+  } as unknown as ClientPokemon;
+  const foeNoivern = {
+    speciesForme: 'Noivern', level: 82, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p2: Noivern', side: far,
+  } as unknown as ClientPokemon;
+  near.active = [ourActive];
+  far.active = [foeNoivern];
+
+  it('lists both roles with nothing observed (the baseline)', () => {
+    const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far]} as unknown as ClientBattle;
+    const html = buildPokemonSection(battle, foeNoivern, feed);
+    expect(html).toContain('Fast Attacker');
+    expect(html).toContain('Fast Support');
+    expect(html).toContain('Choice Specs');
+    expect(html).toContain('Heavy-Duty Boots');
+  });
+
+  it('a Flamethrower roll too soft for the x1.5 boost drops the Choice Specs BLOCK entirely, not just its damage line', () => {
+    // Fast Attacker's real range against this Skarmory is 91.7-108.3%; Fast Support's is
+    // 61.1-72.5% — cleanly separated. 33% left (a 67% hit) sits inside Fast Support's range
+    // and nowhere near Fast Attacker's, so the Specs role is provably impossible, not merely
+    // undamaged-for.
+    const stepQueue = [
+      '|switch|p1a: Skarmory|Skarmory, L78|100/100',
+      '|move|p2a: Noivern|Flamethrower|p1a: Skarmory',
+      '|-damage|p1a: Skarmory|33/100',
+    ];
+    const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far], stepQueue} as unknown as ClientBattle;
+    const html = buildPokemonSection(battle, foeNoivern, feed);
+    expect(html).toContain('Fast Support');
+    expect(html).toContain('Heavy-Duty Boots');
+    // The bug this guards: Fast Attacker's damage preview vanished correctly (no resolvable
+    // variant left to calc against) while its BLOCK — role name and "Choice Specs" — stayed
+    // on screen, because narrowCandidate's own "never leave a role's Items line empty" guard
+    // was also papering over a role the reveal had already killed outright.
+    expect(html).not.toContain('Fast Attacker');
+    expect(html).not.toContain('Choice Specs');
+  });
+});
+
 describe('the MOVE TOOLTIP narrows the same way — it never called revealsAgainst at all', () => {
   // moveVsFoe built its defender fan-out straight from resolveVariants/illusionVariants and
   // never consulted revealsAgainst, even though the docstring right above foeReveals already

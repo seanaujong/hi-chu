@@ -1326,12 +1326,24 @@ function randbatsPokemonSection(
   const blocks: CandidateBlock[] = [];
   for (const s of sources) {
     const variants = resolveVariants(s.facts, s.entry);
+    // Which roles had a variant at all BEFORE the log evidence was applied — the baseline a
+    // role's disappearance from `survivingByRole` is judged against. Every candidate role
+    // starts with at least one entry here, so its absence below can only mean the reveal
+    // eliminated it, never that it was already unresolvable for an unrelated reason.
+    const preNarrowRoles = new Set(variants.map((v) => v.role));
     const narrowed = reveals ? reveals.narrow(variants) : variants;
     const variantsByRole = defender ? groupByRole(narrowed) : new Map<string, SetVariant[]>();
     // Grouped separately from the damage map, because the OPTIONS a block advertises must be
     // cut down even on a surface that shows no damage at all.
     const survivingByRole = groupByRole(narrowed);
     s.knowledge.candidates.forEach((c) => {
+      // `reveals.narrow` never empties the WHOLE pool on an inconclusive reading (see
+      // itemreveal.ts) — so a role that had variants going in and has none surviving here was
+      // provably ruled out, not merely unlucky. Drop its block rather than let
+      // `narrowCandidate`'s own "never empty" guard (there to protect a single STILL-POSSIBLE
+      // role's Items line, not to resurrect a role the reveal already killed) paper over the
+      // rule-out with the full, unnarrowed item list and no damage to back it.
+      if (reveals && preNarrowRoles.has(c.name) && !survivingByRole.has(c.name)) return;
       const shown = withCopiedMoves(c, s.facts);
       const roleVariants = variantsByRole.get(c.name) ?? [];
       const damage = defender && field && roleVariants.length > 0

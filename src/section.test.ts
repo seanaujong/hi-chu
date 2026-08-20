@@ -1377,11 +1377,11 @@ describe('open formats (no set feed): the move tooltip', () => {
 
   it('shows the true multi-hit breakdown for Triple Axel — the Custom Game verification case', () => {
     // The whole point of open-format support for testing: build the mon, hover the move.
-    // Triple Axel's stop-at-miss law gives a non-integral expected hit count.
+    // Triple Axel's stop-at-miss law can end the move anywhere from 1 to 3 hits.
     const {battle, active} = openBattle();
     const html = buildMoveSection(battle, active('Dragonite'), 'Triple Axel', null);
     expect(html).toContain('Damage (uninvested):');
-    expect(html).toMatch(/≈2\.7 hits/);
+    expect(html).toMatch(/1–3 hits/);
     expect(html).toContain('per hit');
   });
 

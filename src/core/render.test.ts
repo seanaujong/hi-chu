@@ -66,14 +66,14 @@ describe('renderMoveSection', () => {
           move: 'Bullet Seed',
           multiHit: {
             perHit: {min: 49, max: 60},
-            hits: {expected: 3.1, distribution: [[2, 0.35], [3, 0.35], [4, 0.15], [5, 0.15]]},
+            hits: {distribution: [[2, 0.35], [3, 0.35], [4, 0.15], [5, 0.15]]},
           },
           percent: {min: 29.4, max: 90.1, mean: 45.6},
         }),
       }),
     );
     expect(html).toContain('<small>Hits:</small>');
-    expect(html).toContain('≈3.1 hits');
+    expect(html).toContain('2–5 hits');
     expect(html).toContain('per hit'); // 14.7–18% per hit (49/333, 60/333)
   });
 
@@ -98,7 +98,7 @@ describe('renderMoveSection', () => {
         report: report({
           move: 'Bullet Seed',
           koChance: 0.8,
-          multiHit: {perHit: {min: 49, max: 60}, hits: {expected: 3.1, distribution: [[2, 0.35], [3, 0.35], [4, 0.15], [5, 0.15]]}},
+          multiHit: {perHit: {min: 49, max: 60}, hits: {distribution: [[2, 0.35], [3, 0.35], [4, 0.15], [5, 0.15]]}},
         }),
       }),
     );

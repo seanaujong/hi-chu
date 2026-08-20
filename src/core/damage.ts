@@ -34,14 +34,12 @@ import {
   hitCountPmf,
   pmfFromSamples,
   totalDamagePmf,
-  expectedValue,
   probabilityAtLeast,
   koLadder,
   summarize,
 } from './multihit.js';
 
 export interface HitCountBreakdown {
-  readonly expected: number;
   /** [hitCount, probability] pairs, ascending by count. */
   readonly distribution: ReadonlyArray<readonly [number, number]>;
 }
@@ -740,7 +738,7 @@ export function calcDamage(
   const total = totalDamagePmf(perHitPmfs, counts);
 
   const distribution = [...counts.entries()].sort((a, b) => a[0] - b[0]);
-  const hits: HitCountBreakdown = {expected: expectedValue(counts), distribution};
+  const hits: HitCountBreakdown = {distribution};
   const allRolls = perHitPmfs.flatMap((pmf) => [...pmf.keys()]);
   const perHit = {min: Math.min(...allRolls), max: Math.max(...allRolls)};
 

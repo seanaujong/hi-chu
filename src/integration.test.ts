@@ -50,10 +50,10 @@ function reportsFor(
 describe('Breloom vs Tyranitar (multi-hit + status moves)', () => {
   const battle = makeBattle(clientMon({speciesForme: 'Breloom'}), clientMon({speciesForme: 'Tyranitar'}));
 
-  it('renders Bullet Seed on the move button with a real hit-count estimate', () => {
+  it('renders Bullet Seed on the move button with a real hit-count range', () => {
     const html = buildMoveSection(battle, ourActive(battle), 'Bullet Seed', data);
     expect(html).toContain('<small>Damage:</small>');
-    expect(html).toMatch(/≈\d(\.\d)? hits/);
+    expect(html).toMatch(/\d–\d hits/);
     expect(html).toContain('per hit');
   });
 

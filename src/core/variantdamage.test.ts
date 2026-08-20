@@ -49,6 +49,21 @@ describe('moveDamageBuckets — the DEFENDER is the uncertain side', () => {
     expect(moveDamageBuckets(volcarona, [vest, plain], 'Toxic', ctx)).toEqual([]);
   });
 
+  it('splits Torkoal’s Fire damage into two while Cetitan could still be Thick Fat or Slush Rush', () => {
+    // Thick Fat halves the incoming Fire hit; Slush Rush is a Speed ability that touches
+    // nothing here — so the two candidate sets cannot share a line until the ability is
+    // actually revealed. Same species and item on both variants, so ability is the only
+    // axis left to label the buckets by.
+    const torkoal = mon({speciesForme: 'Torkoal', ability: 'Drought'});
+    const thickFat: SetVariant = {mon: mon({speciesForme: 'Cetitan', ability: 'Thick Fat'}), role: 'Special Wall'};
+    const slushRush: SetVariant = {mon: mon({speciesForme: 'Cetitan', ability: 'Slush Rush'}), role: 'Special Wall'};
+    const buckets = moveDamageBuckets(torkoal, [thickFat, slushRush], 'Fire Blast', ctx);
+    expect(buckets).toHaveLength(2);
+    expect(buckets.map((b) => b.label).sort()).toEqual(['Slush Rush', 'Thick Fat']);
+    const [withThickFat, withSlushRush] = buckets[0]!.label === 'Thick Fat' ? buckets : [buckets[1]!, buckets[0]!];
+    expect(withThickFat!.report.percent.max).toBeLessThan(withSlushRush!.report.percent.max);
+  });
+
   it('survives a variant the calc cannot model, keeping the ones it can', () => {
     // A species outside the calc's dex throws; that must cost its own line, not the section.
     const unknown: SetVariant = {mon: mon({speciesForme: 'Missingno-Mega'}), role: 'Fast Support'};

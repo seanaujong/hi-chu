@@ -150,6 +150,46 @@ describe('Air Balloon rule-out (came in silently ⇒ not holding one)', () => {
   });
 });
 
+describe('Booster Energy rule-out (Paradox ability quiet at switch-in ⇒ not holding it)', () => {
+  // Another self-announcing item, read through the ABILITY's own activation line rather than
+  // one of its own: Quark Drive/Protosynthesis checks its field condition unconditionally on
+  // every switch-in, so silence there already proves neither terrain/weather nor Booster
+  // Energy armed it.
+  const pool = ['Booster Energy', 'Life Orb'];
+  const quiet = (over = {}) => liveFacts({switchedInWithoutBoosterActivation: true, ...over});
+
+  it('removes Booster Energy after a switch-in whose Paradox ability stayed quiet', () => {
+    expect(survivingItems(['Quark Drive'], pool, quiet({baseAbility: 'Quark Drive'}))).toEqual(['Life Orb']);
+    expect(survivingItems(['Protosynthesis'], pool, quiet({baseAbility: 'Protosynthesis'}))).toEqual(['Life Orb']);
+  });
+
+  it('does nothing for a role that could not run either Paradox ability', () => {
+    // No `noExcuse` guard here: unlike Life Orb's recoil, no OTHER ability could explain the
+    // silence away — Quark Drive/Protosynthesis IS the ability being checked. The gate is
+    // instead whether the role could run one of them at all.
+    expect(survivingItems(['Levitate'], pool, quiet({baseAbility: 'Levitate'}))).toEqual(pool);
+  });
+
+  it('applies while the ability is unrevealed but the role has only one, fixed ability', () => {
+    // Paradox species carry exactly one ability, so there is no hidden-ability escape the way
+    // Sheer Force excuses Life Orb — an unrevealed ability the role could only be Quark Drive
+    // still rules the item out.
+    expect(survivingItems(['Quark Drive'], pool, quiet())).toEqual(['Life Orb']);
+  });
+
+  it('does nothing without the signal, or once an item is revealed', () => {
+    expect(survivingItems(['Quark Drive'], pool, liveFacts({baseAbility: 'Quark Drive'}))).toEqual(pool);
+    expect(survivingItems(['Quark Drive'], pool, quiet({item: 'Booster Energy'}))).toEqual(pool);
+    expect(survivingItems(['Quark Drive'], pool, quiet({prevItem: 'Booster Energy'}))).toEqual(pool);
+  });
+
+  it('is independent of the other rules — one quiet switch-in touches only Booster Energy', () => {
+    const facts = quiet({baseAbility: 'Quark Drive'});
+    expect(survivingItems(['Quark Drive'], ['Booster Energy', 'Choice Scarf', 'Life Orb'], facts))
+      .toEqual(['Choice Scarf', 'Life Orb']);
+  });
+});
+
 describe('status-orb rule-out (a turn ended un-statused ⇒ holding neither orb)', () => {
   // The balloon's rule read silence at one moment; this reads it at one that comes round
   // every turn. Ursaring's real randbats pool is this pair, one role per item, so the

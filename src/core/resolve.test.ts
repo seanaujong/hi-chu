@@ -247,6 +247,26 @@ describe('resolveVariants — the still-possible sets to calc over', () => {
       .toEqual(['Assault Vest']);
   });
 
+  it('drops the Booster Energy variant once a quiet switch-in has ruled it out', () => {
+    const ironBoulder: RandbatsEntry = {
+      level: 80,
+      abilities: ['Quark Drive'],
+      items: [],
+      roles: {
+        'Fast Attacker': {
+          abilities: ['Quark Drive'],
+          items: ['Booster Energy', 'Choice Scarf'],
+          teraTypes: ['Fighting'],
+          moves: ['Close Combat'],
+        },
+      },
+    };
+    const facts = liveFacts({speciesForme: 'Iron Boulder', baseAbility: 'Quark Drive', revealedMoves: ['Close Combat']});
+    expect(items(resolveVariants(facts, ironBoulder)).sort()).toEqual(['Booster Energy', 'Choice Scarf']);
+    expect(items(resolveVariants({...facts, switchedInWithoutBoosterActivation: true}, ironBoulder)))
+      .toEqual(['Choice Scarf']);
+  });
+
   it('drops the Choice variants once a status move has ruled them out', () => {
     // The seam for the set-shape rule, on Gardevoir's real role: three items, two of them
     // Choice. A single Calm Mind is enough — where the LOCK rule next door would still be

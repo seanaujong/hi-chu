@@ -303,6 +303,24 @@ export interface LiveFacts {
    */
   readonly boostedStat?: BoostableStat;
   /**
+   * True once the log shows this Pokémon completing a switch-in at which Quark Drive or
+   * Protosynthesis would have had to activate — from terrain/weather OR from Booster
+   * Energy — and neither did. The ability's own `onStart` checks the matching field
+   * condition UNCONDITIONALLY on every switch-in, item or no item, so a quiet switch-in
+   * already proves the field condition was absent; Booster Energy is the only other way
+   * the ability could still have fired, so ruling THAT out too is what a silent
+   * `-start` line means (see `deductions.ts`). The same silence-is-evidence shape as
+   * `switchedInWithoutAnnouncingBalloon`, just for an item that announces itself through
+   * its ability's own activation line rather than one of its own.
+   *
+   * Needs no ability guard, unlike most rules here: the ability being checked (Quark
+   * Drive/Protosynthesis) is fixed per Paradox species, so nothing else could have
+   * masked the silence the way Sheer Force masks Life Orb's recoil. Magic Room is judged
+   * in the reader (it suspends the item outright); Embargo needs no handling, the same
+   * reasoning as the balloon's — it is a volatile and cannot survive a switch-out.
+   */
+  readonly switchedInWithoutBoosterActivation: boolean;
+  /**
    * True while this Pokémon is CHARGED — its next Electric-type move doubled — from
    * Electromorphosis, Wind Power, or the move Charge itself. All three share one sim
    * volatile, so this is presence-or-absence with no further decoding, unlike

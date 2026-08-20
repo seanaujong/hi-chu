@@ -184,6 +184,7 @@ export interface BehaviorSignals {
   readonly switchedInWithoutAnnouncingBalloon?: boolean;
   readonly endedTurnUnstatused?: boolean;
   readonly endedTurnDamagedWithoutLeftoversHeal?: boolean;
+  readonly switchedInWithoutBoosterActivation?: boolean;
   readonly proteanAlreadyFired?: boolean;
   readonly timesAttacked?: number;
   readonly substitute?: SubstituteReading;
@@ -480,6 +481,7 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, spe
     switchedInWithoutAnnouncingBalloon: signals.switchedInWithoutAnnouncingBalloon ?? false,
     endedTurnUnstatused: signals.endedTurnUnstatused ?? false,
     endedTurnDamagedWithoutLeftoversHeal: signals.endedTurnDamagedWithoutLeftoversHeal ?? false,
+    switchedInWithoutBoosterActivation: signals.switchedInWithoutBoosterActivation ?? false,
     proteanAlreadyFired: signals.proteanAlreadyFired ?? false,
     timesAttacked: signals.timesAttacked ?? 0,
     ...(asStatus(p.status) ? {status: asStatus(p.status)!} : {}),
@@ -747,6 +749,75 @@ export function switchedInWithoutAnnouncingBalloon(battle: ClientBattle, mon: {r
       else if (isMagicRoom(parts)) magicRoom = on;
     } else if ((tag === 'switch' || tag === 'drag') && identKey(parts[2]) === me && !gravity && !magicRoom) {
       if (switchInWasSilent(lines, i, me)) return true;
+    }
+  }
+  return false;
+}
+
+/** A `-start` line naming Quark Drive or Protosynthesis's composite volatile id for `me` —
+ *  the sim's `this.add('-start', pokemon, 'quarkdrive' + bestStat)` (or `protosynthesis…`),
+ *  the same id `readParadoxBoost` decodes from the client's own volatile table. */
+function isParadoxBoostStart(parts: readonly string[], me: string): boolean {
+  if (identKey(parts[2]) !== me) return false;
+  const id = parts[3] ?? '';
+  return id.startsWith('quarkdrive') || id.startsWith('protosynthesis');
+}
+
+/** Did the switch-in starting at `lines[start]` finish with NEITHER Quark Drive nor
+ *  Protosynthesis activating for `me`? Mirrors `switchInWasSilent`, just watching for a
+ *  different announcement. */
+function switchInEndedWithoutParadoxBoost(lines: ReadonlyArray<string>, start: number, me: string): boolean {
+  for (let j = start + 1; j < lines.length; j++) {
+    const l = lines[j];
+    if (l === undefined) continue;
+    const parts = l.split('|');
+    const tag = parts[1] ?? '';
+    if (tag === '-start' && isParadoxBoostStart(parts, me)) return false;
+    if (SWITCH_IN_RESOLUTION_END.has(tag)) return true;
+  }
+  return false;
+}
+
+/**
+ * Did `mon` complete a switch-in at which Quark Drive or Protosynthesis would have had to
+ * activate, and didn't? The ability's own `onStart` checks its field condition (Electric
+ * Terrain for Quark Drive, sun for Protosynthesis) UNCONDITIONALLY on every switch-in,
+ * independent of any held item (`data/abilities.ts`'s `onWeatherChange`/its terrain
+ * equivalent) — so if the condition were up, the ability would activate whether or not
+ * Booster Energy is held, and a `-start` line naming the composite volatile id
+ * (`isParadoxBoostStart`) would appear. A quiet switch-in therefore proves the field
+ * condition was ALREADY absent, which leaves exactly one other way the ability could still
+ * have fired: Booster Energy's own `onUpdate`, which uses itself the instant the condition
+ * is missing (`data/items.ts`) — and that fires unconditionally too, tagging its `-activate`
+ * line `[fromitem]`. So silence rules Booster Energy out along with the field condition, in
+ * one read (see `deductions.ts`).
+ *
+ * Needs no ability guard: the ability being checked IS the fixed, single ability every
+ * Paradox species carries, so there's no OTHER ability that could have masked the silence —
+ * unlike Life Orb's recoil, which Sheer Force or Magic Guard could explain away. Magic Room
+ * is the one suppressor worth tracking, since it suspends the item's effect outright and is
+ * field-wide rather than scoped to the switch-in moment; Embargo needs none, the same
+ * reasoning as the balloon's silence — it is a volatile and cannot be active at the instant
+ * a Pokémon arrives.
+ *
+ * ONE quiet switch-in is enough and the rule never expires: the ability's own onStart check
+ * runs identically on every stint, so a Paradox mon quiet once was quiet holding something
+ * else.
+ */
+export function switchedInWithoutBoosterActivation(battle: ClientBattle, mon: {readonly ident?: string}): boolean {
+  const me = identKey(mon.ident);
+  if (!me) return false;
+  const lines = battle.stepQueue ?? [];
+  let magicRoom = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line === undefined) continue;
+    const parts = line.split('|');
+    const tag = parts[1] ?? '';
+    if (tag === '-fieldstart' || tag === '-fieldend') {
+      if (isMagicRoom(parts)) magicRoom = tag === '-fieldstart';
+    } else if ((tag === 'switch' || tag === 'drag') && identKey(parts[2]) === me && !magicRoom) {
+      if (switchInEndedWithoutParadoxBoost(lines, i, me)) return true;
     }
   }
   return false;
@@ -1414,6 +1485,7 @@ export function readBehaviors(battle: ClientBattle, mon: ClientPokemon): Behavio
     switchedInWithoutAnnouncingBalloon: switchedInWithoutAnnouncingBalloon(battle, mon),
     endedTurnUnstatused: endedTurnUnstatused(battle, mon),
     endedTurnDamagedWithoutLeftoversHeal: endedTurnDamagedWithoutLeftoversHeal(battle, mon),
+    switchedInWithoutBoosterActivation: switchedInWithoutBoosterActivation(battle, mon),
     proteanAlreadyFired: proteanAlreadyFired(battle, mon),
     timesAttacked: timesAttacked(battle, mon),
     ...(substitute ? {substitute} : {}),
@@ -1596,6 +1668,8 @@ export function serverPokemonFacts(p: ClientServerPokemon, battle?: ClientBattle
     endedTurnUnstatused: false,
     // Same reasoning: a switch candidate hasn't finished a turn on the field either.
     endedTurnDamagedWithoutLeftoversHeal: false,
+    // Same reasoning again: a switch candidate hasn't switched in this stint either.
+    switchedInWithoutBoosterActivation: false,
     // A switch CANDIDATE is off the field, and Protean's once-per-stint flag dies there —
     // so whatever it converted into last time it was out, it comes back in unspent.
     proteanAlreadyFired: false,

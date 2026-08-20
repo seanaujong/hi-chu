@@ -19,6 +19,7 @@ function facts(over: Partial<LiveFacts> = {}): LiveFacts {
     switchedInWithoutAnnouncingBalloon: false,
     endedTurnUnstatused: false,
     endedTurnDamagedWithoutLeftoversHeal: false,
+    switchedInWithoutBoosterActivation: false,
     proteanAlreadyFired: false,
     timesAttacked: 0,
     ...over,

@@ -23,6 +23,7 @@ import {
   switchedInWithoutAnnouncingBalloon,
   endedTurnUnstatused,
   endedTurnDamagedWithoutLeftoversHeal,
+  switchedInWithoutBoosterActivation,
   readOwnItem,
   readOwnAbility,
   readOwnServerPokemon,
@@ -1133,6 +1134,82 @@ describe('switchedInWithoutAnnouncingBalloon (rules out Air Balloon)', () => {
   it('is false on an empty log, or for a mon with no ident', () => {
     expect(switchedInWithoutAnnouncingBalloon(withLog([]), heatran)).toBe(false);
     expect(switchedInWithoutAnnouncingBalloon(withLog(lead(false)), clientMon({}))).toBe(false);
+  });
+});
+
+describe('switchedInWithoutBoosterActivation (rules out Booster Energy)', () => {
+  const withLog = (stepQueue: string[]): ClientBattle =>
+    ({gen: 9, tier: '[Gen 9] Random Battle', sides: [], stepQueue} as unknown as ClientBattle);
+  const boulder = clientMon({ident: 'p1: Iron Boulder'});
+  const IN = '|switch|p1a: Iron Boulder|Iron Boulder|322/322';
+  // The sim's exact lines (`data/abilities.ts`): an `-activate` naming the ability, tagged
+  // `[fromitem]` only when Booster Energy itself supplied the condition, then a `-start`
+  // naming the composite volatile id — identical whichever path armed it.
+  const ARMED_BY_TERRAIN = ['|-activate|p1a: Iron Boulder|ability: Quark Drive', '|-start|p1a: Iron Boulder|quarkdrivespe'];
+  const ARMED_BY_BOOSTER = [
+    '|-activate|p1a: Iron Boulder|ability: Quark Drive|[fromitem]',
+    '|-start|p1a: Iron Boulder|quarkdrivespe',
+  ];
+
+  const lead = (armed: readonly string[]): string[] => [
+    '|start',
+    IN,
+    '|switch|p2a: Landorus|Landorus-Therian, M|340/340',
+    ...armed,
+    '|turn|1',
+  ];
+
+  it('is true when a lead comes in with the ability quiet — neither terrain nor Booster armed it', () => {
+    expect(switchedInWithoutBoosterActivation(withLog(lead([])), boulder)).toBe(true);
+  });
+
+  it('is false whichever path armed the ability — terrain already up, or Booster Energy firing', () => {
+    expect(switchedInWithoutBoosterActivation(withLog(lead(ARMED_BY_TERRAIN)), boulder)).toBe(false);
+    expect(switchedInWithoutBoosterActivation(withLog(lead(ARMED_BY_BOOSTER)), boulder)).toBe(false);
+  });
+
+  it('reads a mid-battle switch-in the same way', () => {
+    const quiet = ['|turn|1', IN, '|move|p2a: Landorus|Earthquake|p1a: Iron Boulder'];
+    expect(switchedInWithoutBoosterActivation(withLog(quiet), boulder)).toBe(true);
+    const loud = ['|turn|1', IN, ...ARMED_BY_BOOSTER, '|move|p2a: Landorus|Earthquake|p1a: Iron Boulder'];
+    expect(switchedInWithoutBoosterActivation(withLog(loud), boulder)).toBe(false);
+  });
+
+  it('ignores a switch-in under Magic Room, which suspends the item outright', () => {
+    const log = ['|-fieldstart|move: Magic Room|[of] p2a: Landorus', IN, '|turn|2'];
+    expect(switchedInWithoutBoosterActivation(withLog(log), boulder)).toBe(false);
+  });
+
+  it('resumes reading once Magic Room ends', () => {
+    const log = [
+      '|-fieldstart|move: Magic Room|[of] p2a: Landorus', IN, '|turn|2',
+      '|-fieldend|move: Magic Room|[of] p2a: Landorus', '|switch|p1a: Skarmory|Skarmory, F|292/292', IN, '|turn|4',
+    ];
+    expect(switchedInWithoutBoosterActivation(withLog(log), boulder)).toBe(true);
+  });
+
+  it('counts a drag the same as a switch', () => {
+    const log = ['|move|p2a: Landorus|Whirlwind|p1a: Skarmory', '|drag|p1a: Iron Boulder|Iron Boulder|322/322', '|turn|2'];
+    expect(switchedInWithoutBoosterActivation(withLog(log), boulder)).toBe(true);
+  });
+
+  it('does not read another Pokémon’s activation as this one’s', () => {
+    const log = [IN, '|-activate|p2a: Landorus|ability: Intimidate', '|turn|1'];
+    expect(switchedInWithoutBoosterActivation(withLog(log), boulder)).toBe(true);
+  });
+
+  it('does not read some unrelated volatile `-start` as the Paradox boost', () => {
+    const log = [IN, '|-start|p1a: Iron Boulder|confusion', '|turn|1'];
+    expect(switchedInWithoutBoosterActivation(withLog(log), boulder)).toBe(true);
+  });
+
+  it('says nothing while the switch-in resolution is still unfinished', () => {
+    expect(switchedInWithoutBoosterActivation(withLog(['|start', IN]), boulder)).toBe(false);
+  });
+
+  it('is false on an empty log, or for a mon with no ident', () => {
+    expect(switchedInWithoutBoosterActivation(withLog([]), boulder)).toBe(false);
+    expect(switchedInWithoutBoosterActivation(withLog(lead([])), clientMon({}))).toBe(false);
   });
 });
 

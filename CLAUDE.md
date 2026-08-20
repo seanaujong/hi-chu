@@ -982,6 +982,7 @@ was always undefined.
 | A switch-in that announced nothing rules Air Balloon out — the one item that always reveals itself, so SILENCE is the evidence | ✅ | `core/deductions.ts`, `battle/readState.ts` (`switchedInWithoutAnnouncingBalloon`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts`, `section.test.ts` |
 | A turn that ended with its holder un-statused rules out Flame Orb AND Toxic Orb — the same silence, at a moment that comes round every turn | ✅ | `core/deductions.ts`, `battle/readState.ts` (`endedTurnUnstatused`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts`, `section.test.ts` |
 | A damaged turn that ended unhealed rules Leftovers out — the same silence, keyed to HP instead of status | ✅ | `core/deductions.ts`, `battle/readState.ts` (`endedTurnDamagedWithoutLeftoversHeal`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts`, `section.test.ts` |
+| A switch-in whose Quark Drive/Protosynthesis stayed quiet rules Booster Energy out — the same silence, read through the ABILITY's own activation line rather than one of the item's own, and needing no ability guard since the ability being checked IS the one every Paradox species is fixed to | ✅ | `core/deductions.ts`, `battle/readState.ts` (`switchedInWithoutBoosterActivation`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts` |
 | A status move rules out all three Choice items — a claim about how the set was BUILT, so it needs no ability guard and settles on the FIRST such move | ✅ | `core/choiceitems.ts` (`choiceRuledOutByStatusMoves`), `core/deductions.ts` (`choiceRuledOutBySetShape`) | `choiceitems.test.ts`, `deductions.test.ts`, `resolve.test.ts`, `section.test.ts` |
 | …and the same law backwards: a revealed Choice item rules the status moves out of what the set could still be RUNNING, pruned against the very Items line the block prints | ✅ | `core/choiceitems.ts` (`movesUnderChoiceItem`), `core/narrow.ts` (`candidateMoves`) | `choiceitems.test.ts`, `knowledge.test.ts`, `section.test.ts` |
 | The seven status moves a Choice set DOES hold are measured from Showdown's own generator, never recalled — a missing one is a FALSE deduction | ✅ | `core/choiceitems.ts` (`PAIRS_WITH_CHOICE`), `scripts/choice-exclusions.mjs` | `choiceitems.test.ts`, `npm run choice-exclusions` |
@@ -1131,7 +1132,13 @@ rather than in our code. Run the named check by hand after a Showdown client upd
   distinguish which one, so a renamed key would silently stop doubling every charged Electric
   move regardless of source. To exercise it, pick a replay with a Bellibolt or Kilowattrel
   that has taken a hit (Electromorphosis) or used a wind move / seen Tailwind start on its own
-  side (Wind Power).
+  side (Wind Power). And the `|-start|` line's `quarkdrive<stat>`/`protosynthesis<stat>` id —
+  read raw off `stepQueue` this time, not off the parsed volatile table `readParadoxBoost`
+  trusts, because the Booster Energy rule-out needs to know whether the id appeared during ONE
+  particular switch-in, not merely whether it is on right now. Read in the DANGEROUS
+  direction: a client that stopped emitting this id, or renamed it, would make an armed
+  Paradox mon look quiet and falsely rule Booster Energy out. To exercise it, pick a replay
+  with a Paradox Pokémon that switches in at all — the id shows up whichever path armed it.
 - **`npm run player-check`** (a real two-account battle on a self-hosted server) — anything
   behind `battle.myPokemon`, which a replay has no access to at all: the
   `ClientServerPokemon` contract incl. `stats`, the switch-menu hover and its ⚡ bench

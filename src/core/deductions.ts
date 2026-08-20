@@ -1,10 +1,11 @@
 // The behavioural deduction layer: items deduced ABSENT from the public mark their presence
 // would (or wouldn't) have left. Most are SILENT items, ones that never reveal themselves
 // and so can only be read through a side effect (Life Orb's recoil, Heavy-Duty Boots'
-// hazard immunity, a Choice lock). Air Balloon, the two status orbs and Leftovers are the
-// opposite and the same rule reversed: they announce themselves — the balloon on every
-// switch-in, an orb at every end of turn, Leftovers at every damaged end of turn — so their
-// SILENCE is the mark. Each rule turns a LiveFacts observation into a "this item can't be here"
+// hazard immunity, a Choice lock). Air Balloon, the two status orbs, Leftovers and Booster
+// Energy are the opposite and the same rule reversed: they announce themselves — the balloon
+// on every switch-in, an orb at every end of turn, Leftovers at every damaged end of turn,
+// Booster Energy through the ability it arms activating on every switch-in — so their SILENCE
+// is the mark. Each rule turns a LiveFacts observation into a "this item can't be here"
 // constraint; the narrowing and resolution layers consume the union through
 // `survivingItems`, so the matcher itself stays general (it filters a pool, it doesn't
 // know Pokémon mechanics). Adding a deduction = one predicate + one line in `ruledOutItems`.
@@ -185,6 +186,33 @@ function choiceRuledOutBySetShape(facts: LiveFacts): boolean {
   return itemStillHidden(facts) && choiceRuledOutByStatusMoves(facts.revealedStatusMoves);
 }
 
+// The two abilities Booster Energy can ever arm — the only roles whose item pool could ever
+// contain it. Unlike every ability guard above, this is not an EXCUSE to check against; it is
+// the one ability the deduction is even ABOUT, so a role that couldn't run either is simply
+// not what this rule speaks to.
+const BOOSTER_ENERGY_ABILITIES = new Set(['quarkdrive', 'protosynthesis']);
+
+/**
+ * Quark Drive and Protosynthesis check their field condition on EVERY switch-in regardless of
+ * item (`readState.switchedInWithoutBoosterActivation`), so a switch-in that activated neither
+ * proves the condition was already absent — leaving Booster Energy as the only other thing
+ * that could still have armed it. A quiet switch-in therefore rules the item out, the same
+ * silence-is-evidence shape as Air Balloon, just read through the ABILITY's own announcement
+ * rather than the item's.
+ *
+ * No `noExcuse` guard: unlike Life Orb's recoil or the Choice lock, there is no OTHER ability
+ * that could explain the silence away — Quark Drive/Protosynthesis IS the ability in question,
+ * and it is the one ability every Paradox species is fixed to. The gate here is instead
+ * whether the role could run one of them at all, since Booster Energy means nothing to a role
+ * that couldn't.
+ */
+function boosterEnergyRuledOut(facts: LiveFacts, roleAbilities: readonly string[]): boolean {
+  if (!facts.switchedInWithoutBoosterActivation || !itemStillHidden(facts)) return false;
+  const known = innateAbility(facts);
+  if (known !== undefined) return BOOSTER_ENERGY_ABILITIES.has(toId(known));
+  return roleAbilities.some((a) => BOOSTER_ENERGY_ABILITIES.has(toId(a)));
+}
+
 /** The items (id form) a role can no longer be holding, by behavioural deduction. */
 export function ruledOutItems(facts: LiveFacts, roleAbilities: readonly string[]): ReadonlySet<string> {
   const out = new Set<string>();
@@ -196,6 +224,7 @@ export function ruledOutItems(facts: LiveFacts, roleAbilities: readonly string[]
   if (airBalloonRuledOut(facts, roleAbilities)) out.add('airballoon');
   if (statusOrbsRuledOut(facts, roleAbilities)) for (const i of STATUS_ORBS) out.add(i);
   if (leftoversRuledOut(facts, roleAbilities)) out.add('leftovers');
+  if (boosterEnergyRuledOut(facts, roleAbilities)) out.add('boosterenergy');
   return out;
 }
 

@@ -78,7 +78,7 @@ function probeLiveClient() {
   // Which of the rarer client shapes this replay actually exercised — a random replay
   // usually has no transformed or forme-changed Pokémon, and a probe that never fired is
   // not a probe that passed. Reported, not failed on.
-  const seen = {formeChange: false, transform: false, calledMove: false, balloonAnnounce: false, statusLine: false, substitute: false, shedTail: false, typeChange: false, proteanLine: false, roost: false, weatherUpkeep: false, paradoxBoost: false, charge: false, leftoversHeal: false};
+  const seen = {formeChange: false, transform: false, calledMove: false, balloonAnnounce: false, statusLine: false, substitute: false, shedTail: false, typeChange: false, proteanLine: false, roost: false, weatherUpkeep: false, paradoxBoost: false, paradoxBoostStartLine: false, charge: false, leftoversHeal: false};
 
   const format = R.detectFormat(b);
   if (!format || format.kind !== 'randbats' || !/^gen\d+random/.test(format.formatId)) {
@@ -226,6 +226,13 @@ function probeLiveClient() {
       }
       if (parts.some((p) => p === '[from] ability: Protean' || p === '[from] ability: Libero')) seen.proteanLine = true;
     }
+    // The Booster Energy rule-out reads this SAME tag directly off the log rather than off
+    // the client's parsed volatile table (that's the `paradoxBoost` probe above) — it needs
+    // to know whether the composite id showed up at all during ONE specific switch-in, not
+    // just whether it's on right now. Dangerous direction: a client that stopped emitting
+    // this id, or renamed it, would make an armed Paradox mon look quiet and falsely rule
+    // Booster Energy out.
+    if (parts[3].startsWith('quarkdrive') || parts[3].startsWith('protosynthesis')) seen.paradoxBoostStartLine = true;
   }
   // `|-singleturn|<ident>|move: Roost` is what sets the turnstatus the grounding is read
   // from. Probed for layout only: by the time a replay is parsed to its end the table has
@@ -516,6 +523,10 @@ async function main() {
     // Greninja or a Cinderace in it, which converts on its very first move.
     console.log(`  typechange: volatile ${seen.typeChange ? 'SEEN — checked' : 'absent (not exercised)'}, ` +
       `Protean/Libero attribution ${seen.proteanLine ? 'SEEN — checked' : 'absent (not exercised)'}`);
+    // The Booster Energy rule-out's own `|-start|` read, separate from the parsed-volatile
+    // probe above — to exercise it, pick a replay with a Paradox Pokémon that switches in.
+    console.log(`  |-start| quarkdrive*/protosynthesis* id: layout checked, ` +
+      `${seen.paradoxBoostStartLine ? 'SEEN — checked' : 'absent (not exercised)'}`);
     // Roost, whose turnstatus is wiped at end of turn — so a replay parsed to its end shows
     // the `|-singleturn|` line and rarely the table entry. Either half counts as exercised.
     console.log(`  Roost: ${seen.roost ? 'SEEN — checked' : 'absent (not exercised)'}`);

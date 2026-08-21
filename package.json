@@ -30,7 +30,8 @@
     "graph:check": "node scripts/graph.mjs --check",
     "lint": "oxlint --deny-warnings src fitness gallery scripts build.mjs",
     "fitness-retro": "node scripts/fitness-retro.mjs",
-    "choice-exclusions": "node scripts/choice-exclusions.mjs"
+    "choice-exclusions": "node scripts/choice-exclusions.mjs",
+    "status-move-data": "node scripts/status-move-data.mjs"
   },
   "dependencies": {
     "@smogon/calc": "^0.11.0"

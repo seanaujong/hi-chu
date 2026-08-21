@@ -767,6 +767,21 @@ picture and not in this list, this list is the thing that's wrong.
     plus the three non-sound bypassers and Infiltrator, which it doesn't). The calc models
     none of this, so the whole mechanic is ours — including the rule that no KO may be
     claimed through a standing doll, which `render.ts` enforces.
+  - `movefails.ts` — the outright-failure law: is a move GUARANTEED to have no effect on its
+    target, for a reason knowable ahead of the roll rather than a probability of one — a
+    standing Substitute (reusing `substitute.ts`'s `bypassesSubstitute` unmodified, which was
+    always move-general, just never asked outside the damage path), the target's type
+    shielding it (the ordinary type chart AND a type's own immunity to the status itself,
+    e.g. Electric can't be paralyzed by anything), or the target already carrying a status.
+    Unifies all type-blocked cases into one `type-immune` reason — the player's question
+    ("what type is in the way") is the same regardless of source. Its move-effect tables
+    (`INFLICTS_STATUS`, `POWDER_MOVES`) are MEASURED against Showdown's own move data
+    (`npm run status-move-data`), the same discipline `choiceitems.ts`'s `PAIRS_WITH_CHOICE`
+    holds. Explicitly says nothing about Protect or a secondary-effect chance (Body Slam's
+    paralysis) — those are probabilities, and a *maybe* dressed as *no effect* would be a lie.
+    Pure: no DOM, no network, no `@smogon/calc` — `damage.ts`'s `evaluateMoveFailure` gathers
+    the calc-derived facts (a move's target/sound flag/type, its effectiveness against the
+    defender's current types) and hands them over as plain values.
   - `strengthsap.ts` — the siphon law: a move that deals no damage and heals by a STAT.
     Showdown reads the target's Attack with boosts APPLIED and every other modifier
     SKIPPED (no Choice Band, no Huge Power), so the amount is exact per still-possible
@@ -1024,6 +1039,10 @@ was always undefined.
 | A Substitute is a shield, and the tooltip says ONE thing about it: how many hits break the doll — cumulative per HIT, never spilled over | ✅ | `core/substitute.ts`, `core/damage.ts` (`substituteStanding`) | `substitute.test.ts`, `damage.test.ts`, `section.test.ts` |
 | NO KO may be claimed while a Substitute stands — the KO text, the nHKO ladder, the Sash aside and the sets view's danger tiers go together | ✅ | `core/render.ts` (`blockedBySubstitute`, `koTier`) | `render.test.ts`, `section.test.ts` |
 | A Shed Tail sub is sized on its MAKER's max HP, not the Pokémon wearing it; a dented one caps the count rather than bracketing it | ✅ | `core/substitute.ts` (`substituteHP`), `battle/readState.ts` (`readSubstitute`), `section.ts` (`shedTailMakerMaxHP`) | `substitute.test.ts`, `readState.test.ts`, `damage.test.ts` |
+| A standing Substitute blocks a STATUS move too, not only a damaging one — reusing `bypassesSubstitute` unmodified, since it was always move-general and only ever asked from the damage path before | ✅ | `core/movefails.ts` (`moveFailsOutright`), `core/damage.ts` (`evaluateMoveFailure`) | `movefails.test.ts`, `damage.test.ts` |
+| A move's target-type immunity and a target's own immunity to the status it would inflict both render as ONE `type-immune` reason — its move-effect tables are MEASURED against Showdown's move data, never recalled | ✅ | `core/movefails.ts` (`moveFailsOutright`) | `movefails.test.ts`, `damage.test.ts` |
+| A status move fails outright against a target already carrying a major status | ✅ | `core/movefails.ts` (`moveFailsOutright`) | `movefails.test.ts`, `damage.test.ts` |
+| A guaranteed-no-effect status move gets the SAME amber caveat line the Substitute/Sash lines use — no new section, no new colour | ✅ | `core/render.ts` (`failReasonLine`) | `render.test.ts` |
 | Speed order: arithmetic delegated, ORDER owned, a fact about the PAIR | ✅ | `core/speed.ts`, `section.ts` (`speedSection`, `ownMovesSection`) | `speed.test.ts`, `render.test.ts`, `section.test.ts` |
 | An "if …" aside exists to CONTRADICT the ⚡ verdict — a set reaching the same answer is dropped, so no asides means the verdict holds under EVERY still-possible set | ✅ | `core/render.ts` (`speedLine`) | `render.test.ts` |
 | Unburden's ×2 Speed is armed via an explicit `abilityOn` flag, not inferred from `item` | ✅ | `core/resolve.ts` (`buildResolved`), `core/damage.ts` (`buildPokemon`) | `resolve.test.ts`, `speed.test.ts` |

@@ -24,10 +24,11 @@
 // package actually exports. Reaching for the import that ought to exist is the usual way
 // this file stops compiling.
 
-import {calculate, calcStat, Generations, Pokemon, Move, Field, toID, type GenerationNum, type State} from '@smogon/calc';
+import {calculate, calcStat, Generations, Pokemon, Move, Field, toID, TYPE_CHART, type GenerationNum, type State} from '@smogon/calc';
 import type {FieldFacts, FullStats, ResolvedMon, SpeciesData, StatID} from './types.js';
 import {damageCallback, multiHitProfile} from './moves.js';
 import {type HitDamage, type HitsToBreak, bypassesSubstitute, hitsToBreak, substituteHP} from './substitute.js';
+import {moveFailsOutright, type FailReason} from './movefails.js';
 import {
   type HitCountMods,
   type Pmf,
@@ -304,6 +305,35 @@ export function spreadForFinalStats(
  *  should invest (core/assume.ts asks before any calc runs). */
 export function moveCategory(gen: number, moveName: string): 'Physical' | 'Special' | 'Status' {
   return new Move(Generations.get(gen as GenerationNum), moveName).category;
+}
+
+/**
+ * Is `moveName` guaranteed to have no effect on `defender` at all — the one question a
+ * Status-category move still needs answered, since it never reaches `calcDamage` (its
+ * category is 'Status', so `variantdamage.ts`'s `scoreVariants` drops every variant before a
+ * bucket is ever built). Gathers exactly the calc-derived facts `movefails.ts`'s pure law
+ * needs and hands them over as plain values, the same split `substituteStanding` already
+ * uses for `bypassesSubstitute` — the ability read is the calc-resolved `atk.ability` for the
+ * same reason that one is: an own-side read hands abilities over in id form.
+ *
+ * The defender's CURRENT types (Tera-aware) come from the same `buildPokemon` the damage path
+ * already builds off, rather than re-deriving `speciesOverrides`/Roost/Tera a second time —
+ * `hazards.ts` reads its own type chart off an identically-built `Pokemon` for the same reason.
+ */
+export function evaluateMoveFailure(attacker: ResolvedMon, defender: ResolvedMon, moveName: string, gen: number): FailReason | null {
+  const g = Generations.get(gen as GenerationNum);
+  const dexMove = new Move(g, moveName);
+  const atk = buildPokemon(g, attacker);
+  const def = buildPokemon(g, defender);
+  const types = def.teraType && def.teraType !== 'Stellar' ? [def.teraType] : def.types;
+  const chart = TYPE_CHART[g.num]?.[dexMove.type] ?? {};
+  const moveTypeEffectiveness = types.reduce((product, t) => product * (chart[t] ?? 1), 1);
+  return moveFailsOutright({
+    move: {id: dexMove.name, target: dexMove.target, isSound: dexMove.flags.sound === 1, type: dexMove.type},
+    defender: {types, status: defender.status, substitute: defender.substitute},
+    attackerAbility: atk.ability,
+    moveTypeEffectiveness,
+  });
 }
 
 const RAGE_FIST_BASE_POWER = 50;

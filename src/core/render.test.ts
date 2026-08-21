@@ -112,6 +112,24 @@ describe('renderMoveSection', () => {
     expect(renderMoveSection(model())).toBe('');
   });
 
+  it('shows the one guaranteed-no-effect line when a status move fails outright', () => {
+    const substitute = renderMoveSection(model({failReason: {kind: 'substitute'}}));
+    expect(substitute).toContain('No effect');
+    expect(substitute).toContain('Substitute');
+    expect(substitute).toContain('class="hichu-note"');
+
+    const typeImmune = renderMoveSection(model({failReason: {kind: 'type-immune', immuneType: 'Electric'}}));
+    expect(typeImmune).toContain('Electric-type');
+
+    const already = renderMoveSection(model({failReason: {kind: 'already-statused', existing: 'brn'}}));
+    expect(already).toContain('already burned');
+  });
+
+  it('names the target on the fail-reason line too, in doubles', () => {
+    const html = renderMoveSection(model({failReason: {kind: 'substitute'}, targetLabel: 'Corviknight'}));
+    expect(html).toContain('<small>vs</small> <b>Corviknight</b>');
+  });
+
   it('tags active Tera for attacker and defender', () => {
     const html = renderMoveSection(model({attackerTera: 'Flying', defenderTera: 'Steel', report: report({move: 'X'})}));
     expect(html).toContain('Tera Flying');

@@ -14,9 +14,10 @@
 
 import type {DamageReport, PainSplitReport} from './damage.js';
 import type {DamageBucket} from './variants.js';
+import type {FailReason} from './movefails.js';
 import type {SpeedOrder, SpeedOutcome} from './speed.js';
 import type {StrengthSapReport} from './strengthsap.js';
-import type {Gimmick, KnownOption} from './types.js';
+import type {Gimmick, KnownOption, StatusName} from './types.js';
 
 /** Escape the few characters that matter when injecting into innerHTML. */
 function esc(s: string): string {
@@ -135,6 +136,11 @@ export interface MoveRenderModel {
    * one labelled line each.
    */
   readonly buckets: readonly DamageBucket[];
+  /** Set only when `buckets` is empty AND the move is guaranteed to have no effect on the
+   *  target — a status move behind a Substitute, a type-immune target, or one already
+   *  statused. Undefined means either an ordinary damaging move (buckets non-empty) or a
+   *  status/unmodellable move this codebase has no data on, which still renders nothing. */
+  readonly failReason?: FailReason;
   /** Whether the foe's Leftovers is 'certain' (revealed) or 'possible' (a still-open item),
    *  which decides how the nHKO ladder reflects between-turn recovery. Undefined = neither. */
   readonly leftovers?: 'certain' | 'possible';
@@ -309,6 +315,27 @@ function blockedBySubstitute(r: DamageReport): boolean {
   return r.substitute?.kind === 'absorbs';
 }
 
+const STATUS_LABEL: Readonly<Record<StatusName, string>> = {
+  par: 'paralyzed',
+  brn: 'burned',
+  psn: 'poisoned',
+  tox: 'badly poisoned',
+  slp: 'asleep',
+  frz: 'frozen',
+};
+
+/** The one line a guaranteed-no-effect status move gets, in place of the "Damage:" line it
+ *  has none of — same amber caveat colour as the Substitute/Sash lines beside it. */
+function failReasonLine(reason: FailReason): string {
+  const why =
+    reason.kind === 'substitute'
+      ? 'blocked by Substitute'
+      : reason.kind === 'type-immune'
+        ? `${reason.immuneType}-type target`
+        : `already ${STATUS_LABEL[reason.existing]}`;
+  return `<span class="hichu-note">⚠ No effect — ${esc(why)}</span>`;
+}
+
 /**
  * The move-tooltip section, at parity with the native "Damage: X% - Y%" line — no
  * "vs <target>" preamble (the native tooltip already names the target and typing).
@@ -321,7 +348,10 @@ function blockedBySubstitute(r: DamageReport): boolean {
  * when it's known — or every possible item deals the same — it's the plain line.
  */
 export function renderMoveSection(model: MoveRenderModel): string {
-  if (model.buckets.length === 0) return ''; // status / unmodellable move → insert nothing
+  if (model.buckets.length === 0) {
+    if (!model.failReason) return ''; // status / unmodellable move → insert nothing
+    return block([targetHeader(model.targetLabel), failReasonLine(model.failReason)]);
+  }
 
   const tera = teraTag(model.attackerTera, model.defenderTera);
 

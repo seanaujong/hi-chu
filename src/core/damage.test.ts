@@ -1,6 +1,6 @@
 import {describe, it, expect} from 'vitest';
 import {calcStat, Generations, type GenerationNum} from '@smogon/calc';
-import {buildPokemon, calcDamage, moveCategory, painSplit, spreadForFinalStats} from './damage.js';
+import {buildPokemon, calcDamage, evaluateMoveFailure, moveCategory, painSplit, spreadForFinalStats} from './damage.js';
 import type {FieldFacts, FullStats, ResolvedMon, StatID} from './types.js';
 
 const noField: FieldFacts = {defenderScreens: {reflect: false, lightScreen: false, auroraVeil: false}};
@@ -46,6 +46,38 @@ describe('single-hit move', () => {
     expect(r.defenderRemainingHP).toBe(r.defenderMaxHP); // full HP
     expect(r.koChance).toBeGreaterThanOrEqual(0);
     expect(r.koChance).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('evaluateMoveFailure — the calc-derived facts movefails.ts needs', () => {
+  it('reports a Substitute blocking a status move', () => {
+    const attacker = mon({speciesForme: 'Corviknight', ability: 'Pressure'});
+    const defender = mon({speciesForme: 'Skarmory', substitute: {dented: false}});
+    expect(evaluateMoveFailure(attacker, defender, 'Thunder Wave', 9)).toEqual({kind: 'substitute'});
+  });
+
+  it('reports the real type chart\'s Electric-into-Ground immunity', () => {
+    const attacker = mon({speciesForme: 'Pikachu'});
+    const defender = mon({speciesForme: 'Sandshrew'}); // pure Ground
+    expect(evaluateMoveFailure(attacker, defender, 'Thunder Wave', 9)).toEqual({kind: 'type-immune', immuneType: 'Electric'});
+  });
+
+  it('reports an Electric-type target\'s own immunity to paralysis, off the real dex', () => {
+    const attacker = mon({speciesForme: 'Pikachu'});
+    const defender = mon({speciesForme: 'Pikachu'}); // Electric resists Electric but isn't chart-IMMUNE to it
+    expect(evaluateMoveFailure(attacker, defender, 'Thunder Wave', 9)).toEqual({kind: 'type-immune', immuneType: 'Electric'});
+  });
+
+  it('reports an already-statused target', () => {
+    const attacker = mon({speciesForme: 'Salazzle'});
+    const defender = mon({speciesForme: 'Garchomp', status: 'brn'});
+    expect(evaluateMoveFailure(attacker, defender, 'Toxic', 9)).toEqual({kind: 'already-statused', existing: 'brn'});
+  });
+
+  it('says nothing for an ordinary damaging move under ordinary conditions', () => {
+    const attacker = mon({speciesForme: 'Garchomp', ability: 'Rough Skin'});
+    const defender = mon({speciesForme: 'Tyranitar'}); // Rock/Dark — no Ground immunity
+    expect(evaluateMoveFailure(attacker, defender, 'Earthquake', 9)).toBeNull();
   });
 });
 

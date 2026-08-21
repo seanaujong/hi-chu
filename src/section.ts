@@ -11,7 +11,7 @@
 //   buildPokemonSection — a Pokémon hover: the still-possible sets (narrowed by reveals),
 //     with damage numbers attached when the hovered mon is the opponent's.
 
-import {finalStatsOf, painSplit, speciesBody} from './core/damage.js';
+import {evaluateMoveFailure, finalStatsOf, painSplit, speciesBody} from './core/damage.js';
 import {resolveMon, resolveVariants} from './core/resolve.js';
 import {openVariantsFor} from './core/assume.js';
 import {inferSets} from './core/knowledge.js';
@@ -1120,7 +1120,22 @@ function moveSectionHtml(
   targetLabel: string | undefined,
 ): string {
   const buckets = moveDamageBuckets(attacker, defenderVariants, moveName, {...ctxOf(format, field), nhkoTurns: 3, selfHp: true});
-  if (buckets.length === 0) return ''; // status / unmodellable move
+  if (buckets.length === 0) {
+    // Status/unmodellable move: no damage to bucket, but it may still be provably
+    // guaranteed to do nothing at all — Substitute, a type immunity, an already-statused
+    // target. The defender's first variant is representative for all three checks (they
+    // never vary with a hidden item/ability the way damage buckets do).
+    const firstVariant = defenderVariants[0];
+    const failReason = firstVariant ? evaluateMoveFailure(attacker, firstVariant.mon, moveName, format.gen) : null;
+    if (!failReason) return '';
+    return renderMoveSection({
+      defenderHpPercent: defenderFacts.hpPercent,
+      extraNotes: [],
+      buckets: [],
+      failReason,
+      ...(targetLabel ? {targetLabel} : {}),
+    });
+  }
 
   // The live Tera is shared by every variant (it's a revealed fact, not a hidden set).
   const defenderTera = defenderVariants[0]?.mon.teraType;

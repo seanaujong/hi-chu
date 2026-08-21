@@ -935,7 +935,10 @@ status move and stops there), gen 9's once-per-switch-in Protean/Libero (it stil
 gen 6-8 rule, which grants STAB to every move the holder owns), Charge/Electromorphosis/Wind
 Power (no `onBasePower` entry for either ability, and no volatile-status power modifier of any
 kind — unlike Quark Drive below, there is no flag to arm, only a base-power override to hand-roll,
-the same shape as Rage Fist), and unknown species/items. A third kind hides between those two and
+the same shape as Rage Fist), Fickle Beam (its own move data is a flat 80 BP with no notion of
+the move's 30% chance to double to 160 — we run the calc once per outcome and mix the two PMFs
+by probability, the same "own the distribution" shape multi-hit's hit-count model takes), and
+unknown species/items. A third kind hides between those two and
 is the easiest to ship by accident: the calc answering EXACTLY what we asked, where the asking
 itself was wrong. Requesting one hit of a multi-hit move is that — the calc then reads it as a
 single-hit move and applies the Tera 60 BP floor. So is leaving the ATTACKER's `curHP` unset:
@@ -1035,6 +1038,7 @@ was always undefined.
 | Rage Fist's power scales with the ATTACKER's own hits taken | ✅ | `core/damage.ts` (`rageFistPower`), `battle/readState.ts` (`timesAttacked`) | `damage.test.ts`, `readState.test.ts`, `transform.test.ts` |
 | Charge (Electromorphosis/Wind Power/the move Charge) doubles the ATTACKER's next Electric-type move — a full calc gap, not an unset flag: `@smogon/calc` has no Charge mechanic to arm at all | ✅ | `core/damage.ts` (`chargedPower`), `battle/readState.ts` (`readCharged`) | `damage.test.ts`, `readState.test.ts`, `resolve.test.ts` |
 | A move with NO base power takes its damage from a callback over current HP — one exact amount, no nHKO ladder, but still stopped by an immunity | ✅ | `core/moves.ts` (`damageCallback`), `core/damage.ts` (`connects`) | `damage.test.ts`, `section.test.ts` |
+| Fickle Beam's 30% power-double mixes into a true KO% — the calc's own untouched power is a real answer to the wrong question, not a missing feature | ✅ | `core/moves.ts` (`randomPowerProfile`), `core/damage.ts` (the random-power branch of `calcDamage`), `core/multihit.ts` (`mixPmf`) | `damage.test.ts`, `render.test.ts` |
 | Strength Sap heals by the target's Attack with BOOSTS applied and every other modifier skipped — exact per set, so distinct outcomes bucket rather than a range | ✅ | `core/strengthsap.ts` (`sappedAttack`, `strengthSap`), `core/render.ts` (`renderStrengthSap`) | `strengthsap.test.ts`, `render.test.ts`, `section.test.ts` |
 | A Substitute is a shield, and the tooltip says ONE thing about it: how many hits break the doll — cumulative per HIT, never spilled over | ✅ | `core/substitute.ts`, `core/damage.ts` (`substituteStanding`) | `substitute.test.ts`, `damage.test.ts`, `section.test.ts` |
 | NO KO may be claimed while a Substitute stands — the KO text, the nHKO ladder, the Sash aside and the sets view's danger tiers go together | ✅ | `core/render.ts` (`blockedBySubstitute`, `koTier`) | `render.test.ts`, `section.test.ts` |

@@ -16,6 +16,14 @@
 // The table is in core/moves.ts; the one thing the calc still answers for them is whether
 // the move connects at all (see `connects`).
 //
+// A THIRD kind of gap sits between those two: a move that deals exactly one hit, the
+// ordinary way, but whose own base power is a coin flip the calc's move data carries no
+// notion of — Fickle Beam is 80 BP with a flat 30% chance of 160. Asking the calc for one
+// power gives an honest answer to the wrong question, the same shape of error as reading a
+// multi-hit move for a single hit: not a missing feature so much as a calc input we never
+// supplied. We run the calc once per outcome and mix the resulting PMFs by probability
+// (`core/multihit.ts`'s `mixPmf`), so the reported KO% integrates over the flip.
+//
 // Its PACKAGING has sharper edges than its math, and they land here because this is the
 // only file that imports it. The library is CommonJS, and it publishes no type names of
 // its own — there is no `TypeName` to import, however much the call sites look like there
@@ -26,13 +34,14 @@
 
 import {calculate, calcStat, Generations, Pokemon, Move, Field, toID, TYPE_CHART, type GenerationNum, type State} from '@smogon/calc';
 import type {FieldFacts, FullStats, ResolvedMon, SpeciesData, StatID} from './types.js';
-import {damageCallback, multiHitProfile} from './moves.js';
+import {damageCallback, multiHitProfile, randomPowerProfile, type RandomPowerMove} from './moves.js';
 import {type HitDamage, type HitsToBreak, bypassesSubstitute, hitsToBreak, substituteHP} from './substitute.js';
 import {moveFailsOutright, type FailReason} from './movefails.js';
 import {
   type HitCountMods,
   type Pmf,
   hitCountPmf,
+  mixPmf,
   pmfFromSamples,
   totalDamagePmf,
   probabilityAtLeast,
@@ -82,6 +91,9 @@ export interface DamageReport {
     readonly hits: HitCountBreakdown;
     readonly perHit: {readonly min: number; readonly max: number};
   };
+  /** Present only for a move whose own base power is a coin flip (Fickle Beam): the
+   *  outcomes the total below already mixes by probability. */
+  readonly randomPower?: RandomPowerMove;
   readonly total: {readonly min: number; readonly max: number; readonly mean: number};
   readonly percent: {readonly min: number; readonly max: number; readonly mean: number};
   /** Probability that a single use of this move KOes the defender, in [0,1]. */
@@ -554,6 +566,7 @@ function summarizeReport(
   extras: {
     notes: string[];
     multiHit?: DamageReport['multiHit'];
+    randomPower?: RandomPowerMove;
     nhkoTurns?: number;
     selfHp?: readonly SelfHpEffect[];
     substitute?: SubstituteStanding;
@@ -572,6 +585,7 @@ function summarizeReport(
     move: moveName,
     category,
     ...(extras.multiHit ? {multiHit: extras.multiHit} : {}),
+    ...(extras.randomPower ? {randomPower: extras.randomPower} : {}),
     total: {min: t.min, max: t.max, mean: Math.round(t.mean * 10) / 10},
     percent: {min: pct(t.min), max: pct(t.max), mean: pct(t.mean)},
     koChance: probabilityAtLeast(total, remainingHP),
@@ -677,6 +691,33 @@ export function calcDamage(
     return summarizeReport(dexMove.name, category, total, remainingHP, maxHP, callbackDesc(dexMove.name, dealt), {
       notes,
       ...(blocked ? {substitute: blocked} : {}),
+    });
+  }
+
+  // --- A move whose own base power is a coin flip ---------------------------
+  // Distinct from multi-hit: exactly one hit lands, but the power THAT hit rolls varies by
+  // use, not by which hit number it is. Run the calc once per outcome and mix the resulting
+  // PMFs by probability, so the reported KO% is the true one integrating over the flip —
+  // never one conditioned on whichever power the calc's own untouched default assumes.
+  const randomPower = randomPowerProfile(dexMove.name);
+  if (randomPower) {
+    const perOutcome = randomPower.outcomes.map(({basePower, probability}) => {
+      const result = calculate(gen, atk, def, new Move(gen, moveName, {overrides: {basePower}}), field);
+      return {pmf: pmfFromSamples(rollsOf(result.damage)), weight: probability, result};
+    });
+    const total = mixPmf(perOutcome);
+    // One hit per use, so the move's whole (mixed) damage range IS its per-hit range.
+    const blocked = standingSub(hitDamages([total]));
+    // The one-line description is whichever outcome carries the most weight — an arbitrary
+    // but honest pick, since no single calc run can describe a mixture.
+    const primary = perOutcome.reduce((a, b) => (b.weight > a.weight ? b : a));
+    return summarizeReport(dexMove.name, category, total, remainingHP, maxHP, safeDesc(primary.result), {
+      notes,
+      randomPower,
+      ...(blocked ? {substitute: blocked} : {}),
+      ...(options.nhkoTurns ? {nhkoTurns: options.nhkoTurns} : {}),
+      // No table entry drains or takes recoil today (Fickle Beam is a clean Dragon-type
+      // hit) — revisit selfHp support here if one ever does.
     });
   }
 

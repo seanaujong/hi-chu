@@ -1129,6 +1129,29 @@ function changesState(tag: string, parts: readonly string[]): boolean {
   return STATE_CHANGING_TAGS.has(tag);
 }
 
+/**
+ * Whether a `STATE_CHANGING_TAGS` line actually touches `atk` or `def` (or, for a side-wide
+ * effect, either one's own side) — as opposed to some unrelated Pokémon or side the reading
+ * has nothing to do with. `-weather`/`-fieldstart`/`-fieldend` are the one genuinely
+ * field-wide case and always count. Everything else is per-Pokémon or per-side, so an
+ * unrelated ally's status changing in doubles — or the foe's OTHER benched item getting
+ * revealed — must not stale a reading about a completely different pair.
+ */
+function changeTargetsPair(tag: string, parts: readonly string[], atk: string, def: string): boolean {
+  if (tag === '-weather' || tag === '-fieldstart' || tag === '-fieldend') return true;
+  if (tag === '-sidestart' || tag === '-sideend' || tag === '-cureteam') {
+    const side = (parts[2] ?? '').trim().slice(0, 2);
+    return side === atk.slice(0, 2) || side === def.slice(0, 2);
+  }
+  if (tag === '-swapboost' || tag === '-copyboost') {
+    const a = identKey(parts[2]);
+    const b = identKey(parts[3]);
+    return a === atk || a === def || b === atk || b === def;
+  }
+  const who = identKey(parts[2]);
+  return who === atk || who === def;
+}
+
 /** One Pokémon's boosts, as the log has moved them so far. */
 type BoostTable = Partial<Record<StatID, number>>;
 
@@ -1287,7 +1310,7 @@ export function mostRecentCleanHit(
       if (who && frac !== undefined) hp[who] = frac;
     } else if (REPLAYABLE_BOOST_TAGS.has(tag)) {
       applyBoostLine(boosts, tag, parts); // followed, not abstained from — see the docblock
-    } else if (changesState(tag, parts)) {
+    } else if (changesState(tag, parts) && changeTargetsPair(tag, parts, atk, def)) {
       if (found) stale = true;
     }
   }

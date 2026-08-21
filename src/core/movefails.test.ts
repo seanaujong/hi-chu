@@ -111,9 +111,9 @@ describe('moveFailsOutright — type immunity', () => {
     expect(moveFailsOutright(input)).toEqual({kind: 'type-immune', immuneType: 'Grass'});
   });
 
-  it('lets Spore through a Grass-type target — it inflicts sleep without the powder flag', () => {
+  it('blocks Spore on a Grass-type target too — it carries the powder flag despite the common belief otherwise', () => {
     const input = base({move: move({id: 'Spore', type: 'Grass'}), defender: defender({types: ['Grass']})});
-    expect(moveFailsOutright(input)).toBeNull();
+    expect(moveFailsOutright(input)).toEqual({kind: 'type-immune', immuneType: 'Grass'});
   });
 
   it('blocks Leech Seed on a Grass-type target by its own named immunity', () => {

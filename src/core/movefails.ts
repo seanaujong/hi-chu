@@ -61,8 +61,10 @@ export function targetsOpponent(target: string): boolean {
  * generator behaviour, so `scripts/status-move-data.mjs` enumerates every gen's dex once
  * (`npm run status-move-data`) rather than sampling generated teams, and fails when this table
  * disagrees with what a move's `.status` field actually says. A rarity and a hand-recalled
- * mistake look identical from the outside — Spore, notably, inflicts sleep but carries no
- * `powder` flag, which is exactly the kind of fact memory gets wrong and a measurement can't.
+ * mistake look identical from the outside — an early hand-typed version of this table claimed
+ * Spore carries no `powder` flag (a commonly repeated belief, and wrong: it does, measured
+ * directly off the gen 9 dex), which is exactly the kind of fact memory gets wrong and a
+ * measurement doesn't.
  *
  * Deliberately excludes every move whose status is a SECONDARY effect on a damaging hit (Body
  * Slam's 30% paralysis, Scald's 30% burn) — those moves still deal damage, so "fails outright"
@@ -76,6 +78,7 @@ const INFLICTS_STATUS: ReadonlyMap<string, StatusName> = new Map([
   ['poisonpowder', 'psn'],
   ['poisongas', 'psn'],
   ['toxic', 'tox'],
+  ['toxicthread', 'psn'],
   ['spore', 'slp'],
   ['sleeppowder', 'slp'],
   ['hypnosis', 'slp'],
@@ -86,10 +89,12 @@ const INFLICTS_STATUS: ReadonlyMap<string, StatusName> = new Map([
 ]);
 
 /** Moves carrying Showdown's `powder` flag — blocked outright by a Grass-type target,
- *  independent of whatever status (if any) they'd otherwise inflict. Spore is NOT here: it
- *  inflicts sleep without being flagged as powder, so it works on Grass-types where Sleep
- *  Powder does not — measured, not assumed, for the same reason the table above is. */
-const POWDER_MOVES: ReadonlySet<string> = new Set(['stunspore', 'poisonpowder', 'sleeppowder', 'cottonspore', 'powder', 'ragepowder']);
+ *  independent of whatever status (if any) they'd otherwise inflict. Spore IS here: despite
+ *  a common belief otherwise, the gen 9 dex flags it as powder same as Sleep Powder — see
+ *  this file's header. */
+const POWDER_MOVES: ReadonlySet<string> = new Set([
+  'stunspore', 'poisonpowder', 'sleeppowder', 'cottonspore', 'powder', 'ragepowder', 'spore', 'magicpowder',
+]);
 
 /** Per-move immunities that are neither the powder flag nor a status-type immunity below —
  *  Leech Seed carries its own, separate Grass-type immunity in Showdown's move data. */

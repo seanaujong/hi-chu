@@ -902,6 +902,25 @@ describe('mostRecentCleanOrder (who moved first, when that is safe to read)', ()
     const unknown = '|move|p2a: Gholdengo|Mystery Move|p1a: Noivern';
     expect(mostRecentCleanOrder(withLog(['|turn|1', unknown, OURS, '|turn|2']), us, them)).toBeUndefined();
   });
+
+  it('survives a Speed boost, status, or item reveal on an UNRELATED Pokémon — the pair is what matters, not the whole field', () => {
+    // A third mon (a doubles ally, the foe's other bench slot, anyone but the observed
+    // pair) changing state has no bearing on what THIS turn's order revealed. Staling on it
+    // anyway would make the reveal go quiet the moment anything else on the field happens —
+    // which in a real, ongoing battle is most of the time. Mirrors mostRecentCleanHit's own
+    // `changeTargetsPair` scoping (readState.test.ts's "survives a status/item/ability
+    // change on an UNRELATED Pokémon" case above).
+    const boosted = ['|turn|1', THEIRS, OURS, '|turn|2', '|-boost|p2b: Ally|spe|1'];
+    expect(mostRecentCleanOrder(withLog(boosted), us, them)?.theyMovedFirst).toBe(true);
+    const statused = ['|turn|1', THEIRS, OURS, '|turn|2', '|-status|p1b: Ally|par'];
+    expect(mostRecentCleanOrder(withLog(statused), us, them)?.theyMovedFirst).toBe(true);
+    const itemRevealed = ['|turn|1', THEIRS, OURS, '|turn|2', '|-item|p2b: Ally|Leftovers'];
+    expect(mostRecentCleanOrder(withLog(itemRevealed), us, them)?.theyMovedFirst).toBe(true);
+    // Tailwind is genuinely side-wide, so it still declines when it's on one of the PAIR's
+    // own sides — only an unrelated mon's own per-Pokémon tags are exempt.
+    const tailwind = ['|turn|1', THEIRS, OURS, '|turn|2', '|-sidestart|p2: Foe|move: Tailwind'];
+    expect(mostRecentCleanOrder(withLog(tailwind), us, them)).toBeUndefined();
+  });
 });
 
 describe('proteanAlreadyFired (gen 9 fires Protean/Libero once per switch-in)', () => {

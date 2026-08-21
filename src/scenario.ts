@@ -219,7 +219,7 @@ export const scenarioDataItemAbilitySplit = {
  * The client's classes are untyped and cyclic, so the reconstruction casts through
  * `unknown` — the shapes match readState's structural interfaces.
  */
-export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; farStealthRock?: boolean; farSpikes?: number; tentacruelHpPercent?: number; foeDitto?: 'transformed' | 'plain'; foeEmboar?: boolean; foeGardevoir?: 'setup' | 'trick' | 'banded'; foeAmoonguss?: boolean; foeCharizardHpPercent?: number; foeGreninja?: 'unspent' | 'converted'; noivernBoosts?: Record<string, number>; foeMovedFirst?: boolean; ourZoroark?: boolean; tentacruelSubstitute?: 'fresh' | 'dented'; noivernSubstitute?: 'fresh' | 'dented'; tentacruelTookBoomburst?: number} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
+export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; farStealthRock?: boolean; farSpikes?: number; tentacruelHpPercent?: number; tentacruelStatus?: string; foeDitto?: 'transformed' | 'plain'; foeEmboar?: boolean; foeGardevoir?: 'setup' | 'trick' | 'banded'; foeAmoonguss?: boolean; foeCharizardHpPercent?: number; foeGreninja?: 'unspent' | 'converted'; noivernBoosts?: Record<string, number>; foeMovedFirst?: boolean; ourZoroark?: boolean; tentacruelSubstitute?: 'fresh' | 'dented'; noivernSubstitute?: 'fresh' | 'dented'; tentacruelTookBoomburst?: number} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
   const sides: ClientSide[] = fixture.battle.sides.map((s, i) => {
     // Tailwind blows on OUR side (index 0) only — the asymmetry is the point: it must
     // double our speed and leave the foe's alone, whichever side a caller orients on.
@@ -262,6 +262,11 @@ export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?
           : {}),
         ...(p.speciesForme === 'Tentacruel' && over.tentacruelHpPercent !== undefined
           ? {hp: Math.round(p.maxhp * over.tentacruelHpPercent)}
+          : {}),
+        // Already carrying a major status — the state a second status move does nothing
+        // against, whichever one it throws.
+        ...(p.speciesForme === 'Tentacruel' && over.tentacruelStatus !== undefined
+          ? {status: over.tentacruelStatus}
           : {}),
         // A Substitute is a plain presence volatile; the log is what says how battered it is.
         // Stageable on EITHER side: a doll in front of the foe is what our move meets, and one

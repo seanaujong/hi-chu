@@ -146,6 +146,26 @@ export const PREVIEWS: readonly Preview[] = [
     'Draco Meteor',
   ),
   moveHover(
+    'A status move that fails outright — a doll in the way',
+    'Will-O-Wisp against a Substitute used to render nothing at all: the calc sees a 0-BP Status move and hands back no damage bucket for the tooltip to draw. The doll absorbs a status move exactly as it absorbs a hit — one line now says so instead of leaving the panel blank.',
+    {tentacruelSubstitute: 'fresh', ourZoroark: true},
+    'Will-O-Wisp',
+  ),
+  moveHover(
+    'The same move, blocked by the target’s own type',
+    'Emboar is Fire-type, and Fire-type Pokémon cannot be burned by ANYTHING — not a mechanic @smogon/calc models at all, since it computes damage, not status application. A Fire/Fighting target has no Fire-chart immunity either, so this is genuinely a different reason from the doll above, not the same check twice.',
+    {foeEmboar: true, ourZoroark: true},
+    'Will-O-Wisp',
+    false,
+    scenarioDataWithEmboar,
+  ),
+  moveHover(
+    'The same move, already too late',
+    'Tentacruel is already burned, so a second Will-O-Wisp has nothing left to do — the same "no effect" line, a different reason underneath it. Whichever status a move throws, one target can only be carrying one at a time.',
+    {tentacruelStatus: 'brn', ourZoroark: true},
+    'Will-O-Wisp',
+  ),
+  moveHover(
     'Strength Sap, and the cap that decides it',
     'A move the calc computes as nothing: it siphons the target’s Attack as HP rather than dealing damage. What it is WORTH is not the question — a siphon bigger than the room to gain it is wasted, so the line states where the sap leaves us. Their Emboar is the target; ours is on 30%.',
     {foeEmboar: true, myNoivernHpPercent: 0.3},

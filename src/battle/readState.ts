@@ -1129,6 +1129,29 @@ function changesState(tag: string, parts: readonly string[]): boolean {
   return STATE_CHANGING_TAGS.has(tag);
 }
 
+/**
+ * Whether a `STATE_CHANGING_TAGS` line actually touches `atk` or `def` (or, for a side-wide
+ * effect, either one's own side) — as opposed to some unrelated Pokémon or side the reading
+ * has nothing to do with. `-weather`/`-fieldstart`/`-fieldend` are the one genuinely
+ * field-wide case and always count. Everything else is per-Pokémon or per-side, so an
+ * unrelated ally's status changing in doubles — or the foe's OTHER benched item getting
+ * revealed — must not stale a reading about a completely different pair.
+ */
+function changeTargetsPair(tag: string, parts: readonly string[], atk: string, def: string): boolean {
+  if (tag === '-weather' || tag === '-fieldstart' || tag === '-fieldend') return true;
+  if (tag === '-sidestart' || tag === '-sideend' || tag === '-cureteam') {
+    const side = (parts[2] ?? '').trim().slice(0, 2);
+    return side === atk.slice(0, 2) || side === def.slice(0, 2);
+  }
+  if (tag === '-swapboost' || tag === '-copyboost') {
+    const a = identKey(parts[2]);
+    const b = identKey(parts[3]);
+    return a === atk || a === def || b === atk || b === def;
+  }
+  const who = identKey(parts[2]);
+  return who === atk || who === def;
+}
+
 /** One Pokémon's boosts, as the log has moved them so far. */
 type BoostTable = Partial<Record<StatID, number>>;
 
@@ -1287,7 +1310,7 @@ export function mostRecentCleanHit(
       if (who && frac !== undefined) hp[who] = frac;
     } else if (REPLAYABLE_BOOST_TAGS.has(tag)) {
       applyBoostLine(boosts, tag, parts); // followed, not abstained from — see the docblock
-    } else if (changesState(tag, parts)) {
+    } else if (changesState(tag, parts) && changeTargetsPair(tag, parts, atk, def)) {
       if (found) stale = true;
     }
   }
@@ -1301,17 +1324,31 @@ export function mostRecentCleanHit(
  * be Trick Room); these two are singled out because the protocol says which stat and which
  * condition, and taking them wholesale would throw away most of a real battle. Stealth Rock
  * going up and an Attack drop are the common cases, and neither moves anybody's Speed.
+ *
+ * Scoped to the observed pair the same way `changeTargetsPair` scopes `mostRecentCleanHit` —
+ * a Speed boost or status change on some THIRD Pokémon (a doubles ally, the foe's other bench
+ * slot) says nothing about `us`/`them` and must not spoil or stale a reading about them.
  */
-function affectsSpeed(tag: string, parts: readonly string[]): boolean {
-  if (tag === '-boost' || tag === '-unboost' || tag === '-setboost') return parts[3] === 'spe';
-  if (tag === '-sidestart' || tag === '-sideend') return parts.some((p) => p.endsWith('Tailwind'));
+function affectsSpeed(tag: string, parts: readonly string[], us: string, them: string): boolean {
+  if (tag === '-boost' || tag === '-unboost' || tag === '-setboost') {
+    if (parts[3] !== 'spe') return false;
+    const who = identKey(parts[2]);
+    return who === us || who === them;
+  }
+  if (tag === '-sidestart' || tag === '-sideend') {
+    if (!parts.some((p) => p.endsWith('Tailwind'))) return false;
+    const side = (parts[2] ?? '').trim().slice(0, 2);
+    return side === us.slice(0, 2) || side === them.slice(0, 2);
+  }
   // A volatile only matters here when it is one of the three that carry a Speed component.
   // `-start` is otherwise the commonest tag in the log (Substitute, confusion, Leech Seed).
   if (tag === '-start' || tag === '-end') {
     const what = toId(parts[3] ?? '');
-    return what.startsWith('quarkdrive') || what.startsWith('protosynthesis') || what === 'slowstart';
+    if (!(what.startsWith('quarkdrive') || what.startsWith('protosynthesis') || what === 'slowstart')) return false;
+    const who = identKey(parts[2]);
+    return who === us || who === them;
   }
-  return changesState(tag, parts);
+  return changesState(tag, parts) && changeTargetsPair(tag, parts, us, them);
 }
 
 /** Moves that hand somebody else's turn around, so the order they produce is not a speed
@@ -1429,7 +1466,7 @@ export function mostRecentCleanOrder(
       spoiled = true;
     } else if (tag === '-activate') {
       spoiled = true; // Quick Claw, Quick Draw, Custap — an unearned bracket, always announced
-    } else if (affectsSpeed(tag, parts)) {
+    } else if (affectsSpeed(tag, parts, us, them)) {
       spoiled = true;
       if (found) stale = true;
     }

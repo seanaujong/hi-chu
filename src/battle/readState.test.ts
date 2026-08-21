@@ -531,6 +531,21 @@ describe('mostRecentCleanHit (an observed hit’s MAGNITUDE reveals an item)', (
     expect(mostRecentCleanHit(withLog([...hit, '|-enditem|p2a: Weavile|Life Orb']), attacker, defender)).toBeUndefined();
   });
 
+  it('survives a status/item/ability change on an UNRELATED Pok\u00e9mon \u2014 the pair is what matters, not the whole field', () => {
+    // A third mon (a doubles ally, the foe's other bench slot, anyone but attacker/defender)
+    // changing state has no bearing on what THIS hit revealed. Staling on it anyway would
+    // make the reveal go quiet the moment anything else on the field happens \u2014 which in a
+    // real, ongoing battle is most of the time.
+    const hit = ['|move|p2a: Weavile|Icicle Crash|p1a: Skarmory', '|-damage|p1a: Skarmory|60/100'];
+    const expected = {move: 'Icicle Crash', damageFraction: 0.4, attackerBoosts: {}, defenderBoosts: {}, attackerHpPercent: 1, defenderHpPercent: 1};
+    expect(mostRecentCleanHit(withLog([...hit, '|-status|p2b: Ally|par']), attacker, defender)).toEqual(expected);
+    expect(mostRecentCleanHit(withLog([...hit, '|-item|p1b: Ally|Leftovers']), attacker, defender)).toEqual(expected);
+    expect(mostRecentCleanHit(withLog([...hit, '|-ability|p2b: Ally|Intimidate']), attacker, defender)).toEqual(expected);
+    // -sidestart/-sideend and -cureteam are side-wide, so they still stale when the side IS
+    // one of the pair's own \u2014 only an unrelated mon's own per-Pok\u00e9mon tags are exempt.
+    expect(mostRecentCleanHit(withLog([...hit, '|-sidestart|p1|Stealth Rock']), attacker, defender)).toBeUndefined();
+  });
+
   it('survives the standing weather\u2019s end-of-turn tick, which moves nothing', () => {
     // The residual re-announcement, tagged `[upkeep]`. It fires every turn the weather is
     // up, so counting it as a change made one Snow Warning lead cost the reading for the
@@ -886,6 +901,25 @@ describe('mostRecentCleanOrder (who moved first, when that is safe to read)', ()
   it('declines a move the dex cannot describe — an unknown bracket is not the 0 bracket', () => {
     const unknown = '|move|p2a: Gholdengo|Mystery Move|p1a: Noivern';
     expect(mostRecentCleanOrder(withLog(['|turn|1', unknown, OURS, '|turn|2']), us, them)).toBeUndefined();
+  });
+
+  it('survives a Speed boost, status, or item reveal on an UNRELATED Pokémon — the pair is what matters, not the whole field', () => {
+    // A third mon (a doubles ally, the foe's other bench slot, anyone but the observed
+    // pair) changing state has no bearing on what THIS turn's order revealed. Staling on it
+    // anyway would make the reveal go quiet the moment anything else on the field happens —
+    // which in a real, ongoing battle is most of the time. Mirrors mostRecentCleanHit's own
+    // `changeTargetsPair` scoping (readState.test.ts's "survives a status/item/ability
+    // change on an UNRELATED Pokémon" case above).
+    const boosted = ['|turn|1', THEIRS, OURS, '|turn|2', '|-boost|p2b: Ally|spe|1'];
+    expect(mostRecentCleanOrder(withLog(boosted), us, them)?.theyMovedFirst).toBe(true);
+    const statused = ['|turn|1', THEIRS, OURS, '|turn|2', '|-status|p1b: Ally|par'];
+    expect(mostRecentCleanOrder(withLog(statused), us, them)?.theyMovedFirst).toBe(true);
+    const itemRevealed = ['|turn|1', THEIRS, OURS, '|turn|2', '|-item|p2b: Ally|Leftovers'];
+    expect(mostRecentCleanOrder(withLog(itemRevealed), us, them)?.theyMovedFirst).toBe(true);
+    // Tailwind is genuinely side-wide, so it still declines when it's on one of the PAIR's
+    // own sides — only an unrelated mon's own per-Pokémon tags are exempt.
+    const tailwind = ['|turn|1', THEIRS, OURS, '|turn|2', '|-sidestart|p2: Foe|move: Tailwind'];
+    expect(mostRecentCleanOrder(withLog(tailwind), us, them)).toBeUndefined();
   });
 });
 

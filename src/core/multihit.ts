@@ -88,6 +88,24 @@ export function pmfFromSamples(samples: readonly number[]): Pmf {
 }
 
 /**
+ * Combine several independently-weighted PMFs into one MIXTURE — exactly one of them
+ * happens, chosen with the given weight, as opposed to `convolve`'s "both happen and their
+ * values add." This is core/damage.ts's tool for a move like Fickle Beam, whose own base
+ * power is a coin flip rather than a roll within one fixed power: 70% of uses roll the 80
+ * BP PMF, 30% roll the 160 BP one, and the KO chance a caller reads off the result already
+ * integrates over that flip. Weights are expected to sum to 1; this does not renormalize.
+ */
+export function mixPmf(components: readonly {readonly pmf: Pmf; readonly weight: number}[]): Pmf {
+  const mixed = new Map<number, number>();
+  for (const {pmf, weight} of components) {
+    for (const [value, p] of pmf) {
+      mixed.set(value, (mixed.get(value) ?? 0) + p * weight);
+    }
+  }
+  return mixed;
+}
+
+/**
  * The distribution over how many times a move hits.
  *
  * Mirrors Pokémon Showdown's `sim/battle-actions.ts` exactly:

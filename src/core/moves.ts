@@ -1,9 +1,10 @@
-// Move tables — data, derived directly from Pokémon Showdown's `data/moves.ts`. Two
+// Move tables — data, derived directly from Pokémon Showdown's `data/moves.ts`. Three
 // mechanics live here, and they share this file because they share a shape: a lookup
 // by move name carrying something @smogon/calc's own move data does not.
 //
-//   multiHitProfile — how many times a move hits, and at what power per hit.
-//   damageCallback  — the damage of a move that has no damage formula at all.
+//   multiHitProfile   — how many times a move hits, and at what power per hit.
+//   damageCallback    — the damage of a move that has no damage formula at all.
+//   randomPowerProfile — a single hit whose OWN base power is randomly chosen.
 //
 // --- The multi-hit table ----------------------------------------------------
 // Every move whose Showdown definition carries a `multihit`. Three facts per move
@@ -121,4 +122,34 @@ const DAMAGE_CALLBACKS: Map<string, DamageCallback> = new Map<string, DamageCall
  *  `undefined` for the overwhelming majority of moves, which use the damage formula. */
 export function damageCallback(moveName: string): DamageCallback | undefined {
   return DAMAGE_CALLBACKS.get(moveName);
+}
+
+// --- The random-power table ---------------------------------------------------
+// A move that deals exactly ONE hit per use, like any ordinary move, but whose base power
+// is itself a coin flip @smogon/calc's own move data carries no notion of: Fickle Beam is
+// 80 BP with a flat 30% chance to double to 160. That is a different mechanic from
+// multi-hit (several hits, one power each) and from Population Bomb's stop-at-miss hit
+// COUNT — here the hit count is always 1, and the WEIGHT the calc's own roll deserves is
+// what is missing, the same gap `core/multihit.ts`'s hit-count PMF fills for a multi-hit
+// move. `core/damage.ts` runs the calc once per outcome and mixes the resulting PMFs by
+// probability, so the KO% integrates over the coin flip rather than conditioning on
+// whichever power the calc's own default (never doubled) happens to assume.
+export interface RandomPowerOutcome {
+  readonly basePower: number;
+  /** In [0,1]; every outcome's probability for one move sums to 1. */
+  readonly probability: number;
+}
+
+export interface RandomPowerMove {
+  readonly outcomes: readonly RandomPowerOutcome[];
+}
+
+const RANDOM_POWER_TABLE: Map<string, RandomPowerMove> = new Map([
+  ['Fickle Beam', {outcomes: [{basePower: 80, probability: 0.7}, {basePower: 160, probability: 0.3}]}],
+]);
+
+/** The base-power coin flip a move rolls on every use, or `undefined` for the overwhelming
+ *  majority of moves, whose base power is fixed. */
+export function randomPowerProfile(moveName: string): RandomPowerMove | undefined {
+  return RANDOM_POWER_TABLE.get(moveName);
 }

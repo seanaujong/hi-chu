@@ -1060,3 +1060,40 @@ describe('a defender behind a Substitute', () => {
     expect(r.substitute).toMatchObject({kind: 'absorbs', hits: {min: 1, max: 1}});
   });
 });
+
+describe('Fickle Beam mixes its 30% power-double into a true KO% (a calc gap: @smogon/calc’s own move data is a flat 80 BP with no notion of the flip)', () => {
+  // Pinned against direct @smogon/calc runs at 80 and 160 BP with the same spread
+  // (`mon()`'s 85/85/85/85/85/85 EVs, 31 IVs, Serious, level 100 — the randbats baseline):
+  // 80 BP rolls [224,266], 160 BP rolls [450,530], against a 378 max-HP Garchomp. The two
+  // clusters never overlap and the gap between 266 and 450 is real, not rounding.
+  const attacker = mon({speciesForme: 'Hydrapple'});
+  const defender = mon({speciesForme: 'Garchomp'});
+  const r = calcDamage(attacker, defender, 'Fickle Beam');
+
+  it('reports the outcomes it mixed', () => {
+    expect(r.randomPower?.outcomes).toEqual([
+      {basePower: 80, probability: 0.7},
+      {basePower: 160, probability: 0.3},
+    ]);
+  });
+
+  it('brackets the TOTAL range across both power rolls, not just the untouched 80 BP one', () => {
+    expect([r.total.min, r.total.max]).toEqual([224, 530]);
+  });
+
+  it('the true KO% is exactly the 30% chance of doubling — no 80 BP roll reaches 378, every 160 BP roll does', () => {
+    // This is the number the bug this fixes got wrong: asking the calc for one power (its
+    // own untouched default, 80) reads a guaranteed non-KO here, silently dropping the 30%
+    // of uses that really do OHKO.
+    expect(r.koChance).toBeCloseTo(0.3, 5);
+  });
+
+  it('is reported as ordinary single-hit, not multi-hit — exactly one hit lands per use', () => {
+    expect(r.multiHit).toBeUndefined();
+  });
+
+  it('an ordinary move carries no randomPower field at all', () => {
+    const ordinary = calcDamage(mon({speciesForme: 'Garchomp'}), mon({speciesForme: 'Skarmory'}), 'Earthquake');
+    expect(ordinary.randomPower).toBeUndefined();
+  });
+});

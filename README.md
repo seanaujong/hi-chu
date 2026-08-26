@@ -215,6 +215,15 @@ Safari can't run the same static `content_scripts` declaration Chrome does (see
 `CLAUDE.md`'s Architecture section for why), so `dist-safari/` is its own build with a
 background service worker filling the gap — `content.ts` itself is unchanged.
 
+## Reporting a bug
+
+[Issues][issues] are welcome — a wrong damage number, a missing deduction, a tooltip
+that doesn't match what Showdown itself shows. A [replay link][replays] to the battle is
+a big help if you have one: most of what this extension reads (a revealed item, a status
+move, a speed tie) only shows up at one specific point in one specific battle, so a replay
+lets a fix be checked against the real log instead of guessed at. Not required, though —
+describe what you saw and expected, and a reproduction can usually be built from that.
+
 ## Verifying a release
 
 Every tagged release ships with a Sigstore-signed [build-provenance attestation][slsa]
@@ -257,3 +266,5 @@ names are trademarks of their respective owners.
 [calc]: https://github.com/smogon/damage-calc
 [releases]: https://github.com/seanaujong/hi-chu/releases/latest
 [slsa]: https://docs.github.com/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds
+[issues]: https://github.com/seanaujong/hi-chu/issues
+[replays]: https://replay.pokemonshowdown.com/

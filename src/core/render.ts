@@ -195,6 +195,15 @@ function sashAside(r: DamageReport, model: MoveRenderModel): string {
   return ` <small>(${prefix}Focus Sash: survives at 1 HP)</small>`;
 }
 
+/** Why the Damage range is unusually wide for a move whose own power is a coin flip
+ *  (Fickle Beam) — the KO%/nHKO ladder already integrate over it; this just says why the
+ *  bracket spans two clusters instead of one roll's worth of variance. */
+function randomPowerAside(r: DamageReport): string {
+  if (!r.randomPower) return '';
+  const boosted = r.randomPower.outcomes.reduce((a, b) => (b.basePower > a.basePower ? b : a));
+  return ` <small>(${Math.round(boosted.probability * 100)}% chance: ${boosted.basePower} BP)</small>`;
+}
+
 /**
  * The attacker's own HP swing, one part per cause: "Drains: 7.2% - 8.7%", "Recoil: 4.3% -
  * 5%". A fixed figure collapses to a single number rather than an X - X range.
@@ -232,7 +241,7 @@ function variantLine(bucket: DamageBucket, model: MoveRenderModel, tera: string)
   // The swing belongs on the line even here — a hidden Liquid Ooze splits the buckets
   // WITHOUT moving the damage numbers, so without it two lines would read identically.
   const self = selfHpText(r);
-  return `<small>Damage (${esc(bucket.label)}):</small> ${moveDamageText(r)}${tera}${koPart}${multi ? ` · ${esc(multi)}` : ''}${self ? ` · ${self}` : ''}`;
+  return `<small>Damage (${esc(bucket.label)}):</small> ${moveDamageText(r)}${tera}${randomPowerAside(r)}${koPart}${multi ? ` · ${esc(multi)}` : ''}${self ? ` · ${self}` : ''}`;
 }
 
 /**
@@ -364,7 +373,7 @@ export function renderMoveSection(model: MoveRenderModel): string {
     return (
       block([
         targetHeader(model.targetLabel),
-        `<small>Damage:</small> ${moveDamageText(r)}${tera}`,
+        `<small>Damage:</small> ${moveDamageText(r)}${tera}${randomPowerAside(r)}`,
         ko ? `<span class="hichu-ko">${ko}</span>${koCtx}${sashAside(r, model)}` : '', // "12% to KO" reads for itself
         blocked ? '' : nhkoLine(r.nhko, model.leftovers),
         substituteLine(r.substitute),
@@ -531,7 +540,7 @@ function ownMoveLine(row: OwnMoveLineModel, hpPercent: number): string {
     const koCtx = ko && hpPercent < 0.995 ? ` at ${pct1(hpPercent)} HP` : '';
     const koPart = ko ? ` · <span class="hichu-ko">${ko}</span>${koCtx}` : '';
     const label = b.label ? `<small>(${esc(b.label)})</small> ` : '';
-    return `${label}${moveDamageText(r)}${koPart}${substituteAside(r.substitute)}`;
+    return `${label}${moveDamageText(r)}${randomPowerAside(r)}${koPart}${substituteAside(r.substitute)}`;
   });
   const name = row.known ? `<b>✓ ${esc(row.name)}</b>` : esc(row.name);
   return `${name}: ${outcomes.join(' · ')}`;

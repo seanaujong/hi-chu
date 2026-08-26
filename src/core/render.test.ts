@@ -112,6 +112,24 @@ describe('renderMoveSection', () => {
     expect(renderMoveSection(model())).toBe('');
   });
 
+  it('notes the power-double chance on a move like Fickle Beam, so a wide bracket reads as a mechanic rather than imprecision', () => {
+    const html = renderMoveSection(
+      model({
+        report: report({
+          move: 'Fickle Beam',
+          percent: {min: 59.3, max: 140.2, mean: 82.5},
+          randomPower: {outcomes: [{basePower: 80, probability: 0.7}, {basePower: 160, probability: 0.3}]},
+        }),
+      }),
+    );
+    expect(html).toContain('(30% chance: 160 BP)');
+  });
+
+  it('adds no aside at all for an ordinary move — no new visual language for the common case', () => {
+    const html = renderMoveSection(model({report: report({move: 'Earthquake'})}));
+    expect(html).not.toContain('BP)');
+  });
+
   it('shows the one guaranteed-no-effect line when a status move fails outright', () => {
     const substitute = renderMoveSection(model({failReason: {kind: 'substitute'}}));
     expect(substitute).toContain('No effect');

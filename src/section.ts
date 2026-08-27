@@ -247,6 +247,13 @@ function narrowCandidate(candidate: CandidateSet, surviving: readonly SetVariant
  */
 type FoeSpeedVariantsFor = (foe: ClientPokemon, defenderFacts: LiveFacts) => readonly SetVariant[];
 
+/** `revealsAgainst`, bound to one own-side hover's `battle`/`data`/`format`/`readFacts` —
+ *  the same reveals `speedFor` narrows the ⚡ line's pool with, reused so a switch
+ *  candidate's DAMAGE gets the identical rule-out instead of going on showing every
+ *  hidden-item outcome a foe's own hover has already narrowed (see `foeReveals`'s
+ *  "EVERY surface" invariant). */
+type RevealsFor = (foe: ClientPokemon) => FoeReveals | undefined;
+
 
 
 /** All of one Pokémon's live facts: the snapshot, the log-derived behaviours, and the
@@ -670,15 +677,25 @@ function ownMovesSection(
   // come back as a technically-real but dishonest "100% to KO at 0% HP". See
   // `core/hazards.ts`.
   hazardFaints = false,
+  // The same log-derived rule-out the ⚡ line's `foeSpeedVariants` narrows its pool
+  // with, applied to the damage pool too — absent this, a switch candidate's matchup
+  // block goes on showing every hidden-item outcome long after a foe hover has already
+  // narrowed the same foe down to one (see `foeReveals`'s "EVERY surface" invariant).
+  revealsFor?: RevealsFor,
 ): string {
   const sections = activesOpposing(battle, ourSide).map((foe) => {
     const defenderFacts = readFacts(foe);
     const variantsForMove = variantsFor(defenderFacts);
+    const reveals = revealsFor?.(foe);
     // The FOE is the defender here, so `defenderTailwind` is theirs and `attackerTailwind`
     // is ours — the mirror image of speedSection's read, which orients on our own side.
     const field = readFieldFacts(battle, foe.side);
     const rows = moves
-      .map((move) => moveDamageBuckets(attacker, variantsForMove(move), move, ctxOf(format, field)))
+      .map((move) => {
+        const variants = variantsForMove(move);
+        const narrowed = reveals ? reveals.narrow(variants) : variants;
+        return moveDamageBuckets(attacker, narrowed, move, ctxOf(format, field));
+      })
       .filter((buckets) => buckets.length > 0) // status / unmodellable moves get no line
       // The report's move name is dex-resolved, so the id form ("dracometeor") displays right.
       .map((buckets) => ({name: buckets[0]!.report.move, buckets}));
@@ -764,9 +781,10 @@ function ownHoverMatchup(
   const speedAttacker = applyMega && megaSpeedApplies(format.gen) ? applyMega(base) : base;
   // Our real item feeds the ⚡ line too: a Scarf we are holding is our own private
   // truth, and showing US our own speed as uncertain would be absurd.
+  const revealsFor: RevealsFor = (foe) => revealsAgainst(battle, foe, data, format, readFacts);
   const speedFor = (foe: ClientPokemon, foeFacts: LiveFacts): readonly SetVariant[] => {
     const all = stillPossibleSets(feedSource(data), foeFacts);
-    return revealsAgainst(battle, foe, data, format, readFacts)?.narrow(all) ?? all;
+    return revealsFor(foe)?.narrow(all) ?? all;
   };
   // Which of the three halves this target carries is the grid's call, not this
   // function's — `core/surfaces.ts` holds both the cells and the reason each empty one is
@@ -781,7 +799,7 @@ function ownHoverMatchup(
   const outgoingMoves = shows(target, 'outgoing') ? moves : [];
   return ownMovesSection(
     battle, pokemon.side, switchInAttacker, outgoingMoves, format, readFacts, variantsFor(feedSource(data)), speedFor,
-    speedAttacker, hazardFaints ? undefined : incomingMovesFor, hazardFaints,
+    speedAttacker, hazardFaints ? undefined : incomingMovesFor, hazardFaints, revealsFor,
   );
 }
 
@@ -829,7 +847,12 @@ function foeSwitchInDamage(
   const applyTera = teraPreviewFor(battle, ourActive, teraSelected, ourFacts);
   const attacker = applyPreviews(base, [applyMega, applyTera]);
 
-  const foeVariants = stillPossibleSets(feedSource(data), foeFacts);
+  const all = stillPossibleSets(feedSource(data), foeFacts);
+  // The same log-derived rule-out every other surface showing this foe's set already
+  // applies (see `foeReveals`'s "EVERY surface" invariant) — without it, a foe whose
+  // Assault Vest/Choice Band split the foe's own hover has already settled goes on
+  // showing both outcomes here.
+  const foeVariants = revealsAgainst(battle, hoveredFoe, data, format, readFacts)?.narrow(all) ?? all;
   if (foeVariants.length === 0) return '';
   const hazards = readOwnHazards(hoveredFoe.side); // THEIR side's hazards chip THEM on the way in
   const switchedIn = foeVariants.map((v) => ({...v, mon: applySwitchInHazards(v.mon, hazards, format.gen)}));
@@ -884,9 +907,10 @@ export function buildSwitchSection(battle: ClientBattle, server: ClientServerPok
       // reason speed belongs on our side of the pair. Its item comes from the private
       // team (an id-form Choice Scarf; the damage layer resolves ids through the dex),
       // and it carries no boosts, because it enters with none.
+      const revealsFor: RevealsFor = (foe) => revealsAgainst(battle, foe, data, format, readFacts);
       const speedFor = (foe: ClientPokemon, foeFacts: LiveFacts): readonly SetVariant[] => {
         const all = stillPossibleSets(feedSource(data), foeFacts);
-        return revealsAgainst(battle, foe, data, format, readFacts)?.narrow(all) ?? all;
+        return revealsFor(foe)?.narrow(all) ?? all;
       };
       // Every switch-menu candidate is, by construction, not yet on the field — which is
       // why the hazard preview here needs no branch at all (`previewsSwitchInHazards` is
@@ -899,7 +923,7 @@ export function buildSwitchSection(battle: ClientBattle, server: ClientServerPok
       return ownMovesSection(
         battle, ourSide, switchInAttacker, shows(target, 'outgoing') ? moves : [], format, readFacts,
         variantsFor(feedSource(data)), speedFor,
-        switchInAttacker, hazardFaints ? undefined : incomingMovesFor, hazardFaints,
+        switchInAttacker, hazardFaints ? undefined : incomingMovesFor, hazardFaints, revealsFor,
       );
     }
     case 'open': {

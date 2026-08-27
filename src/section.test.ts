@@ -707,6 +707,166 @@ describe('the MOVE TOOLTIP narrows the same way — it never called revealsAgain
   });
 });
 
+describe('the own-hover MATCHUP VIEW narrows the same way — its damage never called revealsAgainst either', () => {
+  // `ownHoverMatchup` (a benched sidebar icon, or the switch menu) narrowed the ⚡ line's
+  // speed pool through `revealsAgainst` but built the "vs Weavile" damage lines straight
+  // from the unnarrowed `variantsFor(feedSource(data))` — so a switch candidate's own
+  // damage into a foe went on splitting Assault Vest/Leftovers forever, even after this
+  // exact hit had already collapsed the very same split on the foe's own hover (see the
+  // "sets view narrows … by what OUR OWN hit dealt into it" block above, same fixture).
+  const feed: RandbatsData = {
+    Skarmory: {level: 78, abilities: ['Sturdy'], items: ['Leftovers'], moves: ['Flash Cannon']},
+    // A second own-side species whose OWN hover is what this block tests: `revealsAgainst`
+    // reads whoever is REALLY active (Skarmory, below) for the reveal, which then has to
+    // apply to a totally different candidate's damage — proving the narrowing isn't somehow
+    // keyed to "whichever mon we're hovering" but to the FOE's set alone.
+    Empoleon: {level: 78, abilities: ['Torrent'], items: ['Leftovers'], moves: ['Flash Cannon']},
+    Weavile: {level: 78, abilities: ['Pressure'], items: ['Assault Vest', 'Leftovers'], moves: ['Icicle Crash']},
+  };
+  const near = {isFar: false, sideConditions: {}, active: [] as unknown[]};
+  const far = {isFar: true, sideConditions: {}, active: [] as unknown[]};
+  // The mon REALLY on the field when the revealing hit landed.
+  const ourActiveSkarmory = {
+    speciesForme: 'Skarmory', level: 78, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p1: Skarmory', side: near,
+  } as unknown as ClientPokemon;
+  // The benched switch-decision candidate under test — the same `benched()` shape used
+  // elsewhere in this file (not `.includes`d in its own side's active slots, so
+  // `isActiveMon` reads false and `ownHoverMatchup` shows its outgoing damage).
+  const ourEmpoleon = {
+    speciesForme: 'Empoleon', level: 78, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p1: Empoleon', side: near,
+  } as unknown as ClientPokemon;
+  const foeWeavile = {
+    speciesForme: 'Weavile', level: 78, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p2: Weavile', side: far,
+  } as unknown as ClientPokemon;
+  near.active = [ourActiveSkarmory];
+  far.active = [foeWeavile];
+  const myPokemon = [
+    {ident: 'p1: Skarmory', item: 'leftovers', moves: ['flashcannon']},
+    {ident: 'p1: Empoleon', item: 'leftovers', moves: ['flashcannon']},
+  ];
+
+  it('splits the damage line in two with nothing observed (the baseline)', () => {
+    const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far], myPokemon} as unknown as ClientBattle;
+    const html = buildPokemonSection(battle, ourEmpoleon, feed);
+    expect(html).toContain('<small>(Assault Vest)</small>');
+    expect(html).toContain('<small>(Leftovers)</small>');
+  });
+
+  it('collapses to a single Flash Cannon line once our currently-active Skarmory’s hit was too small for the vest', () => {
+    const stepQueue = [
+      '|switch|p2a: Weavile|Weavile, L78|100/100',
+      '|move|p1a: Skarmory|Flash Cannon|p2a: Weavile',
+      '|-damage|p2a: Weavile|62/100',
+    ];
+    const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far], stepQueue, myPokemon} as unknown as ClientBattle;
+    // Hovering EMPOLEON — a candidate that had nothing to do with the observed hit — must
+    // still see Weavile's item narrowed, because the rule-out is a fact about Weavile.
+    const html = buildPokemonSection(battle, ourEmpoleon, feed);
+    expect(html).toMatch(/Flash Cannon: [\d.]+% - [\d.]+%/);
+    expect(html).not.toContain('(Assault Vest)');
+    expect(html).not.toContain('(Leftovers)');
+  });
+});
+
+describe('the SWITCH MENU narrows the same way — buildSwitchSection never called revealsAgainst on its damage either', () => {
+  // The switch menu's damage into the current foe active runs through the same
+  // `ownMovesSection` as the bench-icon matchup view above, wired up separately in
+  // `buildSwitchSection` — so the fix has to reach this call site too, not just that one.
+  const feed: RandbatsData = {
+    Skarmory: {level: 78, abilities: ['Sturdy'], items: ['Leftovers'], moves: ['Flash Cannon']},
+    Weavile: {level: 78, abilities: ['Pressure'], items: ['Assault Vest', 'Leftovers'], moves: ['Icicle Crash']},
+  };
+  const near = {isFar: false, sideConditions: {}, active: [] as unknown[]};
+  const far = {isFar: true, sideConditions: {}, active: [] as unknown[]};
+  // Whoever really dealt the revealing hit — the switch-menu candidate itself (`server`,
+  // below) is a private ServerPokemon with no `.side` at all, so `revealsAgainst` reads
+  // this active mon instead, exactly as its own docstring describes.
+  const ourActiveSkarmory = {
+    speciesForme: 'Skarmory', level: 78, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p1: Skarmory', side: near,
+  } as unknown as ClientPokemon;
+  const foeWeavile = {
+    speciesForme: 'Weavile', level: 78, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p2: Weavile', side: far,
+  } as unknown as ClientPokemon;
+  near.active = [ourActiveSkarmory];
+  far.active = [foeWeavile];
+  const myPokemon = [{ident: 'p1: Skarmory', item: 'leftovers', moves: ['flashcannon']}];
+  const server: unknown = {
+    ident: 'p1: Skarmory', details: 'Skarmory, L78, M', condition: '100/100',
+    item: 'leftovers', baseAbility: 'sturdy', moves: ['flashcannon'],
+  };
+
+  it('splits the damage line in two with nothing observed (the baseline)', () => {
+    const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far], myPokemon} as unknown as ClientBattle;
+    const html = buildSwitchSection(battle, server as never, feed);
+    expect(html).toContain('<small>(Assault Vest)</small>');
+    expect(html).toContain('<small>(Leftovers)</small>');
+  });
+
+  it('collapses to a single Flash Cannon line once our own hit was too small for the vest', () => {
+    const stepQueue = [
+      '|switch|p2a: Weavile|Weavile, L78|100/100',
+      '|move|p1a: Skarmory|Flash Cannon|p2a: Weavile',
+      '|-damage|p2a: Weavile|62/100',
+    ];
+    const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far], stepQueue, myPokemon} as unknown as ClientBattle;
+    const html = buildSwitchSection(battle, server as never, feed);
+    expect(html).toMatch(/Flash Cannon: [\d.]+% - [\d.]+%/);
+    expect(html).not.toContain('(Assault Vest)');
+    expect(html).not.toContain('(Leftovers)');
+  });
+});
+
+describe('hovering a FOE’s roster icon narrows the same way — foeSwitchInDamage never called revealsAgainst at all', () => {
+  // Mirrors the "OUR OWN hit" sets-view block above: the same Flash Cannon into Weavile
+  // that collapses the Items line there left this switch-in preview showing both outcomes
+  // forever, because `foeSwitchInDamage` built its variants from bare `stillPossibleSets`
+  // and consulted no reveal at all — not even the ⚡-line-style speed narrowing every other
+  // own-view surface gets.
+  const feed: RandbatsData = {
+    Skarmory: {level: 78, abilities: ['Sturdy'], items: ['Leftovers'], moves: ['Flash Cannon']},
+    Weavile: {level: 78, abilities: ['Pressure'], items: ['Assault Vest', 'Leftovers'], moves: ['Icicle Crash']},
+  };
+  const near = {isFar: false, sideConditions: {}, active: [] as unknown[]};
+  const far = {isFar: true, sideConditions: {}, active: [] as unknown[]};
+  const ourSkarmory = {
+    speciesForme: 'Skarmory', level: 78, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p1: Skarmory', side: near,
+  } as unknown as ClientPokemon;
+  const foeWeavile = {
+    speciesForme: 'Weavile', level: 78, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p2: Weavile', side: far,
+  } as unknown as ClientPokemon;
+  near.active = [ourSkarmory]; // OUR active — the attacker computing damage into the bench icon
+  // `far.active` stays empty: Weavile is a revealed-but-benched roster icon, not the foe
+  // actually on the field (an active foe already carries this number on the move tooltip).
+  const myPokemon = [{ident: 'p1: Skarmory', item: 'leftovers', moves: ['flashcannon']}];
+
+  it('splits the damage line in two with nothing observed (the baseline)', () => {
+    const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far], myPokemon} as unknown as ClientBattle;
+    const html = buildPokemonSection(battle, foeWeavile, feed);
+    expect(html).toContain('<small>(Assault Vest)</small>');
+    expect(html).toContain('<small>(Leftovers)</small>');
+  });
+
+  it('collapses to a single Flash Cannon line once our own hit was too small for the vest', () => {
+    const stepQueue = [
+      '|switch|p2a: Weavile|Weavile, L78|100/100',
+      '|move|p1a: Skarmory|Flash Cannon|p2a: Weavile',
+      '|-damage|p2a: Weavile|62/100',
+    ];
+    const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far], stepQueue, myPokemon} as unknown as ClientBattle;
+    const html = buildPokemonSection(battle, foeWeavile, feed);
+    expect(html).toMatch(/Flash Cannon: [\d.]+% - [\d.]+%/);
+    expect(html).not.toContain('(Assault Vest)');
+    expect(html).not.toContain('(Leftovers)');
+  });
+});
+
 describe('a silent switch-in drops the Air Balloon bucket (core/deductions.ts)', () => {
   // Heatran's real gen9randombattle role, item pool and all. The balloon is the one item
   // that announces itself on the way in, so the tooltip should stop hedging about it the

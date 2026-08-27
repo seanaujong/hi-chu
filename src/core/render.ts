@@ -733,7 +733,7 @@ function gimmickLine(g: Gimmick): string {
     case 'zmove':
       return `<small>Z-Move:</small> ${optionText(g.crystal)}`;
     default:
-      return ((_: never) => '')(g); // exhaustiveness guard — unreachable
+      return ((_g: never) => '')(g); // exhaustiveness guard — unreachable
   }
 }
 

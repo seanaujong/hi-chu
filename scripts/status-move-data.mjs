@@ -1,5 +1,8 @@
 // Re-derives the move-effect tables `src/core/movefails.ts` is built on: which Status-category
-// moves inflict which major status, and which carry Showdown's `powder` flag.
+// moves inflict which major status, and which carry Showdown's `powder` flag. Also re-derives
+// `src/core/movetargets.ts`'s `NON_OPPONENT_TARGET_MOVES` — every Status move whose real
+// target is NOT opponent-directed, which @smogon/calc's own move data can't tell you (see that
+// file's docblock).
 //
 // Unlike `choice-exclusions.mjs`'s law, this is not emergent generator behaviour — it's
 // deterministic data sitting directly on each move's own dex record. So this script doesn't
@@ -25,6 +28,11 @@ import {ensureLocalCheckout} from './lib/local-server.mjs';
 const GENS = [9, 8, 7, 6, 5, 4, 3, 2, 1];
 const toId = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '');
 
+/** The vocabulary for "reaches the opponent" — kept in sync by eye with `core/movefails.ts`'s
+ *  own `OPPONENT_TARGETS`, which `movefails.test.ts`'s `targetsOpponent` suite already pins;
+ *  Pokémon's own set of target strings has been stable for a decade. */
+const OPPONENT_TARGETS = new Set(['normal', 'any', 'randomNormal', 'adjacentFoe', 'allAdjacentFoes']);
+
 /** Pulls a `Map`/`Set` literal of quoted move ids out of `movefails.ts` by name, so the check
  *  compares the source against itself rather than a second copy of the same claim. */
 function declaredTable(varName, src) {
@@ -41,6 +49,14 @@ async function main() {
   // moveId → {name, status per gen seen, powder}
   const measuredStatus = new Map(); // moveId -> {name, status}
   const measuredPowder = new Map(); // moveId -> name
+  // Union across every gen scanned, not a per-gen agreement — "prefer missing a rule-out to
+  // making a false one" cuts the same way here as it does in deductions.ts: a move that's
+  // self-targeting in even ONE scanned gen goes in, so an old-gen hover goes quiet instead of
+  // risking a false claim in whichever gen it's actually wrong for. Curse is excluded by name
+  // — its own real target field reads as opponent-directed, and its true self-targeting is
+  // conditional on the USER's type, which `movetargets.ts` deliberately leaves to
+  // `damage.ts`'s `curseTarget` instead.
+  const measuredNonOpponentTarget = new Map(); // moveId -> name
 
   for (const gen of gens) {
     const dex = Dex.forGen(gen);
@@ -56,6 +72,7 @@ async function main() {
         }
       }
       if (move.flags?.powder) measuredPowder.set(id, move.name);
+      if (id !== 'curse' && !OPPONENT_TARGETS.has(move.target)) measuredNonOpponentTarget.set(id, move.name);
     }
   }
 
@@ -63,10 +80,14 @@ async function main() {
   for (const [id, {name, status}] of measuredStatus) console.log(`  ${name.padEnd(16)} → ${status}  [${id}]`);
   console.log(`\nPowder-flagged moves (${measuredPowder.size}):`);
   for (const [id, name] of measuredPowder) console.log(`  ${name}  [${id}]`);
+  console.log(`\nStatus moves that do NOT target the opponent (${measuredNonOpponentTarget.size}):`);
+  for (const [id, name] of measuredNonOpponentTarget) console.log(`  ${name}  [${id}]`);
 
   const src = readFileSync(fileURLToPath(new URL('../src/core/movefails.ts', import.meta.url)), 'utf8');
   const declaredStatusIds = new Set([...src.matchAll(/\['([a-z0-9]+)',\s*'(?:par|brn|psn|tox|slp|frz)'\]/g)].map((m) => m[1]));
   const declaredPowder = declaredTable('POWDER_MOVES', src);
+  const targetsSrc = readFileSync(fileURLToPath(new URL('../src/core/movetargets.ts', import.meta.url)), 'utf8');
+  const declaredNonOpponentTarget = declaredTable('NON_OPPONENT_TARGET_MOVES', targetsSrc);
 
   let failed = false;
 
@@ -93,11 +114,24 @@ async function main() {
     console.log(`\nDeclared in POWDER_MOVES but the dex no longer flags them as powder: ${stalePowder.join(', ')}`);
   }
 
+  const missingTarget = [...measuredNonOpponentTarget.keys()].filter((id) => !declaredNonOpponentTarget.has(id));
+  if (missingTarget.length > 0) {
+    console.error(`\nFAIL: these Status moves do NOT target the opponent per the dex and are NOT in ` +
+      `NON_OPPONENT_TARGET_MOVES: ${missingTarget.join(', ')}. Add them to src/core/movetargets.ts — ` +
+      'left out, the calc\'s Move.target reads \'any\' for them and a type-immune foe reports a false ' +
+      '"no effect".');
+    failed = true;
+  }
+  const staleTarget = [...declaredNonOpponentTarget].filter((id) => !measuredNonOpponentTarget.has(id));
+  if (staleTarget.length > 0) {
+    console.log(`\nDeclared in NON_OPPONENT_TARGET_MOVES but the dex now targets the opponent for them: ${staleTarget.join(', ')}`);
+  }
+
   if (failed) {
     process.exitCode = 1;
     return;
   }
-  console.log('\nOK: movefails.ts\'s tables cover everything this run measured.');
+  console.log('\nOK: movefails.ts\'s and movetargets.ts\'s tables cover everything this run measured.');
 }
 
 await main();

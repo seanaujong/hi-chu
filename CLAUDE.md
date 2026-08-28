@@ -822,6 +822,13 @@ picture and not in this list, this list is the thing that's wrong.
   - `moves.ts` — the move tables (data only): the multi-hit table, and the damage callbacks
     of moves that have no base power at all. Exercised end-to-end via `damage.test.ts`
     rather than a colocated test — see `UNTESTED_BY_DESIGN`.
+  - `movetargets.ts` — the move-targeting law's data table (data only): every Status move
+    whose real target ISN'T the opponent, since `@smogon/calc`'s own `Move.target` reads
+    'any' for virtually all of them regardless of what they actually do. `damage.ts`'s
+    `evaluateMoveFailure` reads it before asking `movefails.ts` whether a move fails
+    outright, so a self-buff or a hazard never gets judged against the foe's type chart.
+    MEASURED (`npm run status-move-data`), same discipline as `movefails.ts`'s own tables.
+    Exercised end-to-end via `damage.test.ts` — see `UNTESTED_BY_DESIGN`.
   - `types.ts` — shared vocabulary (`LiveFacts`, `RandbatsEntry`, `ResolvedMon`,
     `SetVariant`, `SetKnowledge`, `FieldFacts`).
 - `src/battle/readState.ts` — Showdown's untyped client objects → typed `LiveFacts`/`FieldFacts`.
@@ -938,9 +945,11 @@ kind — unlike Quark Drive below, there is no flag to arm, only a base-power ov
 the same shape as Rage Fist), Fickle Beam (its own move data is a flat 80 BP with no notion of
 the move's 30% chance to double to 160 — we run the calc once per outcome and mix the two PMFs
 by probability, the same "own the distribution" shape multi-hit's hit-count model takes),
-Curse's target (missing from the calc's own move data entirely, so it falls back to a generic
-default that reads as opponent-directed no matter who uses it — wrong for the common non-Ghost
-case, where Curse never touches the defender at all), and
+a Status move's target (`@smogon/calc`'s own move data has no `target` field for virtually any
+of them, so it reads as opponent-directed no matter what the move actually does — wrong for the
+majority of Status moves, which are self-buffs, heals, screens or hazards that never touch the
+defender at all; `movetargets.ts` measures the correction, with Curse handled separately since
+its real target is conditional on the USER's own type rather than a static fact), and
 unknown species/items. A third kind hides between those two and
 is the easiest to ship by accident: the calc answering EXACTLY what we asked, where the asking
 itself was wrong. Requesting one hit of a multi-hit move is that — the calc then reads it as a
@@ -1050,6 +1059,7 @@ was always undefined.
 | A standing Substitute blocks a STATUS move too, not only a damaging one — reusing `bypassesSubstitute` unmodified, since it was always move-general and only ever asked from the damage path before | ✅ | `core/movefails.ts` (`moveFailsOutright`), `core/damage.ts` (`evaluateMoveFailure`) | `movefails.test.ts`, `damage.test.ts` |
 | A move's target-type immunity and a target's own immunity to the status it would inflict both render as ONE `type-immune` reason — its move-effect tables are MEASURED against Showdown's move data, never recalled | ✅ | `core/movefails.ts` (`moveFailsOutright`) | `movefails.test.ts`, `damage.test.ts` |
 | A status move fails outright against a target already carrying a major status | ✅ | `core/movefails.ts` (`moveFailsOutright`) | `movefails.test.ts`, `damage.test.ts` |
+| A self-buff, heal, screen or hazard is never judged against the defender's type chart — the calc's own `Move.target` reads opponent-directed for virtually every Status move regardless of what it does, so a MEASURED table of every one that really doesn't reach the foe corrects it before `movefails.ts` ever sees a target | ✅ | `core/movetargets.ts` (`NON_OPPONENT_TARGET_MOVES`), `core/damage.ts` (`correctedMoveTarget`, `evaluateMoveFailure`) | `damage.test.ts` |
 | Curse's target is derived from the ATTACKER's own type, never read off the calc — its move data carries no `target` field for Curse at all, so left alone it reads as opponent-directed for every user | ✅ | `core/damage.ts` (`curseTarget`, `evaluateMoveFailure`) | `damage.test.ts` |
 | A guaranteed-no-effect status move gets the SAME amber caveat line the Substitute/Sash lines use — no new section, no new colour | ✅ | `core/render.ts` (`failReasonLine`) | `render.test.ts` |
 | Speed order: arithmetic delegated, ORDER owned, a fact about the PAIR | ✅ | `core/speed.ts`, `section.ts` (`speedSection`, `ownMovesSection`) | `speed.test.ts`, `render.test.ts`, `section.test.ts` |

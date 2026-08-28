@@ -37,6 +37,7 @@ import type {FieldFacts, FullStats, ResolvedMon, SpeciesData, StatID} from './ty
 import {damageCallback, multiHitProfile, randomPowerProfile, type RandomPowerMove} from './moves.js';
 import {type HitDamage, type HitsToBreak, bypassesSubstitute, hitsToBreak, substituteHP} from './substitute.js';
 import {moveFailsOutright, type FailReason} from './movefails.js';
+import {NON_OPPONENT_TARGET_MOVES} from './movetargets.js';
 import {
   type HitCountMods,
   type Pmf,
@@ -328,10 +329,25 @@ export function moveCategory(gen: number, moveName: string): 'Physical' | 'Speci
  * down), never touching the defender's type chart at all. Left uncorrected, a non-Ghost
  * user's Curse reads as a Ghost-type hit against the defender and reports `no effect`
  * whenever that defender happens to be Normal-type — a real defect this fixes, not a
- * hypothetical one.
+ * hypothetical one. Curse is the one move this can't be read off a static table for — see
+ * `movetargets.ts`'s docblock for the general form of this gap, which covers every other
+ * Status move.
  */
 function curseTarget(attackerTypes: readonly string[]): 'any' | 'self' {
   return attackerTypes.includes('Ghost') ? 'any' : 'self';
+}
+
+/**
+ * The target `moveFailsOutright` should reason about — `dexMove.target` corrected for the two
+ * ways the calc's own value can be wrong (see `movetargets.ts` and `curseTarget` above). Never
+ * worse than `dexMove.target` itself: a move absent from both corrections passes through
+ * unchanged, which is the calc's honest 'any' for the (large) majority of moves that really
+ * are opponent-directed.
+ */
+function correctedMoveTarget(dexMove: Move, attackerTypes: readonly string[]): string {
+  const id = toID(dexMove.name);
+  if (id === 'curse') return curseTarget(attackerTypes);
+  return NON_OPPONENT_TARGET_MOVES.has(id) ? 'self' : dexMove.target;
 }
 
 /**
@@ -355,7 +371,7 @@ export function evaluateMoveFailure(attacker: ResolvedMon, defender: ResolvedMon
   const types = def.teraType && def.teraType !== 'Stellar' ? [def.teraType] : def.types;
   const chart = TYPE_CHART[g.num]?.[dexMove.type] ?? {};
   const moveTypeEffectiveness = types.reduce((product, t) => product * (chart[t] ?? 1), 1);
-  const target = toID(dexMove.name) === 'curse' ? curseTarget(atk.types) : dexMove.target;
+  const target = correctedMoveTarget(dexMove, atk.types);
   return moveFailsOutright({
     move: {id: dexMove.name, target, isSound: dexMove.flags.sound === 1, type: dexMove.type},
     defender: {types, status: defender.status, substitute: defender.substitute},

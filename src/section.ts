@@ -71,6 +71,7 @@ import {
   activesOpposing,
   findOpposingActive,
   findOpposingActives,
+  witnessesAgainst,
   mostRecentCleanHit,
   mostRecentCleanOrder,
   nearSide,
@@ -194,6 +195,13 @@ function foeReveals(
  * set, so it applies to every surface that shows that foe — including a ⚡ line inside a
  * bench mon's block, which would otherwise go on offering an "if Choice Scarf" aside the
  * foe's own hover had already deleted.
+ *
+ * "Whoever was actually standing there" is not always whoever is active NOW, though: a
+ * teammate that has since fainted or switched out still owns whatever it revealed about
+ * `foe` while it was the one fighting it, so this tries `witnessesAgainst`'s candidates —
+ * most recently seen first — and keeps the first with anything to show. The live pairing
+ * always goes first, so a fresh reading is never shadowed by older history; this only
+ * reaches back once the CURRENT active has nothing of its own to say about this foe.
  */
 function revealsAgainst(
   battle: ClientBattle,
@@ -202,14 +210,16 @@ function revealsAgainst(
   format: {gen: number; doubles: boolean},
   readFacts: FactsReader,
 ): FoeReveals | undefined {
-  const ourActive = findOpposingActive(battle, foe);
-  if (!ourActive) return undefined;
-  const ourFacts = ownTruth(battle, ourActive, readFacts(ourActive));
-  const resolved = resolveMon(ourFacts, entryOrMinimal(feedSource(data).entryFor(ourFacts), ourFacts));
-  return foeReveals(
-    battle, foe, ourActive, resolved, readFieldFacts(battle, ourActive.side), format,
-    resolved, exactOwnAttacker(battle, ourActive, ourFacts, data),
-  );
+  for (const ourActive of witnessesAgainst(battle, foe)) {
+    const ourFacts = ownTruth(battle, ourActive, readFacts(ourActive));
+    const resolved = resolveMon(ourFacts, entryOrMinimal(feedSource(data).entryFor(ourFacts), ourFacts));
+    const reveals = foeReveals(
+      battle, foe, ourActive, resolved, readFieldFacts(battle, ourActive.side), format,
+      resolved, exactOwnAttacker(battle, ourActive, ourFacts, data),
+    );
+    if (reveals) return reveals;
+  }
+  return undefined;
 }
 
 /**
@@ -1357,10 +1367,13 @@ function randbatsPokemonSection(
   // past hit dealt, and who moved first. Gathered once and applied everywhere below, so the
   // Items line, the per-move damage and the ⚡ verdict cannot disagree about the same set.
   // A no-op on the common hover where neither observation is safe to read.
-  const reveals = foeReveals(
-    battle, pokemon, ourMon, defender, field, format, defenderNow,
-    ourMon && ourFacts ? exactOwnAttacker(battle, ourMon, ourFacts, data) : null,
-  );
+  //
+  // Goes through `revealsAgainst`, not a direct `foeReveals` call keyed to `ourMon` — the
+  // CURRENT active only, same as `defender`/`field` above, which is right for what THEY
+  // would do switching in now but wrong for what the log already proved: a teammate that
+  // forced this exact rule-out may have since fainted or switched out, and the reveal is a
+  // fact about the FOE, not about whichever of ours is still standing (`witnessesAgainst`).
+  const reveals = shows(target, 'sets') ? revealsAgainst(battle, pokemon, data, format, readFacts) : undefined;
 
   const blocks: CandidateBlock[] = [];
   for (const s of sources) {

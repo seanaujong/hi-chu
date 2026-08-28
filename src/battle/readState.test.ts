@@ -38,6 +38,7 @@ import {
   readMegaForme,
   detectFormat,
   findOpposingActive,
+  witnessesAgainst,
   readFieldFacts,
   readOwnHazards,
   type ClientPokemon,
@@ -893,9 +894,18 @@ describe('mostRecentCleanOrder (who moved first, when that is safe to read)', ()
     expect(mostRecentCleanOrder(withLog(log), us, them)).toBeUndefined();
   });
 
-  it('declines once either of them has LEFT the field', () => {
+  it('declines once THEM has left the field — a returning foe may not even hold the same item', () => {
     const log = ['|turn|1', THEIRS, OURS, '|turn|2', '|switch|p2a: Corviknight|Corviknight, M|100/100'];
     expect(mostRecentCleanOrder(withLog(log), us, them)).toBeUndefined();
+  });
+
+  it('survives US leaving — the fact this reading produces is about THEM, not about us', () => {
+    // The gap `witnessesAgainst` exists to close: a fainted or switched-out witness still
+    // owns whatever it revealed about the foe while it was the one fighting it, so asking
+    // about that SAME named pair after `us` has left must not go quiet for no reason
+    // connected to the foe at all.
+    const log = ['|turn|1', THEIRS, OURS, '|turn|2', '|faint|p1a: Noivern', '|switch|p1a: Corviknight|Corviknight, M|100/100'];
+    expect(mostRecentCleanOrder(withLog(log), us, them)?.theyMovedFirst).toBe(true);
   });
 
   it('declines a move the dex cannot describe — an unknown bracket is not the 0 bracket', () => {
@@ -1752,6 +1762,44 @@ describe('findOpposingActive', () => {
     const battle: ClientBattle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [mySide, foeSide]};
     const hovered = {...mine, side: mySide};
     expect(findOpposingActive(battle, hovered)?.speciesForme).toBe('Theirs');
+  });
+});
+
+describe('witnessesAgainst (who to read a log-derived reveal against, not just who is active now)', () => {
+  const foeSide: ClientSide = {active: []};
+  const foe = clientMon({ident: 'p2: Lycanroc', side: foeSide});
+
+  it('puts the currently active Pokémon first when the roster is known', () => {
+    const mon1 = clientMon({speciesForme: 'Tentacruel', ident: 'p1: Tentacruel'});
+    const mon2 = clientMon({speciesForme: 'Corviknight', ident: 'p1: Corviknight'});
+    const ourSide: ClientSide = {active: [mon2], pokemon: [mon1, mon2]};
+    const battle: ClientBattle = {
+      gen: 9, tier: '[Gen 9] Random Battle', sides: [ourSide, foeSide],
+      stepQueue: [
+        '|move|p2a: Lycanroc|Stone Edge|p1a: Tentacruel',
+        '|faint|p1a: Tentacruel',
+        '|switch|p1a: Corviknight|Corviknight, L100|100/100',
+      ],
+    };
+    expect(witnessesAgainst(battle, foe).map((m) => m.ident)).toEqual(['p1: Corviknight', 'p1: Tentacruel']);
+  });
+
+  it('still lists a teammate that has since fainted or switched out, ranked by how long ago it was seen', () => {
+    const early = clientMon({speciesForme: 'Noivern', ident: 'p1: Noivern'});
+    const late = clientMon({speciesForme: 'Corviknight', ident: 'p1: Corviknight'});
+    const ourSide: ClientSide = {active: [late], pokemon: [early, late]};
+    const battle: ClientBattle = {
+      gen: 9, tier: '[Gen 9] Random Battle', sides: [ourSide, foeSide],
+      stepQueue: ['|move|p1a: Noivern|Tackle|p2a: Lycanroc', '|switch|p1a: Corviknight|Corviknight, L100|100/100'],
+    };
+    expect(witnessesAgainst(battle, foe).map((m) => m.ident)).toEqual(['p1: Corviknight', 'p1: Noivern']);
+  });
+
+  it('falls back to `active` when `pokemon` is absent — an older or incomplete client read', () => {
+    const active = clientMon({speciesForme: 'Corviknight', ident: 'p1: Corviknight'});
+    const ourSide: ClientSide = {active: [active]}; // no `pokemon` roster at all
+    const battle: ClientBattle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [ourSide, foeSide]};
+    expect(witnessesAgainst(battle, foe).map((m) => m.ident)).toEqual(['p1: Corviknight']);
   });
 });
 

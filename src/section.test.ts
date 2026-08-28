@@ -1202,6 +1202,19 @@ describe('move order rules out a Choice Scarf, through the whole live pipeline',
     expect(theyFirst).toContain('Head Smash</b> (112.4–132.8%)'); // Scarf only
     expect(theySecond).toContain('Head Smash</b> (168.6–198.5%)'); // Band only
   });
+
+  it('survives OUR OWN witness leaving the field for good — the fact is about the FOE, not about Noivern', () => {
+    // Noivern is what fought Emboar and forced the Scarf-only read, but Noivern then faints
+    // and Corviknight takes its place. Corviknight has never exchanged a move with this
+    // Emboar, so a read keyed to "whoever is active now" finds nothing on its own —
+    // `witnessesAgainst` is what keeps Noivern's own reading findable after it is gone.
+    const {battle: b, active: a} = loadBattle({
+      foeEmboar: true, noivernBoosts: {spe: -1}, foeMovedFirst: true, noivernFaintedReplacedBy: 'Corviknight',
+    });
+    const html = buildPokemonSection(b, a('Emboar'), dataWithEmboar);
+    expect(html).toContain('<small>Items:</small> Choice Scarf');
+    expect(html).not.toContain('Choice Band');
+  });
 });
 
 describe('a Protean foe, either side of the moment it converts', () => {

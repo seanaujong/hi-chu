@@ -320,6 +320,21 @@ export function moveCategory(gen: number, moveName: string): 'Physical' | 'Speci
 }
 
 /**
+ * Curse's `target` isn't in the calc's own move data at all — `data.target || 'any'` falls
+ * back to the generic default, the same way a species the calc's dex lacks falls back to
+ * `speciesOverrides` below — so `dexMove.target` reads `'any'` (opponent-directed) no matter
+ * who uses it. That's wrong for the common case: Curse targets the OPPONENT only when its
+ * user is a Ghost type, and targets the user itself otherwise (Attack/Defense up, Speed
+ * down), never touching the defender's type chart at all. Left uncorrected, a non-Ghost
+ * user's Curse reads as a Ghost-type hit against the defender and reports `no effect`
+ * whenever that defender happens to be Normal-type — a real defect this fixes, not a
+ * hypothetical one.
+ */
+function curseTarget(attackerTypes: readonly string[]): 'any' | 'self' {
+  return attackerTypes.includes('Ghost') ? 'any' : 'self';
+}
+
+/**
  * Is `moveName` guaranteed to have no effect on `defender` at all — the one question a
  * Status-category move still needs answered, since it never reaches `calcDamage` (its
  * category is 'Status', so `variantdamage.ts`'s `scoreVariants` drops every variant before a
@@ -340,8 +355,9 @@ export function evaluateMoveFailure(attacker: ResolvedMon, defender: ResolvedMon
   const types = def.teraType && def.teraType !== 'Stellar' ? [def.teraType] : def.types;
   const chart = TYPE_CHART[g.num]?.[dexMove.type] ?? {};
   const moveTypeEffectiveness = types.reduce((product, t) => product * (chart[t] ?? 1), 1);
+  const target = toID(dexMove.name) === 'curse' ? curseTarget(atk.types) : dexMove.target;
   return moveFailsOutright({
-    move: {id: dexMove.name, target: dexMove.target, isSound: dexMove.flags.sound === 1, type: dexMove.type},
+    move: {id: dexMove.name, target, isSound: dexMove.flags.sound === 1, type: dexMove.type},
     defender: {types, status: defender.status, substitute: defender.substitute},
     attackerAbility: atk.ability,
     moveTypeEffectiveness,

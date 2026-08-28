@@ -79,6 +79,23 @@ describe('evaluateMoveFailure — the calc-derived facts movefails.ts needs', ()
     const defender = mon({speciesForme: 'Tyranitar'}); // Rock/Dark — no Ground immunity
     expect(evaluateMoveFailure(attacker, defender, 'Earthquake', 9)).toBeNull();
   });
+
+  it('says nothing for a non-Ghost user\'s Curse, even against a Normal-type target', () => {
+    // The calc's own move data carries no `target` field for Curse at all, so it falls back
+    // to the generic 'any' default — read literally, that puts a Ghost-typed hit on a
+    // Normal-type target, which the ordinary type chart blocks outright. But a non-Ghost
+    // user's Curse never reaches the target: it's a self-buff (Attack/Defense up, Speed
+    // down), so this must say nothing, exactly as any other self-targeting move does.
+    const attacker = mon({speciesForme: 'Hippowdon', ability: 'Sand Stream'}); // Ground, not Ghost
+    const defender = mon({speciesForme: 'Gumshoos'}); // pure Normal
+    expect(evaluateMoveFailure(attacker, defender, 'Curse', 9)).toBeNull();
+  });
+
+  it('still reads the type chart for a Ghost-type user\'s Curse, which really does target the foe', () => {
+    const attacker = mon({speciesForme: 'Dusknoir'}); // Ghost
+    const defender = mon({speciesForme: 'Gumshoos'}); // pure Normal — immune to Ghost
+    expect(evaluateMoveFailure(attacker, defender, 'Curse', 9)).toEqual({kind: 'type-immune', immuneType: 'Ghost'});
+  });
 });
 
 describe('a species the calc dex does not know (a Champions-invented Mega)', () => {

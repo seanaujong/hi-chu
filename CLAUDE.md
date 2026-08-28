@@ -937,7 +937,10 @@ Power (no `onBasePower` entry for either ability, and no volatile-status power m
 kind — unlike Quark Drive below, there is no flag to arm, only a base-power override to hand-roll,
 the same shape as Rage Fist), Fickle Beam (its own move data is a flat 80 BP with no notion of
 the move's 30% chance to double to 160 — we run the calc once per outcome and mix the two PMFs
-by probability, the same "own the distribution" shape multi-hit's hit-count model takes), and
+by probability, the same "own the distribution" shape multi-hit's hit-count model takes),
+Curse's target (missing from the calc's own move data entirely, so it falls back to a generic
+default that reads as opponent-directed no matter who uses it — wrong for the common non-Ghost
+case, where Curse never touches the defender at all), and
 unknown species/items. A third kind hides between those two and
 is the easiest to ship by accident: the calc answering EXACTLY what we asked, where the asking
 itself was wrong. Requesting one hit of a multi-hit move is that — the calc then reads it as a
@@ -1047,6 +1050,7 @@ was always undefined.
 | A standing Substitute blocks a STATUS move too, not only a damaging one — reusing `bypassesSubstitute` unmodified, since it was always move-general and only ever asked from the damage path before | ✅ | `core/movefails.ts` (`moveFailsOutright`), `core/damage.ts` (`evaluateMoveFailure`) | `movefails.test.ts`, `damage.test.ts` |
 | A move's target-type immunity and a target's own immunity to the status it would inflict both render as ONE `type-immune` reason — its move-effect tables are MEASURED against Showdown's move data, never recalled | ✅ | `core/movefails.ts` (`moveFailsOutright`) | `movefails.test.ts`, `damage.test.ts` |
 | A status move fails outright against a target already carrying a major status | ✅ | `core/movefails.ts` (`moveFailsOutright`) | `movefails.test.ts`, `damage.test.ts` |
+| Curse's target is derived from the ATTACKER's own type, never read off the calc — its move data carries no `target` field for Curse at all, so left alone it reads as opponent-directed for every user | ✅ | `core/damage.ts` (`curseTarget`, `evaluateMoveFailure`) | `damage.test.ts` |
 | A guaranteed-no-effect status move gets the SAME amber caveat line the Substitute/Sash lines use — no new section, no new colour | ✅ | `core/render.ts` (`failReasonLine`) | `render.test.ts` |
 | Speed order: arithmetic delegated, ORDER owned, a fact about the PAIR | ✅ | `core/speed.ts`, `section.ts` (`speedSection`, `ownMovesSection`) | `speed.test.ts`, `render.test.ts`, `section.test.ts` |
 | An "if …" aside exists to CONTRADICT the ⚡ verdict — a set reaching the same answer is dropped, so no asides means the verdict holds under EVERY still-possible set | ✅ | `core/render.ts` (`speedLine`) | `render.test.ts` |

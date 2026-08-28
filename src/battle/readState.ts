@@ -1389,7 +1389,14 @@ function readMoveOrder(battle: ClientBattle, name: string): OrderedMove | undefi
  *     before it and the speeds we compare against are read from the state now.
  *   - …nor SINCE, on either side, which is the same `stale` mechanism `mostRecentCleanHit`
  *     uses, narrowed to what actually moves a Speed stat (`affectsSpeed`).
- *   - Neither mon may have left the field since, or the observation is about somebody else.
+ *   - `them` may not have left the field since, or the observation is about somebody else —
+ *     a returning foe starts a fresh stint with fresh boosts, and may not even be holding
+ *     the same item (Trick). `us` leaving is NOT disqualifying: the fact this reading
+ *     produces is about `them` alone, so it stays true for as long as a caller is
+ *     specifically asking about the Pokémon that earned it — even one that has since
+ *     fainted or switched out. That is the whole point of `witnessesAgainst`
+ *     (`section.ts`'s `revealsAgainst`): a Scarf a fainted teammate proved by outrunning
+ *     the foe does not stop being true the moment a replacement takes its place.
  *
  * What it deliberately does NOT decide is what the order MEANS. Priority brackets, Trick
  * Room and the foe's own possible speeds all belong to `core/speedreveal.ts`, which judges
@@ -1455,11 +1462,12 @@ export function mostRecentCleanOrder(
     } else if (tag === 'cant') {
       if (who === us || who === them) spoiled = true;
     } else if (tag === 'switch' || tag === 'drag') {
-      // Either of the pair leaving ends the observation's SUBJECT, not merely its turn — and
-      // so does either of them arriving, which starts a fresh stint with fresh boosts.
+      // THEM leaving ends the observation's SUBJECT, not merely its turn, and so does
+      // somebody else arriving in their slot — a fresh stint with fresh boosts, possibly
+      // even a different item (Trick). US leaving does NOT: see the docblock above.
       const slot = slotKey(parts[2]);
-      const replacesOne = slot !== undefined && [...slots.values()].includes(slot);
-      if (who === us || who === them || replacesOne) {
+      const replacesThem = slot !== undefined && slots.get(them) === slot;
+      if (who === them || replacesThem) {
         found = undefined;
         stale = false;
       }
@@ -1811,6 +1819,41 @@ export function findOpposingActives(battle: ClientBattle, hovered: ClientPokemon
 /** The first opposing active — the single defender for the sets-view threat calc. */
 export function findOpposingActive(battle: ClientBattle, hovered: ClientPokemon): ClientPokemon | null {
   return findOpposingActives(battle, hovered)[0] ?? null;
+}
+
+/**
+ * `foe`'s opposing ROSTER (not just who is active now), ordered by how recently each member
+ * appears anywhere in the log — the currently active one first, in the common case where it
+ * has already fought `foe`, then whoever else last exchanged a move with it. A held item is
+ * a fact about `foe` alone, so a teammate that has since fainted or been switched out still
+ * owns whatever an order or damage reading revealed about `foe` while it was the one out
+ * there — `mostRecentCleanHit`/`mostRecentCleanOrder` are pair-scoped by ident, so asking
+ * only about whoever is active NOW loses that reveal the instant the witness leaves for
+ * good, even though nothing about `foe`'s item changed. `section.ts`'s `revealsAgainst` is
+ * the one caller: it tries each candidate in turn and keeps the first with anything to show.
+ */
+export function witnessesAgainst(battle: ClientBattle, foe: ClientPokemon): ClientPokemon[] {
+  const seen = new Set<string>();
+  const roster: ClientPokemon[] = [];
+  for (const s of battle.sides) {
+    if (s === foe.side) continue;
+    // `pokemon` is the whole roster, including one that has since left; `active` is the
+    // fallback for a client read too old or too incomplete to carry it — the currently
+    // active member is what a naive "who to ask" read would have used anyway.
+    for (const mon of [...(s.pokemon ?? []), ...s.active]) {
+      const key = mon && identKey(mon.ident);
+      if (!mon || !key || seen.has(key)) continue;
+      seen.add(key);
+      roster.push(mon);
+    }
+  }
+  const lastSeenAt = new Map<string, number>();
+  (battle.stepQueue ?? []).forEach((line, i) => {
+    const who = identKey(line.split('|')[2]);
+    if (who) lastSeenAt.set(who, i);
+  });
+  const seenAt = (mon: ClientPokemon): number => lastSeenAt.get(identKey(mon.ident) ?? '') ?? -1;
+  return [...roster].sort((a, b) => seenAt(b) - seenAt(a));
 }
 
 /**

@@ -219,7 +219,7 @@ export const scenarioDataItemAbilitySplit = {
  * The client's classes are untyped and cyclic, so the reconstruction casts through
  * `unknown` — the shapes match readState's structural interfaces.
  */
-export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; farStealthRock?: boolean; farSpikes?: number; tentacruelHpPercent?: number; tentacruelStatus?: string; foeDitto?: 'transformed' | 'plain'; foeEmboar?: boolean; foeGardevoir?: 'setup' | 'trick' | 'banded'; foeAmoonguss?: boolean; foeCharizardHpPercent?: number; foeGreninja?: 'unspent' | 'converted'; noivernBoosts?: Record<string, number>; foeMovedFirst?: boolean; ourZoroark?: boolean; tentacruelSubstitute?: 'fresh' | 'dented'; noivernSubstitute?: 'fresh' | 'dented'; tentacruelTookBoomburst?: number} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
+export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; farStealthRock?: boolean; farSpikes?: number; tentacruelHpPercent?: number; tentacruelStatus?: string; foeDitto?: 'transformed' | 'plain'; foeEmboar?: boolean; foeGardevoir?: 'setup' | 'trick' | 'banded'; foeAmoonguss?: boolean; foeCharizardHpPercent?: number; foeGreninja?: 'unspent' | 'converted'; noivernBoosts?: Record<string, number>; foeMovedFirst?: boolean; noivernFaintedReplacedBy?: string; ourZoroark?: boolean; tentacruelSubstitute?: 'fresh' | 'dented'; noivernSubstitute?: 'fresh' | 'dented'; tentacruelTookBoomburst?: number} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
   const sides: ClientSide[] = fixture.battle.sides.map((s, i) => {
     // Tailwind blows on OUR side (index 0) only — the asymmetry is the point: it must
     // double our speed and leave the foe's alone, whichever side a caller orients on.
@@ -290,6 +290,20 @@ export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?
       terastallized: '', ident: 'p1: Zoroark-Hisui', side: sides[0], moveTrack: [],
     };
     (sides[0]!.active as (ClientPokemon | null)[])[0] = zoroark as unknown as ClientPokemon;
+  }
+  // Noivern leaves the field FOR GOOD (fainted, per the stepQueue below) and a different
+  // teammate takes its place — the scenario `witnessesAgainst` exists for. A rule-out an
+  // earlier hit or order reading earned is a fact about the FOE, not about Noivern, so the
+  // roster keeps the ORIGINAL (possibly boosted) Noivern object findable even once it is
+  // nobody's `active` — exactly what the real client's own `side.pokemon` does.
+  if (over.noivernFaintedReplacedBy) {
+    const originalNoivern = sides[0]!.active[0]!;
+    const replacement = {
+      speciesForme: over.noivernFaintedReplacedBy, level: 84, hp: 300, maxhp: 300, status: '', boosts: {},
+      terastallized: '', ident: `p1: ${over.noivernFaintedReplacedBy}`, side: sides[0], moveTrack: [],
+    } as unknown as ClientPokemon;
+    (sides[0] as unknown as {pokemon: ClientPokemon[]}).pokemon = [originalNoivern, replacement];
+    (sides[0]!.active as (ClientPokemon | null)[])[0] = replacement;
   }
   // Swap the foe active for an Emboar that has shown Head Smash and no item yet. Its one
   // surviving role runs a Choice Band or a Choice Scarf, which is two speeds (157 and 235)
@@ -426,6 +440,15 @@ export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?
                   ? ['|move|p2a: Emboar|Head Smash|p1a: Noivern', '|move|p1a: Noivern|Draco Meteor|p2a: Emboar']
                   : ['|move|p1a: Noivern|Draco Meteor|p2a: Emboar', '|move|p2a: Emboar|Head Smash|p1a: Noivern']),
                 '|turn|2',
+                // Noivern faints for good and a teammate takes its place — the turn this
+                // reading has to survive, per `witnessesAgainst`.
+                ...(over.noivernFaintedReplacedBy
+                  ? [
+                      '|faint|p1a: Noivern',
+                      `|switch|p1a: ${over.noivernFaintedReplacedBy}|${over.noivernFaintedReplacedBy}, L84|300/300`,
+                      '|turn|3',
+                    ]
+                  : []),
               ]
             : []),
           // One clean hit of OUR Boomburst into Tentacruel, at full HP. Its magnitude is the

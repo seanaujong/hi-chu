@@ -96,6 +96,36 @@ describe('evaluateMoveFailure — the calc-derived facts movefails.ts needs', ()
     const defender = mon({speciesForme: 'Gumshoos'}); // pure Normal — immune to Ghost
     expect(evaluateMoveFailure(attacker, defender, 'Curse', 9)).toEqual({kind: 'type-immune', immuneType: 'Ghost'});
   });
+
+  it('says nothing for Dragon Dance, even against a Dragon-immune Fairy-type target', () => {
+    // Same shape as Curse's bug, on a move with no user-type conditional at all: Dragon Dance
+    // always self-targets (Attack/Speed up), but the calc's move data carries no `target`
+    // field for it either, so `dexMove.target` reads 'any' and a literal reading puts a
+    // Dragon-typed hit on the target — which Fairy blocks outright.
+    const attacker = mon({speciesForme: 'Garchomp'});
+    const defender = mon({speciesForme: 'Gardevoir'}); // Psychic/Fairy
+    expect(evaluateMoveFailure(attacker, defender, 'Dragon Dance', 9)).toBeNull();
+  });
+
+  it('says nothing for Calm Mind, even against a Psychic-immune Dark-type target', () => {
+    const attacker = mon({speciesForme: 'Clefable'});
+    const defender = mon({speciesForme: 'Umbreon'}); // Dark
+    expect(evaluateMoveFailure(attacker, defender, 'Calm Mind', 9)).toBeNull();
+  });
+
+  it('says nothing for Coil, even against a Poison-immune Steel-type target', () => {
+    const attacker = mon({speciesForme: 'Arbok'});
+    const defender = mon({speciesForme: 'Skarmory'}); // Steel
+    expect(evaluateMoveFailure(attacker, defender, 'Coil', 9)).toBeNull();
+  });
+
+  it('still reads the type chart for a genuinely opponent-directed status move of the same shape', () => {
+    // Toxic (id 'toxic') is a real neighbour of Toxic Spikes (id 'toxicspikes', which IS a
+    // field move and IS in the correction table) — proves the two don't collide.
+    const attacker = mon({speciesForme: 'Salazzle'});
+    const defender = mon({speciesForme: 'Skarmory'}); // Steel — immune to poison
+    expect(evaluateMoveFailure(attacker, defender, 'Toxic', 9)).toEqual({kind: 'type-immune', immuneType: 'Poison'});
+  });
 });
 
 describe('a species the calc dex does not know (a Champions-invented Mega)', () => {

@@ -87,6 +87,7 @@ describe('an escape hatch that switches the typechecker off carries a written ra
 const UNTESTED_BY_DESIGN: Readonly<Record<string, string>> = {
   'types.ts': 'shared vocabulary — types only, nothing to execute',
   'moves.ts': 'data tables — exercised end to end by damage.test.ts',
+  'movetargets.ts': 'a measured data table — exercised end to end by damage.test.ts',
   'facts.ts': 'tiny shared readings of LiveFacts — covered by resolve.test.ts',
   'narrow.ts': 'the evidence law — covered by resolve.test.ts',
   'calcinternals.ts':

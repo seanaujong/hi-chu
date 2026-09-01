@@ -1203,6 +1203,21 @@ describe('move order rules out a Choice Scarf, through the whole live pipeline',
     expect(theySecond).toContain('Head Smash</b> (168.6–198.5%)'); // Band only
   });
 
+  it('survives a KO’d ally’s own replacement landing BEFORE the next `|turn|` line', () => {
+    // github.com/seanaujong/hi-chu/issues/135: Typhlosion moved second against a live
+    // Cyclizar, ruling out its Choice Scarf — but the reporter’s own Pokémon fainted on
+    // that exact turn and its replacement arrived before the `|turn|` line that would have
+    // closed the reading. That's a different moment from "survives OUR OWN witness leaving"
+    // below, which replaces Noivern well AFTER the reading has already closed — this is the
+    // in-turn shape that was silently discarding the reading before it ever formed.
+    const {battle: b, active: a} = loadBattle({
+      foeEmboar: true, noivernBoosts: {spe: -1}, foeMovedFirst: false, noivernFaintedReplacedMidTurnBy: 'Corviknight',
+    });
+    const html = buildPokemonSection(b, a('Emboar'), dataWithEmboar);
+    expect(html).toContain('<small>Items:</small> Choice Band');
+    expect(html).not.toContain('Choice Scarf');
+  });
+
   it('survives OUR OWN witness leaving the field for good — the fact is about the FOE, not about Noivern', () => {
     // Noivern is what fought Emboar and forced the Scarf-only read, but Noivern then faints
     // and Corviknight takes its place. Corviknight has never exchanged a move with this

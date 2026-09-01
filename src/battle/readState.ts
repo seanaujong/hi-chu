@@ -1471,7 +1471,14 @@ export function mostRecentCleanOrder(
         found = undefined;
         stale = false;
       }
-      spoiled = true;
+      // Only a switch INSIDE this turn's resolution — before both of its moves are in — can
+      // change what the order even means (Pursuit trapping a switch mid-turn, say), so only
+      // that spoils the turn being built. Once both moves are already recorded, this turn's
+      // order is already decided; a replacement switch afterward is just a fainted ally's
+      // forced reshuffle and says nothing about it. Missing this let a KO'd ally's own
+      // replacement — landing between the KO and the next `|turn|` tag — silently erase the
+      // very order reading that KO turn had just produced.
+      if (moves.length < 2) spoiled = true;
     } else if (tag === '-activate') {
       spoiled = true; // Quick Claw, Quick Draw, Custap — an unearned bracket, always announced
     } else if (affectsSpeed(tag, parts, us, them)) {

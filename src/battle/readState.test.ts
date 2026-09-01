@@ -908,6 +908,18 @@ describe('mostRecentCleanOrder (who moved first, when that is safe to read)', ()
     expect(mostRecentCleanOrder(withLog(log), us, them)?.theyMovedFirst).toBe(true);
   });
 
+  it('survives US fainting and being replaced BEFORE the next `|turn|` tag', () => {
+    // A KO'd ally's forced replacement lands between the faint and the next `|turn|` line,
+    // not after it — the same turn's `moves` accumulator is still open when the switch is
+    // seen. That switch says nothing about the order this turn's two moves already settled,
+    // so it must not spoil the very reading that turn just produced (github.com/seanaujong/
+    // hi-chu/issues/135: a live Typhlosion moved second, proving no Choice Scarf, and this
+    // exact shape — the winner's own faint-and-replace landing inside the same turn — was
+    // silently discarding that reading).
+    const log = ['|turn|1', THEIRS, OURS, '|faint|p1a: Noivern', '|switch|p1a: Corviknight|Corviknight, M|100/100', '|turn|2'];
+    expect(mostRecentCleanOrder(withLog(log), us, them)?.theyMovedFirst).toBe(true);
+  });
+
   it('declines a move the dex cannot describe — an unknown bracket is not the 0 bracket', () => {
     const unknown = '|move|p2a: Gholdengo|Mystery Move|p1a: Noivern';
     expect(mostRecentCleanOrder(withLog(['|turn|1', unknown, OURS, '|turn|2']), us, them)).toBeUndefined();

@@ -243,6 +243,14 @@ export const PREVIEWS: readonly Preview[] = [
   ),
   pokemonHover(
     'Foe active',
+    'A KO’d ally’s own replacement doesn’t erase the reading',
+    'The same turn as above, but our Noivern also fainted on it and a teammate took its place before the next turn began — the shape of a real replay (issue #135). The reading survives the reshuffle: the aside still goes, the Items line still drops the Scarf, and the verdict still flips.',
+    {foeEmboar: true, noivernBoosts: {spe: -1}, foeMovedFirst: false, noivernFaintedReplacedMidTurnBy: 'Corviknight'},
+    'Emboar',
+    scenarioDataWithEmboar,
+  ),
+  pokemonHover(
+    'Foe active',
     'It set up, so it was never Choiced',
     'Gardevoir has clicked Calm Mind. Its one role pools Choice Scarf, Choice Specs and Life Orb, and the move narrows none of them away — but Showdown never BUILDS a Choice set around a status move, so the item is pinned to the Life Orb on the first click, where the Choice-lock rule would still be waiting for a second freely-chosen move.',
     {foeGardevoir: 'setup'},

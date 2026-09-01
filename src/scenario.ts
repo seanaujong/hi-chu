@@ -219,7 +219,7 @@ export const scenarioDataItemAbilitySplit = {
  * The client's classes are untyped and cyclic, so the reconstruction casts through
  * `unknown` — the shapes match readState's structural interfaces.
  */
-export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; farStealthRock?: boolean; farSpikes?: number; tentacruelHpPercent?: number; tentacruelStatus?: string; foeDitto?: 'transformed' | 'plain'; foeEmboar?: boolean; foeGardevoir?: 'setup' | 'trick' | 'banded'; foeAmoonguss?: boolean; foeCharizardHpPercent?: number; foeGreninja?: 'unspent' | 'converted'; noivernBoosts?: Record<string, number>; foeMovedFirst?: boolean; noivernFaintedReplacedBy?: string; ourZoroark?: boolean; tentacruelSubstitute?: 'fresh' | 'dented'; noivernSubstitute?: 'fresh' | 'dented'; tentacruelTookBoomburst?: number} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
+export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?: string; tentacruelPrevItem?: string; tentacruelBoosts?: Record<string, number>; tentacruelMoveTrack?: string[]; myNoivernItem?: string; myNoivernTera?: string; myNoivernMoves?: string[]; myPokemon?: readonly unknown[]; fullHp?: boolean; myNoivernHpPercent?: number; nearTailwind?: boolean; nearStealthRock?: boolean; nearSpikes?: number; farStealthRock?: boolean; farSpikes?: number; tentacruelHpPercent?: number; tentacruelStatus?: string; foeDitto?: 'transformed' | 'plain'; foeEmboar?: boolean; foeGardevoir?: 'setup' | 'trick' | 'banded'; foeAmoonguss?: boolean; foeCharizardHpPercent?: number; foeGreninja?: 'unspent' | 'converted'; noivernBoosts?: Record<string, number>; foeMovedFirst?: boolean; noivernFaintedReplacedBy?: string; noivernFaintedReplacedMidTurnBy?: string; ourZoroark?: boolean; tentacruelSubstitute?: 'fresh' | 'dented'; noivernSubstitute?: 'fresh' | 'dented'; tentacruelTookBoomburst?: number} = {}): {battle: ClientBattle; active: (name: string) => ClientPokemon} {
   const sides: ClientSide[] = fixture.battle.sides.map((s, i) => {
     // Tailwind blows on OUR side (index 0) only — the asymmetry is the point: it must
     // double our speed and leave the foe's alone, whichever side a caller orients on.
@@ -439,6 +439,17 @@ export function loadBattle(over: {noivernTerastallized?: string; tentacruelItem?
                 ...(over.foeMovedFirst
                   ? ['|move|p2a: Emboar|Head Smash|p1a: Noivern', '|move|p1a: Noivern|Draco Meteor|p2a: Emboar']
                   : ['|move|p1a: Noivern|Draco Meteor|p2a: Emboar', '|move|p2a: Emboar|Head Smash|p1a: Noivern']),
+                // Noivern faints for good and a teammate takes its place BEFORE the next
+                // `|turn|` line — a real replay's actual shape (github.com/seanaujong/
+                // hi-chu/issues/135), and a different moment from `noivernFaintedReplacedBy`
+                // below: the replacement lands while THIS turn's own moves are still the
+                // ones being read, not after that reading has already closed.
+                ...(over.noivernFaintedReplacedMidTurnBy
+                  ? [
+                      '|faint|p1a: Noivern',
+                      `|switch|p1a: ${over.noivernFaintedReplacedMidTurnBy}|${over.noivernFaintedReplacedMidTurnBy}, L84|300/300`,
+                    ]
+                  : []),
                 '|turn|2',
                 // Noivern faints for good and a teammate takes its place — the turn this
                 // reading has to survive, per `witnessesAgainst`.

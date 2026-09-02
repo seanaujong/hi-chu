@@ -889,8 +889,9 @@ function foeSwitchInDamage(
  * `showPokemonTooltip(null, serverPokemon)`. No mirror blocks either — they would
  * have to be derived from these PRIVATE facts (a leak into the their-read-on-you
  * view), and the native switch tooltip already shows your full real set above ours.
- * `server.item === ''` is a KNOWN empty slot (knocked off / consumed) — the resolved
- * item is forced to none rather than letting the resolver assume the set's back on.
+ * `server.item === ''` (a knocked-off/consumed item) reaches the resolver as an
+ * `itemGone` signal via `serverPokemonFacts`, the same as a public reveal — which is
+ * what lets Unburden arm here, not just the item drop out.
  */
 export function buildSwitchSection(battle: ClientBattle, server: ClientServerPokemon, data: RandbatsData | null): string {
   const target: HoverTarget = 'switch-menu'; // this surface IS one target — the client gives it its own renderer
@@ -911,8 +912,7 @@ export function buildSwitchSection(battle: ClientBattle, server: ClientServerPok
       if (!entry) return '';
       // The id-form item narrows the role fine (pools compare by id) and the damage layer
       // resolves it to the dex name for the calc — no pool mapping needed here.
-      const resolved = resolveMon(factsWithDex, entry);
-      const attacker = server.item === '' ? {...resolved, item: undefined} : resolved;
+      const attacker = resolveMon(factsWithDex, entry);
       // A benched mon's ⚡ line answers "if I send this in, do I outspeed?" — the whole
       // reason speed belongs on our side of the pair. Its item comes from the private
       // team (an id-form Choice Scarf; the damage layer resolves ids through the dex),
@@ -939,8 +939,8 @@ export function buildSwitchSection(battle: ClientBattle, server: ClientServerPok
     case 'open': {
       // The ServerPokemon already carries the real item/ability in `facts`; its exact
       // finals come from the request's stats table. An empty item string is a KNOWN
-      // empty slot — `serverPokemonFacts` leaves `item` unset and the minimal entry
-      // assumes nothing, so the gone item stays gone.
+      // empty slot — `serverPokemonFacts` resolves that to an `itemGone` reading, so
+      // the minimal entry assumes nothing and the gone item stays gone.
       const knownStats = serverStats(server);
       const attacker = resolveMon(
         {...factsWithDex, ...(knownStats ? {knownStats} : {})},

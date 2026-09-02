@@ -1657,6 +1657,15 @@ describe('serverPokemonFacts (a private ServerPokemon → LiveFacts, for the swi
     expect(serverPokemonFacts(server({details: ''}))).toBeUndefined();
     expect(serverPokemonFacts({ident: 'p1: ?'} as ClientServerPokemon)).toBeUndefined();
   });
+
+  it('reads an empty item string as a KNOWN empty slot, not merely unrevealed — the only way Unburden can arm for a switch candidate', () => {
+    const gone = serverPokemonFacts(server({item: ''}))!;
+    expect(gone.item).toBeUndefined();
+    expect(gone.prevItem).toBeDefined(); // itemGone reads presence, not the (unknown) name
+    const unrevealed = serverPokemonFacts(server({item: undefined}))!;
+    expect(unrevealed.item).toBeUndefined();
+    expect(unrevealed.prevItem).toBeUndefined();
+  });
 });
 
 describe('readTeraToggled (the move panel’s Terastallize checkbox)', () => {

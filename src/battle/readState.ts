@@ -179,7 +179,8 @@ function asGender(raw: string | undefined): 'M' | 'F' | 'N' | undefined {
 export interface BehaviorSignals {
   readonly landedDamagingHit?: boolean;
   readonly tookEntryHazardDamage?: boolean;
-  readonly switchedIntoStealthRockUnharmed?: boolean;
+  readonly switchedIntoUnavoidableHazardUnharmed?: boolean;
+  readonly switchedIntoSpikesUnharmed?: boolean;
   readonly usedDifferentMovesSinceSwitchIn?: boolean;
   readonly switchedInWithoutAnnouncingBalloon?: boolean;
   readonly endedTurnUnstatused?: boolean;
@@ -476,7 +477,8 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, spe
     revealedStatusMoves: signals.revealedStatusMoves ?? [],
     landedDamagingHit: signals.landedDamagingHit ?? false,
     tookEntryHazardDamage: signals.tookEntryHazardDamage ?? false,
-    switchedIntoStealthRockUnharmed: signals.switchedIntoStealthRockUnharmed ?? false,
+    switchedIntoUnavoidableHazardUnharmed: signals.switchedIntoUnavoidableHazardUnharmed ?? false,
+    switchedIntoSpikesUnharmed: signals.switchedIntoSpikesUnharmed ?? false,
     usedDifferentMovesSinceSwitchIn: signals.usedDifferentMovesSinceSwitchIn ?? false,
     switchedInWithoutAnnouncingBalloon: signals.switchedInWithoutAnnouncingBalloon ?? false,
     endedTurnUnstatused: signals.endedTurnUnstatused ?? false,
@@ -634,46 +636,79 @@ function sideOf(ident: string | undefined): string {
   return (ident ?? '').slice(0, 2);
 }
 
-/** A `-sidestart`/`-sideend` line naming Stealth Rock ("move: Stealth Rock" on start,
- *  "Stealth Rock" on end). */
-function isStealthRockSide(parts: readonly string[]): boolean {
-  return parts.some((p) => p === 'Stealth Rock' || p === 'move: Stealth Rock');
+// Stealth Rock and G-Max Steelsurge ignore grounding entirely — nothing is type-immune to
+// either, so only Heavy-Duty Boots or Magic Guard let a switch-in dodge them. Spikes is the
+// odd one out: it only hits a GROUNDED target, so a Flying-typed mon or a Levitate holder
+// dodges it too, with no Boots involved — the extra excuse `bootsRuledIn` has to apply only
+// for this one.
+const UNAVOIDABLE_HAZARDS = ['Stealth Rock', 'G-Max Steelsurge'];
+const GROUNDED_ONLY_HAZARDS = ['Spikes'];
+
+/** A `-sidestart`/`-sideend` line naming one of `hazards` ("move: Stealth Rock" on start,
+ *  "Stealth Rock" on end — the same shape for every hazard name). */
+function sideNamesOneOf(parts: readonly string[], hazards: readonly string[]): string | undefined {
+  return hazards.find((h) => parts.some((p) => p === h || p === `move: ${h}`));
 }
 
 /**
- * Did `mon` switch in while Stealth Rock was set on its OWN side, yet take no Stealth Rock
- * damage? That confirms Heavy-Duty Boots (once Magic Guard is excluded — see deductions.ts),
- * since nothing else lets a switch-in dodge Stealth Rock. Reads `stepQueue`: track the SR
- * side-condition, and on each of the mon's switch-ins into it, scan the switch-in resolution
- * (up to the next major action) for an SR `-damage` on the mon; its ABSENCE is the signal.
+ * Did `mon` switch into unharmed hazards on its OWN side, split by whether the hazard up at
+ * the time ignores grounding or requires it? Reads `stepQueue`: tracks each damaging hazard's
+ * own side-condition, and on each of the mon's switch-ins while any is up, scans the switch-in
+ * resolution (up to the next major action) for a hazard `-damage` on the mon — its ABSENCE is
+ * the signal, attributed to whichever category was active. A switch-in with BOTH categories up
+ * (e.g. Spikes and Stealth Rock together) counts as unavoidable-hazard evidence only: Stealth
+ * Rock alone already proves it, so the grounding-dependent reading would only ever repeat it.
  */
-export function switchedIntoStealthRockUnharmed(battle: ClientBattle, mon: ClientPokemon): boolean {
+function switchedIntoHazardsUnharmed(
+  battle: ClientBattle,
+  mon: ClientPokemon,
+): {unavoidable: boolean; spikesOnly: boolean} {
   const me = identKey(mon.ident);
-  if (!me) return false;
+  if (!me) return {unavoidable: false, spikesOnly: false};
   const mySide = sideOf(mon.ident);
   const lines = battle.stepQueue ?? [];
-  const srUp: Record<string, boolean> = {};
+  const up: Record<string, Set<string>> = {};
+  let unavoidable = false;
+  let spikesOnly = false;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (line === undefined) continue;
     const parts = line.split('|');
-    if (line.startsWith('|-sidestart|') && isStealthRockSide(parts)) srUp[sideOf(parts[2])] = true;
-    else if (line.startsWith('|-sideend|') && isStealthRockSide(parts)) srUp[sideOf(parts[2])] = false;
-    else if ((line.startsWith('|switch|') || line.startsWith('|drag|')) && identKey(parts[2]) === me && srUp[mySide]) {
-      let tookSr = false;
+    if (line.startsWith('|-sidestart|')) {
+      const hazard = sideNamesOneOf(parts, DAMAGING_HAZARDS);
+      if (hazard) (up[sideOf(parts[2])] ??= new Set()).add(hazard);
+    } else if (line.startsWith('|-sideend|')) {
+      const hazard = sideNamesOneOf(parts, DAMAGING_HAZARDS);
+      if (hazard) up[sideOf(parts[2])]?.delete(hazard);
+    } else if ((line.startsWith('|switch|') || line.startsWith('|drag|')) && identKey(parts[2]) === me) {
+      const active = up[mySide];
+      if (!active || active.size === 0) continue;
+      let tookHazardDamage = false;
       for (let j = i + 1; j < lines.length; j++) {
         const l = lines[j];
         if (l === undefined || /^\|(switch|drag|move|turn|upkeep)\|/.test(l)) break; // resolution done
         const p = l.split('|');
-        if (l.startsWith('|-damage|') && identKey(p[2]) === me && p.some((x) => x === '[from] Stealth Rock')) {
-          tookSr = true;
+        if (l.startsWith('|-damage|') && identKey(p[2]) === me && DAMAGING_HAZARDS.some((h) => p.includes(`[from] ${h}`))) {
+          tookHazardDamage = true;
           break;
         }
       }
-      if (!tookSr) return true; // came in through Stealth Rock unscathed
+      if (tookHazardDamage) continue;
+      if (UNAVOIDABLE_HAZARDS.some((h) => active.has(h))) unavoidable = true;
+      else if (GROUNDED_ONLY_HAZARDS.some((h) => active.has(h))) spikesOnly = true;
     }
   }
-  return false;
+  return {unavoidable, spikesOnly};
+}
+
+/** Heavy-Duty Boots' positive twin, split by which category confirmed it — see
+ *  `LiveFacts.switchedIntoUnavoidableHazardUnharmed`/`switchedIntoSpikesUnharmed`. */
+export function switchedIntoUnavoidableHazardUnharmed(battle: ClientBattle, mon: ClientPokemon): boolean {
+  return switchedIntoHazardsUnharmed(battle, mon).unavoidable;
+}
+
+export function switchedIntoSpikesUnharmed(battle: ClientBattle, mon: ClientPokemon): boolean {
+  return switchedIntoHazardsUnharmed(battle, mon).spikesOnly;
 }
 
 /** A `-fieldstart`/`-fieldend` line naming Magic Room, which suspends every held item. */
@@ -1152,6 +1187,47 @@ function changeTargetsPair(tag: string, parts: readonly string[], atk: string, d
   return who === atk || who === def;
 }
 
+// A move whose own power reads the TARGET's status — Hex and Venoshock double flatly, Wake-Up
+// Slap and Smelling Salts double against one status specifically. Every other move computes
+// the same damage whatever the DEFENDER is or isn't statused with (a burn only ever changes
+// the burned mon's OWN Attack, so it matters when it is the ATTACKER's status — never exempted
+// below). Measured against the move actually observed, never guessed.
+const DEFENDER_STATUS_DEPENDENT_MOVES = new Set(['hex', 'venoshock', 'wakeupslap', 'smellingsalts']);
+
+// Berries whose only effect is curing a status or restoring HP — never a damage or defense
+// multiplier, so one being eaten (or held) changes nothing a damage-magnitude comparison
+// reads. Deliberately a short, curated ALLOW-list rather than a guess at what's safe:
+// anything not named here (Eviolite, Assault Vest, a type-resist berry, Kee/Maranga Berry)
+// still stales the reading, since "never lie" means an unrecognised item might matter.
+const DAMAGE_IRRELEVANT_ITEMS = new Set([
+  'cheriberry', 'chestoberry', 'pechaberry', 'rawstberry', 'aspearberry', 'persimberry', 'lumberry',
+  'oranberry', 'sitrusberry', 'figyberry', 'wikiberry', 'magoberry', 'aguavberry', 'iapapaberry',
+]);
+
+/**
+ * Whether a `STATE_CHANGING_TAGS` line that targets the pair actually invalidates a damage
+ * reading — a narrower question than `changesState`/`changeTargetsPair` ask, and one only
+ * `-status`/`-curestatus`/`-item`/`-enditem` need answered, since those are the only tags in
+ * the set that can fire and then UNDO themselves (or fire on an item that was never going to
+ * matter) with nothing about the state actually different by the time a hover reads it. A
+ * Rest into a Chesto Berry cure is the worked example: the defender's status round-trips to
+ * exactly what it was, and the item it cost is one this list already knows changes no damage
+ * number — so neither line should cost the reading that came before it. Both refinements only
+ * NARROW what counts as stale, never widen it, so "never lie" still holds either way this
+ * comes out wrong: missing a real invalidation is unsafe, but so is discarding a reading that
+ * never actually went stale.
+ */
+function stalesReading(tag: string, parts: readonly string[], atk: string, def: string, move: string | null): boolean {
+  if (!changesState(tag, parts) || !changeTargetsPair(tag, parts, atk, def)) return false;
+  if (tag === '-status' || tag === '-curestatus') {
+    const who = identKey(parts[2]);
+    if (who === def && !DEFENDER_STATUS_DEPENDENT_MOVES.has(toId(move ?? ''))) return false;
+  } else if (tag === '-item' || tag === '-enditem') {
+    if (DAMAGE_IRRELEVANT_ITEMS.has(toId(parts[3] ?? ''))) return false;
+  }
+  return true;
+}
+
 /** One Pokémon's boosts, as the log has moved them so far. */
 type BoostTable = Partial<Record<StatID, number>>;
 
@@ -1227,7 +1303,12 @@ function hpToken(token: string | undefined): number | undefined {
  *     LOWER bound, not the exact figure a range check needs;
  *   - anything in `STATE_CHANGING_TAGS` occurring AFTER the hit, on EITHER side — past
  *     that point, current field/status/item/ability/forme facts no longer describe the
- *     state the hit happened under.
+ *     state the hit happened under. `stalesReading` narrows this by two exceptions that
+ *     can fire and then undo themselves with nothing actually different by the time a
+ *     hover reads it: a DEFENDER status change that isn't one of the few moves whose own
+ *     power reads it, and an item change involving a berry that only cures status or
+ *     restores HP (never a damage number) — a Rest into a Chesto Berry cure is the case
+ *     that motivated both.
  * Returns undefined rather than a guess whenever nothing qualifies — we would rather miss
  * a rule-out than manufacture a false one.
  *
@@ -1310,7 +1391,7 @@ export function mostRecentCleanHit(
       if (who && frac !== undefined) hp[who] = frac;
     } else if (REPLAYABLE_BOOST_TAGS.has(tag)) {
       applyBoostLine(boosts, tag, parts); // followed, not abstained from — see the docblock
-    } else if (changesState(tag, parts) && changeTargetsPair(tag, parts, atk, def)) {
+    } else if (stalesReading(tag, parts, atk, def, found?.move ?? null)) {
       if (found) stale = true;
     }
   }
@@ -1532,7 +1613,8 @@ export function readBehaviors(battle: ClientBattle, mon: ClientPokemon): Behavio
     revealedStatusMoves: revealedStatusMoves(battle, mon),
     landedDamagingHit: hasLandedDamagingHit(battle, mon),
     tookEntryHazardDamage: tookEntryHazardDamage(battle, mon),
-    switchedIntoStealthRockUnharmed: switchedIntoStealthRockUnharmed(battle, mon),
+    switchedIntoUnavoidableHazardUnharmed: switchedIntoUnavoidableHazardUnharmed(battle, mon),
+    switchedIntoSpikesUnharmed: switchedIntoSpikesUnharmed(battle, mon),
     usedDifferentMovesSinceSwitchIn: usedDifferentMovesSinceSwitchIn(battle, mon),
     switchedInWithoutAnnouncingBalloon: switchedInWithoutAnnouncingBalloon(battle, mon),
     endedTurnUnstatused: endedTurnUnstatused(battle, mon),
@@ -1712,7 +1794,8 @@ export function serverPokemonFacts(p: ClientServerPokemon, battle?: ClientBattle
     revealedStatusMoves: [],
     landedDamagingHit: false,
     tookEntryHazardDamage: false,
-    switchedIntoStealthRockUnharmed: false,
+    switchedIntoUnavoidableHazardUnharmed: false,
+    switchedIntoSpikesUnharmed: false,
     usedDifferentMovesSinceSwitchIn: battle ? usedDifferentMovesSinceSwitchIn(battle, {ident: p.ident}) : false,
     // Our own item comes straight off the private entry below, so no behavioural deduction
     // about it could ever speak — the same reason the Boots signals are hard-coded here.

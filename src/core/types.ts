@@ -180,14 +180,22 @@ export interface LiveFacts {
    */
   readonly tookEntryHazardDamage: boolean;
   /**
-   * True once the log shows this Pokémon switching in while Stealth Rock was set on its OWN
-   * side, yet taking no Stealth Rock damage. Only Heavy-Duty Boots and Magic Guard prevent
-   * that (nothing is type-immune to Stealth Rock), so it CONFIRMS Boots — the positive twin
-   * of `tookEntryHazardDamage` — once Magic Guard is excluded (done downstream against the
-   * role's abilities). Keyed on Stealth Rock alone: grounded hazards have type/airborne
-   * immunities that would muddy the read.
+   * True once the log shows this Pokémon switching in while Stealth Rock or G-Max Steelsurge
+   * was set on its OWN side, yet taking no damage from either. Neither cares whether the
+   * target is grounded — nothing but Heavy-Duty Boots or Magic Guard dodges them — so this
+   * CONFIRMS Boots outright once Magic Guard is excluded (done downstream against the role's
+   * abilities), the positive twin of `tookEntryHazardDamage`.
    */
-  readonly switchedIntoStealthRockUnharmed: boolean;
+  readonly switchedIntoUnavoidableHazardUnharmed: boolean;
+  /**
+   * True once the log shows this Pokémon switching in while Spikes (and neither Stealth Rock
+   * nor G-Max Steelsurge) was set on its OWN side, yet taking no Spikes damage. Spikes ONLY
+   * hits a grounded target, so this is Heavy-Duty Boots' positive twin with an extra excuse a
+   * ground-independent hazard doesn't need: a naturally airborne mon (Flying-typed, or
+   * Levitate) dodges it with no Boots involved. Confirms Boots only once Magic Guard AND that
+   * airborne-ness are both excluded (done downstream, against the role's types/abilities).
+   */
+  readonly switchedIntoSpikesUnharmed: boolean;
   /**
    * True once the log shows this Pokémon FREELY selecting two different moves during a
    * single stint on the field. A Choice item locks its holder into one move until it

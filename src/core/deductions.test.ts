@@ -45,21 +45,62 @@ describe('Heavy-Duty Boots rule-out (took hazard damage ⇒ not holding them)', 
   });
 });
 
-describe('Heavy-Duty Boots rule-in (dodged Stealth Rock ⇒ holding them)', () => {
+describe('Heavy-Duty Boots rule-in — unavoidable hazards (Stealth Rock / G-Max Steelsurge)', () => {
   const pool = ['Heavy-Duty Boots', 'Leftovers'];
 
-  it('pins the pool to Boots when the mon switched into Stealth Rock unharmed', () => {
-    const facts = liveFacts({switchedIntoStealthRockUnharmed: true, baseAbility: 'Overgrow'});
+  it('pins the pool to Boots when the mon switched into one unharmed', () => {
+    const facts = liveFacts({switchedIntoUnavoidableHazardUnharmed: true, baseAbility: 'Overgrow'});
     expect(survivingItems(['Overgrow'], pool, facts)).toEqual(['Heavy-Duty Boots']);
   });
 
-  it('never lies: does not pin while the ability is hidden and could be Magic Guard', () => {
-    const facts = liveFacts({switchedIntoStealthRockUnharmed: true}); // ability unknown
-    expect(survivingItems(['Magic Guard', 'Overgrow'], pool, facts)).toEqual(pool);
+  it('never lies: does not pin while the ability is hidden and could be Magic Guard — a Reuniclus (Overcoat / Magic Guard) is exactly this pool', () => {
+    const facts = liveFacts({switchedIntoUnavoidableHazardUnharmed: true}); // ability unknown
+    expect(survivingItems(['Overcoat', 'Magic Guard'], pool, facts)).toEqual(pool);
+  });
+
+  it('pins once Magic Guard is excluded by a known non-Magic-Guard ability — a Reuniclus that revealed Overcoat', () => {
+    const facts = liveFacts({switchedIntoUnavoidableHazardUnharmed: true, baseAbility: 'Overcoat'});
+    expect(survivingItems(['Overcoat', 'Magic Guard'], pool, facts)).toEqual(['Heavy-Duty Boots']);
   });
 
   it('does not pin once an item is already revealed', () => {
-    const facts = liveFacts({switchedIntoStealthRockUnharmed: true, baseAbility: 'Overgrow', item: 'Leftovers'});
+    const facts = liveFacts({switchedIntoUnavoidableHazardUnharmed: true, baseAbility: 'Overgrow', item: 'Leftovers'});
+    expect(survivingItems(['Overgrow'], pool, facts)).toEqual(pool);
+  });
+});
+
+describe('Heavy-Duty Boots rule-in — Spikes only (needs grounding excluded too)', () => {
+  const pool = ['Heavy-Duty Boots', 'Leftovers'];
+  const groundedTypes = {baseStats: {hp: 1, atk: 1, def: 1, spa: 1, spd: 1, spe: 1}, types: ['Rock', 'Bug']};
+  const flyingTypes = {baseStats: {hp: 1, atk: 1, def: 1, spa: 1, spd: 1, spe: 1}, types: ['Flying']};
+
+  it('pins the pool to Boots for a grounded mon with a known non-excusing ability — the Kleavor/Spikes case', () => {
+    const facts = liveFacts({switchedIntoSpikesUnharmed: true, baseAbility: 'Sheer Force', speciesData: groundedTypes});
+    expect(survivingItems(['Swarm', 'Sheer Force'], pool, facts)).toEqual(['Heavy-Duty Boots']);
+  });
+
+  it('never lies: does not pin while the ability is hidden and could be Levitate — a Magic-Guard-or-Levitate pool such as Reuniclus does not apply here (it has neither), but a Bronzong (Levitate / Heatproof) does', () => {
+    const facts = liveFacts({switchedIntoSpikesUnharmed: true, speciesData: groundedTypes}); // ability unknown
+    expect(survivingItems(['Levitate', 'Heatproof'], pool, facts)).toEqual(pool);
+  });
+
+  it('never lies: does not pin while the ability is hidden and could be Magic Guard either — same excuse as the unavoidable-hazard path', () => {
+    const facts = liveFacts({switchedIntoSpikesUnharmed: true, speciesData: groundedTypes}); // ability unknown
+    expect(survivingItems(['Overcoat', 'Magic Guard'], pool, facts)).toEqual(pool);
+  });
+
+  it('never lies: does not pin a Flying-typed mon, even with a known non-excusing ability — Flying dodges Spikes with no Boots involved', () => {
+    const facts = liveFacts({switchedIntoSpikesUnharmed: true, baseAbility: 'Overgrow', speciesData: flyingTypes});
+    expect(survivingItems(['Overgrow'], pool, facts)).toEqual(pool);
+  });
+
+  it('never lies: does not pin when the mon\'s types are unknown', () => {
+    const facts = liveFacts({switchedIntoSpikesUnharmed: true, baseAbility: 'Overgrow'}); // no speciesData
+    expect(survivingItems(['Overgrow'], pool, facts)).toEqual(pool);
+  });
+
+  it('does not pin once an item is already revealed', () => {
+    const facts = liveFacts({switchedIntoSpikesUnharmed: true, baseAbility: 'Overgrow', speciesData: groundedTypes, item: 'Leftovers'});
     expect(survivingItems(['Overgrow'], pool, facts)).toEqual(pool);
   });
 });

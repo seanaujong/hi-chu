@@ -39,7 +39,7 @@ describe('evidence beyond moves narrows the role', () => {
   it('switching into Stealth Rock unharmed CONFIRMS Heavy-Duty Boots', () => {
     // Nothing but Boots (or Magic Guard) dodges Stealth Rock; Noivern can't run Magic Guard,
     // so this pins the Boots set and drops the Choice Specs one.
-    expect(names(inferSets(noivernFacts({switchedIntoStealthRockUnharmed: true}), NOIVERN))).toEqual(['Fast Support']);
+    expect(names(inferSets(noivernFacts({switchedIntoUnavoidableHazardUnharmed: true}), NOIVERN))).toEqual(['Fast Support']);
   });
 });
 

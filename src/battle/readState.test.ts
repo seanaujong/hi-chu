@@ -17,7 +17,8 @@ import {
   mostRecentCleanHit,
   timesAttacked,
   tookEntryHazardDamage,
-  switchedIntoStealthRockUnharmed,
+  switchedIntoUnavoidableHazardUnharmed,
+  switchedIntoSpikesUnharmed,
   usedDifferentMovesSinceSwitchIn,
   mostRecentCleanOrder,
   switchedInWithoutAnnouncingBalloon,
@@ -525,11 +526,40 @@ describe('mostRecentCleanHit (an observed hit’s MAGNITUDE reveals an item)', (
     });
   });
 
-  it('goes stale once weather/status/item changes afterward, on EITHER side', () => {
+  it('goes stale once weather changes afterward, or the ATTACKER is statused, or a damage-relevant item changes', () => {
     const hit = ['|move|p2a: Weavile|Icicle Crash|p1a: Skarmory', '|-damage|p1a: Skarmory|60/100'];
     expect(mostRecentCleanHit(withLog([...hit, '|-weather|Sandstorm']), attacker, defender)).toBeUndefined();
-    expect(mostRecentCleanHit(withLog([...hit, '|-status|p1a: Skarmory|brn']), attacker, defender)).toBeUndefined();
+    // The ATTACKER's own status always matters (burn halves ITS Attack) — never exempted.
+    expect(mostRecentCleanHit(withLog([...hit, '|-status|p2a: Weavile|brn']), attacker, defender)).toBeUndefined();
+    // Life Orb is not a status/HP berry, so losing it is still a real damage-relevant change.
     expect(mostRecentCleanHit(withLog([...hit, '|-enditem|p2a: Weavile|Life Orb']), attacker, defender)).toBeUndefined();
+  });
+
+  it('does NOT go stale on a DEFENDER status change unless the observed move reads the target’s status', () => {
+    // Icicle Crash's damage does not depend on what Skarmory is or isn't statused with, so a
+    // burn landing on the DEFENDER afterward is not evidence this reading has gone stale.
+    const hit = ['|move|p2a: Weavile|Icicle Crash|p1a: Skarmory', '|-damage|p1a: Skarmory|60/100'];
+    const expected = {move: 'Icicle Crash', damageFraction: 0.4, attackerBoosts: {}, defenderBoosts: {}, attackerHpPercent: 1, defenderHpPercent: 1};
+    expect(mostRecentCleanHit(withLog([...hit, '|-status|p1a: Skarmory|brn']), attacker, defender)).toEqual(expected);
+    expect(mostRecentCleanHit(withLog([...hit, '|-curestatus|p1a: Skarmory|brn']), attacker, defender)).toEqual(expected);
+  });
+
+  it('still goes stale on a DEFENDER status change when the observed move reads the target’s status (Hex, Venoshock, Wake-Up Slap, Smelling Salts)', () => {
+    const hexHit = ['|move|p2a: Weavile|Hex|p1a: Skarmory', '|-damage|p1a: Skarmory|60/100'];
+    expect(mostRecentCleanHit(withLog([...hexHit, '|-status|p1a: Skarmory|brn']), attacker, defender)).toBeUndefined();
+  });
+
+  it('does NOT go stale when the item involved only cures status or restores HP — issue #141, Regirock’s Rest into a Chesto Berry cure', () => {
+    const hit = ['|move|p2a: Weavile|Icicle Crash|p1a: Skarmory', '|-damage|p1a: Skarmory|60/100'];
+    const expected = {move: 'Icicle Crash', damageFraction: 0.4, attackerBoosts: {}, defenderBoosts: {}, attackerHpPercent: 1, defenderHpPercent: 1};
+    const restCure = [
+      '|-status|p1a: Skarmory|slp',
+      '|-enditem|p1a: Skarmory|Chesto Berry|[eat]',
+      '|-curestatus|p1a: Skarmory|slp|[msg]',
+    ];
+    expect(mostRecentCleanHit(withLog([...hit, ...restCure]), attacker, defender)).toEqual(expected);
+    // A defensive item, however, is never on the allow-list and still stales the reading.
+    expect(mostRecentCleanHit(withLog([...hit, '|-item|p1a: Skarmory|Eviolite']), attacker, defender)).toBeUndefined();
   });
 
   it('survives a status/item/ability change on an UNRELATED Pok\u00e9mon \u2014 the pair is what matters, not the whole field', () => {
@@ -773,33 +803,79 @@ describe('tookEntryHazardDamage (rules out Heavy-Duty Boots)', () => {
   });
 });
 
-describe('switchedIntoStealthRockUnharmed (confirms Heavy-Duty Boots)', () => {
+describe('switchedIntoUnavoidableHazardUnharmed (confirms Heavy-Duty Boots — Stealth Rock / G-Max Steelsurge)', () => {
   const withLog = (stepQueue: string[]): ClientBattle =>
     ({gen: 9, tier: '[Gen 9] Random Battle', sides: [], stepQueue} as unknown as ClientBattle);
   const corv = clientMon({ident: 'p2: Corviknight'});
   const SR = '|-sidestart|p2: Player|move: Stealth Rock';
+  const STEELSURGE = '|-sidestart|p2: Player|G-Max Steelsurge';
 
   it('is true when the mon switches into its side’s Stealth Rock and takes no damage', () => {
-    expect(switchedIntoStealthRockUnharmed(withLog([SR, '|switch|p2a: Corviknight|Corviknight, M|100/100', '|turn|3']), corv)).toBe(true);
+    expect(switchedIntoUnavoidableHazardUnharmed(withLog([SR, '|switch|p2a: Corviknight|Corviknight, M|100/100', '|turn|3']), corv)).toBe(true);
+  });
+
+  it('is true when the mon switches into its side’s G-Max Steelsurge and takes no damage', () => {
+    expect(switchedIntoUnavoidableHazardUnharmed(withLog([STEELSURGE, '|switch|p2a: Corviknight|Corviknight, M|100/100', '|turn|3']), corv)).toBe(true);
   });
 
   it('is false when it took Stealth Rock damage on the way in', () => {
     const log = [SR, '|switch|p2a: Corviknight|Corviknight, M|100/100', '|-damage|p2a: Corviknight|88/100|[from] Stealth Rock'];
-    expect(switchedIntoStealthRockUnharmed(withLog(log), corv)).toBe(false);
+    expect(switchedIntoUnavoidableHazardUnharmed(withLog(log), corv)).toBe(false);
   });
 
-  it('is false when no Stealth Rock was set on its side', () => {
-    expect(switchedIntoStealthRockUnharmed(withLog(['|switch|p2a: Corviknight|Corviknight, M|100/100', '|turn|3']), corv)).toBe(false);
+  it('is false when no unavoidable hazard was set on its side', () => {
+    expect(switchedIntoUnavoidableHazardUnharmed(withLog(['|switch|p2a: Corviknight|Corviknight, M|100/100', '|turn|3']), corv)).toBe(false);
+  });
+
+  it('is false when only Spikes was up, not Stealth Rock or Steelsurge (that is the Spikes-only reading below)', () => {
+    const log = ['|-sidestart|p2: Player|Spikes', '|switch|p2a: Corviknight|Corviknight, M|100/100', '|turn|3'];
+    expect(switchedIntoUnavoidableHazardUnharmed(withLog(log), corv)).toBe(false);
+  });
+
+  it('is true when Spikes AND Stealth Rock are both up — Stealth Rock alone already proves it', () => {
+    const log = ['|-sidestart|p2: Player|Spikes', SR, '|switch|p2a: Corviknight|Corviknight, M|100/100', '|turn|3'];
+    expect(switchedIntoUnavoidableHazardUnharmed(withLog(log), corv)).toBe(true);
   });
 
   it('does not count Stealth Rock on the OTHER side', () => {
     const log = ['|-sidestart|p1: Player|move: Stealth Rock', '|switch|p2a: Corviknight|Corviknight, M|100/100', '|turn|3'];
-    expect(switchedIntoStealthRockUnharmed(withLog(log), corv)).toBe(false);
+    expect(switchedIntoUnavoidableHazardUnharmed(withLog(log), corv)).toBe(false);
   });
 
   it('respects Stealth Rock being spun/Defogged away before the switch', () => {
     const log = [SR, '|-sideend|p2: Player|Stealth Rock|[from] move: Rapid Spin', '|switch|p2a: Corviknight|Corviknight, M|100/100', '|turn|3'];
-    expect(switchedIntoStealthRockUnharmed(withLog(log), corv)).toBe(false);
+    expect(switchedIntoUnavoidableHazardUnharmed(withLog(log), corv)).toBe(false);
+  });
+});
+
+describe('switchedIntoSpikesUnharmed (confirms Heavy-Duty Boots once grounding is excluded — issue #140, Kleavor)', () => {
+  const withLog = (stepQueue: string[]): ClientBattle =>
+    ({gen: 9, tier: '[Gen 9] Random Battle', sides: [], stepQueue} as unknown as ClientBattle);
+  const kleavor = clientMon({ident: 'p1: Kleavor'});
+  const SPIKES = '|-sidestart|p1: Player|Spikes';
+
+  it('is true when the mon switches into 3 layers of its side’s Spikes and takes no damage — the reported replay', () => {
+    const log = [SPIKES, SPIKES, SPIKES, '|switch|p1a: Kleavor|Kleavor, L78, F|47/237 par', '|move|p2a: Skeledirge|Torch Song|p1a: Kleavor'];
+    expect(switchedIntoSpikesUnharmed(withLog(log), kleavor)).toBe(true);
+  });
+
+  it('is false when it took Spikes damage on the way in', () => {
+    const log = [SPIKES, '|switch|p1a: Kleavor|Kleavor, L78, F|100/237', '|-damage|p1a: Kleavor|205/237|[from] Spikes'];
+    expect(switchedIntoSpikesUnharmed(withLog(log), kleavor)).toBe(false);
+  });
+
+  it('is false when no Spikes were set on its side', () => {
+    expect(switchedIntoSpikesUnharmed(withLog(['|switch|p1a: Kleavor|Kleavor, L78, F|100/237', '|turn|3']), kleavor)).toBe(false);
+  });
+
+  it('is false when Stealth Rock is also up — that is the unavoidable-hazard reading above, not this one', () => {
+    const log = [SPIKES, '|-sidestart|p1: Player|move: Stealth Rock', '|switch|p1a: Kleavor|Kleavor, L78, F|100/237', '|turn|3'];
+    expect(switchedIntoSpikesUnharmed(withLog(log), kleavor)).toBe(false);
+  });
+
+  it('does not count Spikes on the OTHER side', () => {
+    const log = ['|-sidestart|p2: Player|Spikes', '|switch|p1a: Kleavor|Kleavor, L78, F|100/237', '|turn|3'];
+    expect(switchedIntoSpikesUnharmed(withLog(log), kleavor)).toBe(false);
   });
 });
 

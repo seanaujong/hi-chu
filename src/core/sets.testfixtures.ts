@@ -17,7 +17,8 @@ export function liveFacts(over: Partial<LiveFacts> = {}): LiveFacts {
     revealedStatusMoves: [],
     landedDamagingHit: false,
     tookEntryHazardDamage: false,
-    switchedIntoStealthRockUnharmed: false,
+    switchedIntoUnavoidableHazardUnharmed: false,
+    switchedIntoSpikesUnharmed: false,
     usedDifferentMovesSinceSwitchIn: false,
     switchedInWithoutAnnouncingBalloon: false,
     endedTurnUnstatused: false,
@@ -130,7 +131,7 @@ export const GUARD_MON: RandbatsEntry = {
   },
 };
 export const guardFacts = (over: Partial<LiveFacts> = {}): LiveFacts =>
-  liveFacts({speciesForme: 'Guardmon', revealedMoves: ['Leaf Storm'], switchedIntoStealthRockUnharmed: true, ...over});
+  liveFacts({speciesForme: 'Guardmon', revealedMoves: ['Leaf Storm'], switchedIntoUnavoidableHazardUnharmed: true, ...over});
 
 // A [Gen 9] Champions Mega set, verbatim from the feed's "Meganium-Mega" entry. The live
 // client reports its ability as "Mega Sol" (a Champions custom name) while the feed lists

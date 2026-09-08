@@ -82,17 +82,31 @@ function bootsRuledOut(facts: LiveFacts): boolean {
   return facts.tookEntryHazardDamage && itemStillHidden(facts);
 }
 
+// The excuse a ground-independent hazard (Stealth Rock, G-Max Steelsurge) leaves: nothing
+// but Boots or Magic Guard dodges either, so Magic Guard is the only thing to exclude.
+const UNAVOIDABLE_HAZARD_EXCUSES = new Set(['magicguard']);
+// Spikes only hits a GROUNDED target, so an unharmed switch-in through it leaves a second
+// excuse a ground-independent hazard never needs: Levitate lifts its holder off the ground
+// as surely as Boots would have. (The type half of that same excuse — a Flying-typed
+// mon — is judged separately below, since it isn't an ability.)
+const SPIKES_EXCUSES = new Set(['magicguard', 'levitate']);
+
 /**
- * Heavy-Duty Boots' positive twin: switching into Stealth Rock and taking none CONFIRMS
- * Boots, since nothing but Boots or Magic Guard lets a switch-in dodge it. So we pin the
- * item — UNLESS Magic Guard is (or could still be) the ability. "Never lie": a hidden
- * ability that could be Magic Guard leaves it unconfirmed.
+ * Heavy-Duty Boots' positive twin: switching into hazards and taking none CONFIRMS Boots —
+ * UNLESS something else could have let the switch-in dodge them just as well. Stealth Rock
+ * and G-Max Steelsurge leave only Magic Guard as that excuse; Spikes, which only hits a
+ * grounded target, leaves Levitate too, and a Flying type besides (checked directly against
+ * this mon's own types, never a role's, since typing isn't a randbats set-to-set variable).
+ * "Never lie": a hidden ability that could still be the excuse, or types we can't read at
+ * all, leave it unconfirmed rather than risk pinning the wrong item.
  */
 function bootsRuledIn(facts: LiveFacts, roleAbilities: readonly string[]): boolean {
-  if (!facts.switchedIntoStealthRockUnharmed || !itemStillHidden(facts)) return false;
-  const known = facts.baseAbility ?? facts.ability;
-  if (known !== undefined) return toId(known) !== 'magicguard';
-  return !roleAbilities.some((a) => toId(a) === 'magicguard');
+  if (!itemStillHidden(facts)) return false;
+  if (facts.switchedIntoUnavoidableHazardUnharmed) return noExcuse(facts, roleAbilities, UNAVOIDABLE_HAZARD_EXCUSES);
+  if (!facts.switchedIntoSpikesUnharmed) return false;
+  const types = facts.liveTypes ?? facts.speciesData?.types;
+  if (types === undefined || types.includes('Flying')) return false;
+  return noExcuse(facts, roleAbilities, SPIKES_EXCUSES);
 }
 
 /**

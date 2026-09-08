@@ -1731,6 +1731,14 @@ export function serverPokemonFacts(p: ClientServerPokemon, battle?: ClientBattle
     ...(ability ? {ability} : {}),
     ...(baseAbility ? {baseAbility} : {}),
     ...(p.item ? {item: p.item} : {}),
+    // `p.item === ''` is the server's own positive signal that the item is GONE (knocked
+    // off/consumed), not merely unrevealed — `resolve.ts`'s `itemGone` reads that off
+    // `prevItem` being set, same as a public reveal, even though we don't know the name
+    // of what was lost. Without this, a switch candidate that has already burned Unburden's
+    // triggering item resolves as though it were still holding one — silently disarming
+    // Unburden's ×2 Speed for exactly the surface it matters most on, a benched mon's
+    // "do I outspeed if I send this in?" verdict.
+    ...(p.item === '' ? {prevItem: ''} : {}),
     ...(gender ? {gender} : {}),
   };
 }

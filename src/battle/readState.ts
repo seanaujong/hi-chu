@@ -1398,13 +1398,26 @@ export function mostRecentCleanHit(
   return stale ? undefined : found;
 }
 
+/** Items whose presence changes a Speed STAT (Choice Scarf, Iron Ball) or, for the one
+ *  Pokémon that can hold it, doubles it outright (Quick Powder on a Ditto still carrying its
+ *  own species' typing). A short, curated ALLOW-list in the same spirit as
+ *  `DAMAGE_IRRELEVANT_ITEMS` — except inverted, because here the rare case is the one that
+ *  matters: almost no item touches Speed at all, so treating absence from this list as
+ *  "irrelevant" misses far less than treating every item change as relevant would cost. */
+const SPEED_RELEVANT_ITEMS: ReadonlySet<string> = new Set(['choicescarf', 'ironball', 'quickpowder']);
+
 /**
- * A `-boost`-family / `-sidestart`-family line that could move somebody's SPEED, judged by
- * what the line itself names. Every other tag in `STATE_CHANGING_TAGS` is treated as
- * speed-relevant wholesale (a status can be paralysis, an item can be a Scarf, a field can
- * be Trick Room); these two are singled out because the protocol says which stat and which
- * condition, and taking them wholesale would throw away most of a real battle. Stealth Rock
- * going up and an Attack drop are the common cases, and neither moves anybody's Speed.
+ * A `-boost`-family / `-sidestart`-family / `-status`-family / `-item`-family line that could
+ * move somebody's SPEED, judged by what the line itself names. Every other tag in
+ * `STATE_CHANGING_TAGS` is still treated as speed-relevant wholesale (a field can be Trick
+ * Room, an ability can be Unburden arming); these four are singled out because the protocol
+ * (or a short, measured item list) says which stat, which status, and which item, and taking
+ * any of them wholesale would throw away most of a real battle. Stealth Rock going up and an
+ * Attack drop are the common `-boost`/`-sidestart` cases; a Knock Off removing a non-Scarf
+ * item, and a damaging move inflicting poison or burn, are the common `-item`/`-status` ones
+ * — and unlike a stray Attack drop, these two are the everyday SHAPE of the very turn this
+ * reading exists to catch (an attacking move revealing order), so leaving them wholesale cost
+ * the reading almost every turn whose attacker held anything but a status move.
  *
  * Scoped to the observed pair the same way `changeTargetsPair` scopes `mostRecentCleanHit` —
  * a Speed boost or status change on some THIRD Pokémon (a doubles ally, the foe's other bench
@@ -1426,6 +1439,19 @@ function affectsSpeed(tag: string, parts: readonly string[], us: string, them: s
   if (tag === '-start' || tag === '-end') {
     const what = toId(parts[3] ?? '');
     if (!(what.startsWith('quarkdrive') || what.startsWith('protosynthesis') || what === 'slowstart')) return false;
+    const who = identKey(parts[2]);
+    return who === us || who === them;
+  }
+  // Paralysis is the only status that touches Speed at all — a burn, a poison, a sleep or a
+  // freeze changes nothing this reading compares, and a damaging move inflicting one of them
+  // is the ordinary shape of the very turn being read.
+  if (tag === '-status' || tag === '-curestatus') {
+    if (toId(parts[3] ?? '') !== 'par') return false;
+    const who = identKey(parts[2]);
+    return who === us || who === them;
+  }
+  if (tag === '-item' || tag === '-enditem') {
+    if (!SPEED_RELEVANT_ITEMS.has(toId(parts[3] ?? ''))) return false;
     const who = identKey(parts[2]);
     return who === us || who === them;
   }

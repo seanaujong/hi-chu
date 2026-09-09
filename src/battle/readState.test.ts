@@ -1019,6 +1019,37 @@ describe('mostRecentCleanOrder (who moved first, when that is safe to read)', ()
     const tailwind = ['|turn|1', THEIRS, OURS, '|turn|2', '|-sidestart|p2: Foe|move: Tailwind'];
     expect(mostRecentCleanOrder(withLog(tailwind), us, them)).toBeUndefined();
   });
+
+  it('reads a Knock Off turn — the item it removes and the status it inflicts are the ordinary shape of the very turn being read', () => {
+    // A damaging move commonly does something else as a side effect of ITS OWN resolution —
+    // Knock Off removes an item, plenty of moves inflict a status — and that happens on the
+    // SAME turn whose order this reading wants, not a later one. Treating every item/status
+    // change wholesale (the pre-fix behaviour) made this turn spoil itself: the very Knock
+    // Off that established the order also disqualified reading it, for a Rocky Helmet that
+    // never touched Speed at all. Watched failing before the `-status`/`-item` narrowing in
+    // `affectsSpeed` landed.
+    const knockOffTurn = [
+      '|turn|1',
+      '|move|p2a: Gholdengo|Shadow Ball|p1a: Noivern',
+      '|-enditem|p1a: Noivern|Rocky Helmet|[from] move: Knock Off|[of] p2a: Gholdengo',
+      OURS,
+      '|-status|p2a: Gholdengo|brn',
+      '|turn|2',
+    ];
+    expect(mostRecentCleanOrder(withLog(knockOffTurn), us, them)?.theyMovedFirst).toBe(true);
+  });
+
+  it('still declines when the item or status IS Speed-relevant', () => {
+    // The narrowing above must not overreach into the handful of cases that genuinely bear
+    // on Speed: a Choice Scarf leaving (or arriving) changes the very stat this reading
+    // compares, and paralysis is the one status that does.
+    const scarfLost = ['|turn|1', THEIRS, OURS, '|turn|2', '|-enditem|p2a: Gholdengo|Choice Scarf'];
+    expect(mostRecentCleanOrder(withLog(scarfLost), us, them)).toBeUndefined();
+    const ironBallGained = ['|turn|1', THEIRS, OURS, '|turn|2', '|-item|p1a: Noivern|Iron Ball'];
+    expect(mostRecentCleanOrder(withLog(ironBallGained), us, them)).toBeUndefined();
+    const paralyzed = ['|turn|1', THEIRS, OURS, '|turn|2', '|-status|p2a: Gholdengo|par'];
+    expect(mostRecentCleanOrder(withLog(paralyzed), us, them)).toBeUndefined();
+  });
 });
 
 describe('proteanAlreadyFired (gen 9 fires Protean/Libero once per switch-in)', () => {

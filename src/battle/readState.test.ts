@@ -8,6 +8,7 @@ import {
   readRoosting,
   readParadoxBoost,
   readCharged,
+  readMagnetRise,
   proteanAlreadyFired,
   readTransformTarget,
   readSpeciesData,
@@ -198,6 +199,14 @@ describe('toLiveFacts', () => {
     expect(readCharged(clientMon({volatiles: {}}))).toBe(false);
     expect(toLiveFacts(clientMon({volatiles: {charge: ['charge']}})).charged).toBe(true);
     expect(toLiveFacts(clientMon()).charged).toBeUndefined();
+  });
+
+  it('reads Magnet Rise as bare presence, the same shape as Charge', () => {
+    expect(readMagnetRise(clientMon({volatiles: {magnetrise: ['magnetrise']}}))).toBe(true);
+    expect(readMagnetRise(clientMon())).toBe(false);
+    expect(readMagnetRise(clientMon({volatiles: {}}))).toBe(false);
+    expect(toLiveFacts(clientMon({volatiles: {magnetrise: ['magnetrise']}})).magnetRise).toBe(true);
+    expect(toLiveFacts(clientMon()).magnetRise).toBeUndefined();
   });
 
   it('reads the Transform target straight out of the volatile', () => {

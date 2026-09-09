@@ -347,6 +347,16 @@ export function readCharged(p: ClientPokemon): boolean {
 }
 
 /**
+ * True while Magnet Rise has this Pokémon off the ground — the same presence-or-absence
+ * shape as `readCharged`. See `core/damage.ts`'s `calcDamage` for why this needs reading at
+ * all: `@smogon/calc` checks Levitate and Air Balloon itself, but has no field for this
+ * volatile, so a Ground move would otherwise deal its full, un-immune damage.
+ */
+export function readMagnetRise(p: ClientPokemon): boolean {
+  return p.volatiles?.['magnetrise'] !== undefined;
+}
+
+/**
  * The Pokémon this one has TRANSFORMED into, or undefined. The client keeps the target's
  * live `Pokemon` object right in the volatile — `['transform', target, shiny, gender,
  * level]` — so the copy can be read with exactly the machinery every other Pokémon on the
@@ -445,6 +455,7 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, spe
   const roosting = readRoosting(p);
   const boostedStat = readParadoxBoost(p);
   const charged = readCharged(p);
+  const magnetRise = readMagnetRise(p);
 
   // `?? {}` because the client does not always have it — see the `boosts` field's own note.
   // An absent boost table means "no boosts", which is the honest reading and the common case.
@@ -498,6 +509,7 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, spe
     ...(live['evasion'] ? {evasionBoost: live['evasion']} : {}),
     ...(boostedStat ? {boostedStat} : {}),
     ...(charged ? {charged: true} : {}),
+    ...(magnetRise ? {magnetRise: true} : {}),
     // `shedTailMaker` deliberately does not come along: LiveFacts names no other Pokémon by
     // ident, and turning that ident into the max HP it stands for takes the feed. The shell
     // (`section.factsReader`) resolves it and overlays `sizedOnMaxHP`, exactly as it does for

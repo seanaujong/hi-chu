@@ -336,6 +336,14 @@ export interface LiveFacts {
    * explicitly: unlike Quark Drive, `@smogon/calc` has no Charge mechanic to arm at all.
    */
   readonly charged?: boolean;
+  /**
+   * True while Magnet Rise has this Pokémon off the ground — immune to Ground-type moves
+   * for the duration, the same volatile shape as `charged` (presence-or-absence, one sim
+   * key, no further decoding). See `ResolvedMon.magnetRise` for why the calc needs this
+   * passed explicitly: unlike Levitate or Air Balloon, which `@smogon/calc` checks itself,
+   * it has no notion of this volatile at all.
+   */
+  readonly magnetRise?: boolean;
 }
 
 /**
@@ -616,6 +624,15 @@ export interface ResolvedMon {
    * Electric one), not to the Pokémon generally.
    */
   readonly charged?: boolean;
+  /**
+   * True while Magnet Rise has this Pokémon off the ground, immune to Ground-type moves.
+   * `@smogon/calc` checks Levitate and Air Balloon itself when it computes a Ground move's
+   * damage, but has no field for this volatile at all — so like `charged`, it's a mechanic
+   * hi-chu computes by hand. See `core/damage.ts`'s `calcDamage`, which short-circuits to a
+   * zero-damage report for a Ground move (Thousand Arrows excepted, which ignores this
+   * immunity in the real games) rather than let the calc silently deal full damage.
+   */
+  readonly magnetRise?: boolean;
   readonly status: StatusName | undefined;
   readonly boosts: Readonly<Partial<Record<StatID, number>>>;
   readonly hpPercent: number;

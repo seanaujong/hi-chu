@@ -949,8 +949,12 @@ a Status move's target (`@smogon/calc`'s own move data has no `target` field for
 of them, so it reads as opponent-directed no matter what the move actually does — wrong for the
 majority of Status moves, which are self-buffs, heals, screens or hazards that never touch the
 defender at all; `movetargets.ts` measures the correction, with Curse handled separately since
-its real target is conditional on the USER's own type rather than a static fact), and
-unknown species/items. A third kind hides between those two and
+its real target is conditional on the USER's own type rather than a static fact), Magnet
+Rise (the calc checks Levitate and Air Balloon itself when it computes a Ground move's
+damage, both plain ability/item lookups on the `Pokemon` it already built, but has no field
+for this volatile at all — so it silently deals full damage against a target that cannot
+legally be hit; Thousand Arrows is excepted, the same exception the calc's own Levitate/
+Balloon check carries), and unknown species/items. A third kind hides between those two and
 is the easiest to ship by accident: the calc answering EXACTLY what we asked, where the asking
 itself was wrong. Requesting one hit of a multi-hit move is that — the calc then reads it as a
 single-hit move and applies the Tera 60 BP floor. So is leaving the ATTACKER's `curHP` unset:
@@ -1051,6 +1055,7 @@ was always undefined.
 | One hit of a multi-hit move is asked for as TWO — a single hit takes gen 9's Tera 60 BP floor, which no multi-hit move ever takes | ✅ | `core/damage.ts` (`TERA_FLOOR_SAFE_HITS`) | `damage.test.ts` |
 | Rage Fist's power scales with the ATTACKER's own hits taken | ✅ | `core/damage.ts` (`rageFistPower`), `battle/readState.ts` (`timesAttacked`) | `damage.test.ts`, `readState.test.ts`, `transform.test.ts` |
 | Charge (Electromorphosis/Wind Power/the move Charge) doubles the ATTACKER's next Electric-type move — a full calc gap, not an unset flag: `@smogon/calc` has no Charge mechanic to arm at all | ✅ | `core/damage.ts` (`chargedPower`), `battle/readState.ts` (`readCharged`) | `damage.test.ts`, `readState.test.ts`, `resolve.test.ts` |
+| Magnet Rise zeroes a Ground move's damage against the DEFENDER — a full calc gap, the same shape as Charge: `@smogon/calc` checks Levitate/Air Balloon itself but has no field for this volatile, and Thousand Arrows is excepted the same way it excepts those two | ✅ | `core/damage.ts` (`calcDamage`'s Magnet Rise short-circuit), `battle/readState.ts` (`readMagnetRise`) | `damage.test.ts`, `readState.test.ts`, `resolve.test.ts` |
 | A move with NO base power takes its damage from a callback over current HP — one exact amount, no nHKO ladder, but still stopped by an immunity | ✅ | `core/moves.ts` (`damageCallback`), `core/damage.ts` (`connects`) | `damage.test.ts`, `section.test.ts` |
 | Fickle Beam's 30% power-double mixes into a true KO% — the calc's own untouched power is a real answer to the wrong question, not a missing feature | ✅ | `core/moves.ts` (`randomPowerProfile`), `core/damage.ts` (the random-power branch of `calcDamage`), `core/multihit.ts` (`mixPmf`) | `damage.test.ts`, `render.test.ts` |
 | Strength Sap heals by the target's Attack with BOOSTS applied and every other modifier skipped — exact per set, so distinct outcomes bucket rather than a range | ✅ | `core/strengthsap.ts` (`sappedAttack`, `strengthSap`), `core/render.ts` (`renderStrengthSap`) | `strengthsap.test.ts`, `render.test.ts`, `section.test.ts` |
@@ -1177,7 +1182,12 @@ rather than in our code. Run the named check by hand after a Showdown client upd
   particular switch-in, not merely whether it is on right now. Read in the DANGEROUS
   direction: a client that stopped emitting this id, or renamed it, would make an armed
   Paradox mon look quiet and falsely rule Booster Energy out. To exercise it, pick a replay
-  with a Paradox Pokémon that switches in at all — the id shows up whichever path armed it.
+  with a Paradox Pokémon that switches in at all — the id shows up whichever path armed it. And
+  `volatiles.magnetrise` — presence-only, same shape and same DANGEROUS direction as Charge's:
+  a renamed key would silently stop blocking every Ground move against a Pokémon that cannot
+  legally be hit, and the hover would show real damage and a KO chance for a move that lands as
+  "No effect" in the native log. To exercise it, pick a replay with anything that used Magnet
+  Rise (e.g. Klefki, Magnezone) and got hit by a Ground move while it was still up.
 - **`npm run player-check`** (a real two-account battle on a self-hosted server) — anything
   behind `battle.myPokemon`, which a replay has no access to at all: the
   `ClientServerPokemon` contract incl. `stats`, the switch-menu hover and its ⚡ bench

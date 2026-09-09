@@ -116,6 +116,13 @@ describe('resolveMon', () => {
     const notCharged = resolveMon(dragoniteFacts({ability: 'Electromorphosis'}), DRAGONITE);
     expect(notCharged.charged).toBeUndefined();
   });
+
+  it('passes Magnet Rise straight through — live state, not derived from the ability', () => {
+    const rising = resolveMon(dragoniteFacts({magnetRise: true}), DRAGONITE);
+    expect(rising.magnetRise).toBe(true);
+    const grounded = resolveMon(dragoniteFacts(), DRAGONITE);
+    expect(grounded.magnetRise).toBeUndefined();
+  });
 });
 
 describe('resolveMon reflects the same narrowing/deductions the display does', () => {

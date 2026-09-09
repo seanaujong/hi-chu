@@ -1228,6 +1228,17 @@ function stalesReading(tag: string, parts: readonly string[], atk: string, def: 
   return true;
 }
 
+/** Whether an `-enditem` line's own `[from] move: <name>|[of] <attacker>` attribution says
+ *  this item change was caused by resolving that exact move from that exact attacker — the
+ *  log's own signal that it belongs to the hit being read, not a later, unrelated event that
+ *  merely happens to follow it with nothing else in between. */
+function causedByMove(parts: readonly string[], moveName: string, attacker: string): boolean {
+  const rest = parts.slice(4);
+  const fromThisMove = rest.some((p) => p.startsWith(`[from] move: ${moveName}`));
+  const ofAttacker = rest.some((p) => p.startsWith('[of] ') && identKey(p.slice('[of] '.length)) === attacker);
+  return fromThisMove && ofAttacker;
+}
+
 /** One Pokémon's boosts, as the log has moved them so far. */
 type BoostTable = Partial<Record<StatID, number>>;
 
@@ -1325,6 +1336,13 @@ function hpToken(token: string | undefined): number | undefined {
  * HP travels with the observation for the same reason and is free to carry, since this scan
  * already tracks it: the calc reads both sides' remaining HP, and both sides have thresholds
  * that a hover taken several turns later sits on the wrong side of (see `ObservedHit`).
+ *
+ * An ITEM LEAVING mid-resolution of the same move is the same story a third time, and needed
+ * its own field rather than a replay: Knock Off knocking off the very item it just hit with
+ * is not "something that happened since" either, but the calc needs the item ITSELF (for its
+ * own ×1.5 check), not a delta the way a boost is one. `defenderItemAtHit`/`attackerItemAtHit`
+ * on `ObservedHit` carry it, and the tag that produced it is excused from staling the reading
+ * the same way a boost tag is.
  */
 export function mostRecentCleanHit(
   battle: ClientBattle,
@@ -1391,6 +1409,19 @@ export function mostRecentCleanHit(
       if (who && frac !== undefined) hp[who] = frac;
     } else if (REPLAYABLE_BOOST_TAGS.has(tag)) {
       applyBoostLine(boosts, tag, parts); // followed, not abstained from — see the docblock
+    } else if (tag === '-enditem' && found && moveName === found.move && causedByMove(parts, moveName, atk)) {
+      // An item leaving BECAUSE of the same move that just produced `found` — Knock Off
+      // knocking off what it hit, Bug Bite/Pluck/Incinerate eating or burning a berry, Fling
+      // consuming the attacker's own — is not "something that happened since" any more than
+      // a move's own secondary stat drop is. It is RECORDED (not replayed like a boost, since
+      // the calc needs the ITEM ITSELF, not a delta), and does not stale the reading.
+      // Gated on the line's own `[from] move: <name>|[of] <attacker>` attribution rather than
+      // mere position in the log — a later, genuinely unrelated item loss (a foe's OWN Knock
+      // Off, next turn) carries no such attribution and must still stale it.
+      const who = identKey(parts[2]);
+      const item = parts[3];
+      if (who === def && item) found = {...found, defenderItemAtHit: item};
+      else if (who === atk && item) found = {...found, attackerItemAtHit: item};
     } else if (stalesReading(tag, parts, atk, def, found?.move ?? null)) {
       if (found) stale = true;
     }

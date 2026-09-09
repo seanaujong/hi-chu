@@ -562,6 +562,35 @@ describe('mostRecentCleanHit (an observed hit’s MAGNITUDE reveals an item)', (
     expect(mostRecentCleanHit(withLog([...hit, '|-item|p1a: Skarmory|Eviolite']), attacker, defender)).toBeUndefined();
   });
 
+  it('records the item Knock Off itself removed, rather than staling the hit it just produced', () => {
+    // Knock Off's own item-removal is not a status/HP berry, so it is never on
+    // `DAMAGE_IRRELEVANT_ITEMS` — but it is not "something that happened since" either: the
+    // item was gone by the time the hit resolved, which is exactly what the calc needs to
+    // reproduce that ×1.5 on recalculation (`itemreveal.ts`). Watched failing (returning
+    // undefined) before `causedByMove` landed.
+    const hit = ['|move|p2a: Weavile|Icicle Crash|p1a: Skarmory', '|-damage|p1a: Skarmory|20/100'];
+    const knockedOff = '|-enditem|p1a: Skarmory|Rocky Helmet|[from] move: Icicle Crash|[of] p2a: Weavile';
+    expect(mostRecentCleanHit(withLog([...hit, knockedOff]), attacker, defender)).toEqual({
+      move: 'Icicle Crash',
+      damageFraction: 0.8,
+      attackerBoosts: {},
+      defenderBoosts: {},
+      attackerHpPercent: 1,
+      defenderHpPercent: 1,
+      defenderItemAtHit: 'Rocky Helmet',
+    });
+  });
+
+  it('still stales on an item change with no `[from] move: <this move>|[of] <this attacker>` attribution', () => {
+    // The same log shape, minus the attribution the fixture above relies on — the ordinary
+    // shape of a LATER, unrelated item loss (a foe's own Knock Off, some other turn) that
+    // merely happens to follow with nothing else logged in between.
+    const hit = ['|move|p2a: Weavile|Icicle Crash|p1a: Skarmory', '|-damage|p1a: Skarmory|20/100'];
+    expect(mostRecentCleanHit(withLog([...hit, '|-enditem|p1a: Skarmory|Rocky Helmet']), attacker, defender)).toBeUndefined();
+    const wrongAttacker = '|-enditem|p1a: Skarmory|Rocky Helmet|[from] move: Icicle Crash|[of] p2a: SomeoneElse';
+    expect(mostRecentCleanHit(withLog([...hit, wrongAttacker]), attacker, defender)).toBeUndefined();
+  });
+
   it('survives a status/item/ability change on an UNRELATED Pok\u00e9mon \u2014 the pair is what matters, not the whole field', () => {
     // A third mon (a doubles ally, the foe's other bench slot, anyone but attacker/defender)
     // changing state has no bearing on what THIS hit revealed. Staling on it anyway would

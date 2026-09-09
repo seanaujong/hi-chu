@@ -249,3 +249,37 @@ describe('Noivern: Choice Specs vs Heavy-Duty Boots from damage MAGNITUDE alone,
     expect(result.some((v) => v.role === 'Fast Attacker')).toBe(false);
   });
 });
+
+describe('Knock Off: the item it removed must be replayed, or its own ×1.5 goes missing', () => {
+  // The defender is read as it stands NOW — no item, since Knock Off already took it. That
+  // is exactly wrong for recalculating a PAST hit: Knock Off's own bonus fires on whether the
+  // target held a removable item AT THE INSTANT it landed, which `defenderItemAtHit`
+  // (`readState.ts`'s `mostRecentCleanHit`) exists to carry forward.
+  const options = {gen: 9, field: noField, doubles: false};
+  const defenderNow = mon({speciesForme: 'Skarmory', item: undefined});
+  const defenderThen = mon({speciesForme: 'Skarmory', item: 'Rocky Helmet'});
+  const band: SetVariant = {mon: mon({speciesForme: 'Slaking', ability: 'Truant', item: 'Choice Band'}), role: 'Wallbreaker'};
+  const scarf: SetVariant = {mon: mon({speciesForme: 'Slaking', ability: 'Truant', item: 'Choice Scarf'}), role: 'Fast Attacker'};
+  const variants = [band, scarf];
+
+  const bandRange = calcDamage(band.mon, defenderThen, 'Knock Off', options).percent;
+  const scarfRange = calcDamage(scarf.mon, defenderThen, 'Knock Off', options).percent;
+
+  it('fixture sanity: Band’s attack boost is a real, non-overlapping swing once Knock Off’s own ×1.5 is shared by both', () => {
+    expect(bandRange.min).toBeGreaterThan(scarfRange.max);
+  });
+
+  it('replaying the item that was there convicts Choice Scarf, keeping only Choice Band', () => {
+    const observed = (bandRange.min + bandRange.max) / 200;
+    const result = variantsConsistentWithDamageDealt(variants, defenderNow, options, hit('Knock Off', observed, {defenderItemAtHit: 'Rocky Helmet'}));
+    expect(result).toEqual([band]);
+  });
+
+  it('omitting it silently drops the bonus, so even Band’s own hit looks impossible and nothing narrows', () => {
+    // The safety net ("never narrow to nothing") is the visible symptom, not the real bug —
+    // the real cost is that the deduction that should have fired here never gets the chance.
+    const observed = (bandRange.min + bandRange.max) / 200;
+    const result = variantsConsistentWithDamageDealt(variants, defenderNow, options, hit('Knock Off', observed));
+    expect(result).toEqual(variants);
+  });
+});

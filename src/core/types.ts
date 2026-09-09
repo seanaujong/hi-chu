@@ -510,6 +510,18 @@ export interface ObservedHit {
    */
   readonly attackerHpPercent: number;
   readonly defenderHpPercent: number;
+  /**
+   * The item that side held AT THE INSTANT this hit landed, when the hit's own resolution is
+   * what removed it — Knock Off knocking off the very item it hit, Bug Bite/Pluck/Incinerate
+   * eating or burning a berry, Fling consuming the attacker's own. Undefined whenever nothing
+   * left mid-resolution, which is by far the common case. This is what lets Knock Off's own
+   * item-check (`@smogon/calc` reads `defender.item` for its ×1.5) apply correctly on
+   * recalculation — without it, `itemreveal.ts` would rerun the calc against whatever item
+   * the mon holds NOW (none, since it was just knocked off), silently dropping the bonus the
+   * observed number actually included.
+   */
+  readonly attackerItemAtHit?: string;
+  readonly defenderItemAtHit?: string;
 }
 
 /**

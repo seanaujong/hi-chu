@@ -71,8 +71,25 @@ function narrowByObservedDamage(
     let report;
     try {
       report = calcDamage(
-        {...attacker, boosts: observed.attackerBoosts, hpPercent: observed.attackerHpPercent},
-        {...defender, boosts: observed.defenderBoosts, hpPercent: observed.defenderHpPercent},
+        {
+          ...attacker,
+          boosts: observed.attackerBoosts,
+          hpPercent: observed.attackerHpPercent,
+          // Whatever the attacker held AT THE HIT, when the hit's own resolution took it —
+          // Fling consuming it, say. Falls back to the variant's own item the rest of the
+          // time, which is by far the common case.
+          item: observed.attackerItemAtHit ?? attacker.item,
+        },
+        {
+          ...defender,
+          boosts: observed.defenderBoosts,
+          hpPercent: observed.defenderHpPercent,
+          // Same story for the defender, and the one this reading exists to get right: a
+          // Knock Off that knocked something off needs THAT item on the recalculation for
+          // its own ×1.5 check to fire — the item standing now (already gone) would silently
+          // drop the very bonus the observed number included.
+          item: observed.defenderItemAtHit ?? defender.item,
+        },
         observed.move,
         {gen: options.gen, ...(options.field ? {field: options.field} : {}), doubles: options.doubles},
       );

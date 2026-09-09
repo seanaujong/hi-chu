@@ -699,6 +699,18 @@ export function calcDamage(
   const standingSub = (perHit: readonly HitDamage[]): SubstituteStanding | undefined =>
     substituteStanding(defender, atk, dexMove, perHit, maxHP);
 
+  // --- Magnet Rise: a Ground move the calc has no way to know is blocked -----
+  // `@smogon/calc` checks Levitate and Air Balloon itself (both are ability/item lookups on
+  // the Pokémon it already built) and correctly zeroes a Ground move's damage for them — but
+  // it has no field for this volatile at all, so it would otherwise compute full damage
+  // against a Pokémon that cannot legally be hit right now. Short-circuits ahead of every
+  // other path (callback, random-power, multi-hit) since none of them are exempt either.
+  // Thousand Arrows explicitly ignores this immunity in the real games, the same exception
+  // the calc's own Levitate/Air Balloon check carries.
+  if (defender.magnetRise && dexMove.type === 'Ground' && dexMove.name !== 'Thousand Arrows') {
+    return summarizeReport(dexMove.name, category, pmfFromSamples([0]), remainingHP, maxHP, 'no damage', {notes});
+  }
+
   // --- A move whose damage is a callback, not a formula ----------------------
   // Looked up by the DEX's display name, so an id-form move name ("superfang", the shape
   // `battle.myPokemon` carries) finds the table entry too.

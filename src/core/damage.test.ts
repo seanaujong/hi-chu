@@ -660,6 +660,37 @@ describe('Charge (Electromorphosis/Wind Power/the move Charge) doubles the NEXT 
   });
 });
 
+describe('Magnet Rise blocks a Ground move — @smogon/calc checks Levitate/Air Balloon itself but has no field for this volatile at all', () => {
+  it('zeroes a Ground move\'s damage while Magnet Rise is up', () => {
+    const attacker = mon({speciesForme: 'Slaking', ability: 'Truant'});
+    const target = mon({speciesForme: 'Klefki', ability: 'Prankster', magnetRise: true});
+    const report = calcDamage(attacker, target, 'Earthquake');
+    expect(report.percent).toEqual({min: 0, max: 0, mean: 0});
+    expect(report.calcDesc).toBe('no damage');
+  });
+
+  it('leaves the same matchup alone once Magnet Rise wears off', () => {
+    const attacker = mon({speciesForme: 'Slaking', ability: 'Truant'});
+    const target = mon({speciesForme: 'Klefki', ability: 'Prankster'});
+    const report = calcDamage(attacker, target, 'Earthquake');
+    expect(report.percent.max).toBeGreaterThan(0);
+  });
+
+  it('leaves a non-Ground move untouched — the immunity belongs to the MOVE\'s type', () => {
+    const attacker = mon({speciesForme: 'Slaking', ability: 'Truant'});
+    const grounded = calcDamage(attacker, mon({speciesForme: 'Klefki', ability: 'Prankster'}), 'Knock Off');
+    const rising = calcDamage(attacker, mon({speciesForme: 'Klefki', ability: 'Prankster', magnetRise: true}), 'Knock Off');
+    expect(rising.percent).toEqual(grounded.percent);
+  });
+
+  it('Thousand Arrows ignores Magnet Rise, the same exception the calc\'s own Levitate/Balloon check carries', () => {
+    const attacker = mon({speciesForme: 'Kartana', ability: 'Beast Boost'});
+    const target = mon({speciesForme: 'Klefki', ability: 'Prankster', magnetRise: true});
+    const report = calcDamage(attacker, target, 'Thousand Arrows');
+    expect(report.percent.max).toBeGreaterThan(0);
+  });
+});
+
 describe('a live retype (Protean, Soak, Reflect Type) — the types on the field, not the record', () => {
   const blissey = mon({speciesForme: 'Blissey'});
   // Greninja is Water/Dark. Protean converts it to whatever it throws; after Ice Beam it is

@@ -364,4 +364,10 @@ export const PREVIEWS: readonly Preview[] = [
     {},
     {item: 'choicescarf'},
   ),
+  moveHover(
+    'A Ground move meets Magnet Rise',
+    'Tentacruel has Magnet Rise up, off the ground for the duration — a full calc gap, not a missing flag: @smogon/calc checks Levitate and Air Balloon itself but has no field for this volatile at all, so left alone it would compute Earthquake’s ordinary (super-effective) damage against a target that cannot legally be hit.',
+    {tentacruelMagnetRise: true},
+    'Earthquake',
+  ),
 ];

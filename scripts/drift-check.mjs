@@ -78,7 +78,7 @@ function probeLiveClient() {
   // Which of the rarer client shapes this replay actually exercised — a random replay
   // usually has no transformed or forme-changed Pokémon, and a probe that never fired is
   // not a probe that passed. Reported, not failed on.
-  const seen = {formeChange: false, transform: false, calledMove: false, balloonAnnounce: false, statusLine: false, substitute: false, shedTail: false, typeChange: false, proteanLine: false, roost: false, weatherUpkeep: false, paradoxBoost: false, paradoxBoostStartLine: false, charge: false, leftoversHeal: false};
+  const seen = {formeChange: false, transform: false, calledMove: false, balloonAnnounce: false, statusLine: false, substitute: false, shedTail: false, typeChange: false, proteanLine: false, roost: false, weatherUpkeep: false, paradoxBoost: false, paradoxBoostStartLine: false, charge: false, magnetRise: false, leftoversHeal: false};
 
   const format = R.detectFormat(b);
   if (!format || format.kind !== 'randbats' || !/^gen\d+random/.test(format.formatId)) {
@@ -425,6 +425,21 @@ function probeLiveClient() {
     } else if (R.readCharged(mon)) {
       problems.push(`readCharged(${f.speciesForme || '?'}) invented a charge with no volatile to justify it`);
     }
+    // Magnet Rise is PRESENCE only, the same shape as Charge — see core/damage.ts's
+    // calcDamage for why this needs reading at all (a calc gap: @smogon/calc checks
+    // Levitate/Air Balloon itself but has no field for this volatile).
+    const magnetrise = mon.volatiles?.['magnetrise'];
+    if (magnetrise !== undefined) {
+      if (!Array.isArray(magnetrise) || magnetrise[0] !== 'magnetrise') {
+        problems.push(`${f.speciesForme || '?'}.volatiles.magnetrise = ${JSON.stringify(magnetrise)} (expected ['magnetrise'])`);
+      }
+      if (!R.readMagnetRise(mon)) {
+        problems.push(`readMagnetRise(${f.speciesForme || '?'}) missed a Magnet Rise the volatile plainly shows`);
+      }
+      seen.magnetRise = true;
+    } else if (R.readMagnetRise(mon)) {
+      problems.push(`readMagnetRise(${f.speciesForme || '?'}) invented a Magnet Rise with no volatile to justify it`);
+    }
     // The transform volatile holds the TARGET's own Pokemon object — that is what makes a
     // copy resolvable at all (we go and read the Pokémon it copied).
     if (mon.volatiles?.transform !== undefined) {
@@ -541,6 +556,9 @@ async function main() {
     // Charge needs a Bellibolt/Kilowattrel (or anything that used the move Charge) to have
     // taken a hit or otherwise activated it — to exercise this, pick a replay with one.
     console.log(`  Charge: ${seen.charge ? 'SEEN — checked' : 'absent (not exercised)'}`);
+    // Magnet Rise needs a replay with something that used the move — to exercise this,
+    // pick one with a Klefki, Magnezone, or anything else that ran it.
+    console.log(`  Magnet Rise: ${seen.magnetRise ? 'SEEN — checked' : 'absent (not exercised)'}`);
 
     if (problems.length) {
       console.error('\n✗ DRIFT DETECTED — readState.ts no longer matches the live client:');

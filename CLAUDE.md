@@ -1040,6 +1040,7 @@ was always undefined.
 | A Transformed Pokémon is calculated as the one it COPIED, keeping only its own HP | ✅ | `core/transform.ts`, `section.ts` (`factsReader`) | `transform.test.ts`, `readState.test.ts`, `section.test.ts` |
 | An ability narrows a role only if a SET could have been built with it | ✅ | `core/narrow.ts` (`buildableAbilities`) | `resolve.test.ts` |
 | A disguised Zoroark surfaces as its own candidate, never a corrupted one | ✅ | `core/illusion.ts`, `core/possibilities.ts` (`illusionVariants`, `suspectsFor`) | `illusion.test.ts`, `variants.test.ts`, `render.test.ts` |
+| …but not once it is SETTLED as a different, specific teammate — the real Zoroark is exactly one Pokémon, so a slot already pinned to it (revealed alive, or fainted; a Revival Blessing stays the same slot) can no longer ALSO be suspected behind a second disguise | ✅ | `core/possibilities.ts` (`illusionHolders`'s `settledElsewhere` parameter), `section.ts` (`settledElsewhere`) | `possibilities.test.ts`, `section.test.ts` |
 | Our OWN disguised Zoroark is seen through — the private team names it | ✅ | `section.ts` (`ownTruth`), `battle/readState.ts` (`readOwnServerPokemon`) | `section.test.ts`, `readState.test.ts` |
 | Set inference keys on the INNATE ability (`baseAbility`), not the live one | ✅ | `core/facts.ts` (`innateAbility`) | `resolve.test.ts`, `readState.test.ts` |
 | …and only when the species could actually HAVE that ability | ✅ | `core/facts.ts` (`innateAbility`) | `resolve.test.ts` |

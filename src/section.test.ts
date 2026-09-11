@@ -660,6 +660,57 @@ describe('the sets view narrows a foe by role, not just by item — Choice Specs
   });
 });
 
+describe('Illusion suspicion drops once the real Zoroark is SETTLED elsewhere on the roster', () => {
+  // github.com/seanaujong/hi-chu/issues/149 — this Klawf is genuinely Klawf: Stone Edge is
+  // just missing from its feed entry, the same "foreign move" shape a real disguised Zoroark
+  // leaves behind. Once the actual Zoroark has been pinned to a DIFFERENT roster slot —
+  // revealed alive or fainted, replay gen9randombattle-2679427082's Zoroark faints right
+  // after breaking cover — that slot is spoken for, and this Klawf can no longer ALSO be it.
+  const feed: RandbatsData = {
+    Klawf: {level: 90, abilities: ['Shell Armor'], items: ['Leftovers'], moves: ['Swords Dance', 'Crabhammer']},
+    Zoroark: {level: 83, abilities: ['Illusion'], items: ['Life Orb'], moves: ['Stone Edge', 'Dark Pulse', 'Nasty Plot']},
+  };
+  const near = {isFar: false, sideConditions: {}, active: [{
+    speciesForme: 'Skarmory', level: 78, hp: 100, maxhp: 100, status: '', boosts: {},
+    terastallized: '', moveTrack: [], ident: 'p1: Skarmory',
+  }]};
+
+  /** A fresh far side, its foe-Klawf active plus whatever else its roster already reveals —
+   *  the two tests below need independent rosters, not one mutated between them. */
+  function battleWithFoeRoster(restOfRoster: readonly Record<string, unknown>[]): {battle: ClientBattle; klawf: ClientPokemon} {
+    const far = {isFar: true, sideConditions: {}, active: [] as unknown[], pokemon: [] as unknown[]};
+    const klawf = {
+      speciesForme: 'Klawf', level: 90, hp: 154, maxhp: 272, status: '', boosts: {},
+      terastallized: '', moveTrack: [['Swords Dance', 1], ['Crabhammer', 1], ['Stone Edge', 1]],
+      ident: 'p2: Klawf', side: far,
+    } as unknown as ClientPokemon;
+    far.active = [klawf];
+    far.pokemon = [klawf, ...restOfRoster];
+    const battle = {gen: 9, tier: '[Gen 9] Random Battle', sides: [near, far]} as unknown as ClientBattle;
+    return {battle, klawf};
+  }
+
+  it('suspects Zoroark from the foreign move with nothing else known (the baseline)', () => {
+    const {battle, klawf} = battleWithFoeRoster([]);
+    expect(buildPokemonSection(battle, klawf, feed)).toContain('Zoroark');
+  });
+
+  it('drops the suspicion once a Zoroark is already fainted elsewhere on the same roster', () => {
+    const faintedZoroark = {speciesForme: 'Zoroark', level: 83, hp: 0, maxhp: 235, status: '', boosts: {}, terastallized: '', moveTrack: []};
+    const {battle, klawf} = battleWithFoeRoster([faintedZoroark]);
+    expect(buildPokemonSection(battle, klawf, feed)).not.toContain('Zoroark');
+  });
+
+  it('stays dropped after a Revival Blessing — settling is about IDENTITY, not vital status', () => {
+    // Same roster slot as the fainted case, just alive again. `settledElsewhere` never reads
+    // hp at all, so nothing about this needs a special case: it was already excluding by
+    // species identity, and identity doesn't change when a Revival Blessing restores HP.
+    const revivedZoroark = {speciesForme: 'Zoroark', level: 83, hp: 118, maxhp: 235, status: '', boosts: {}, terastallized: '', moveTrack: []};
+    const {battle, klawf} = battleWithFoeRoster([revivedZoroark]);
+    expect(buildPokemonSection(battle, klawf, feed)).not.toContain('Zoroark');
+  });
+});
+
 describe('the MOVE TOOLTIP narrows the same way — it never called revealsAgainst at all', () => {
   // moveVsFoe built its defender fan-out straight from resolveVariants/illusionVariants and
   // never consulted revealsAgainst, even though the docstring right above foeReveals already

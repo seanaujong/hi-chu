@@ -100,6 +100,45 @@ describe('the Illusion pool is filtered HERE, not by the source', () => {
     expect(illusionVariants(facts, WEAVILE, sourceOf()).map((v) => [v.role, v.mon.speciesForme, v.mon.level]))
       .toEqual([['Zoroark', 'Zoroark', 84]]);
   });
+
+  it('drops a suspect already SETTLED elsewhere on the team — it cannot also be here', () => {
+    // The real Zoroark has been pinned to a different roster slot (revealed alive, or
+    // fainted — settledElsewhere carries no vital-status distinction, only identity).
+    // `settledElsewhere` arrives already in id form, the same convention `section.ts`'s
+    // builder follows.
+    const facts = weavile({revealedMoves: ['Sludge Bomb']});
+    expect(suspectsFor(facts, WEAVILE, sourceOf(), new Set(['zoroark']))).toEqual([]);
+    expect(illusionVariants(facts, WEAVILE, sourceOf(), new Set(['zoroark']))).toEqual([]);
+  });
+
+  it('leaves an UNRELATED settled species alone', () => {
+    const facts = weavile({revealedMoves: ['Sludge Bomb']});
+    expect(suspectsFor(facts, WEAVILE, sourceOf(), new Set(['klawf'])).map((s) => s.species)).toEqual(['Zoroark']);
+  });
+
+  it('a team with TWO distinct Illusion holders keeps the unsettled one suspected', () => {
+    // Zoroark and Zoroark-Hisui are different species ids ("zoroark" vs "zoroarkhisui"),
+    // so settling one (e.g. it fainted, or a Revival Blessing brought it back — vital status
+    // never enters this filter) must not also clear the OTHER, still-unidentified Zoroark.
+    const zoroarkHisui: RandbatsEntry = {
+      level: 80,
+      abilities: ['Illusion'],
+      items: ['Life Orb'],
+      roles: {R: {abilities: ['Illusion'], items: ['Life Orb'], teraTypes: ['Dark'], moves: ['Bitter Malice', 'Sludge Bomb']}},
+    };
+    const bothZoroarks = sourceOf([
+      {species: 'Weavile', entry: WEAVILE},
+      {species: 'Zoroark', entry: ZOROARK},
+      {species: 'Zoroark-Hisui', entry: zoroarkHisui},
+    ]);
+    const facts = weavile({revealedMoves: ['Sludge Bomb']});
+    // The plain Zoroark is settled elsewhere (fainted, or alive-and-revealed); the Hisuian
+    // one is still unaccounted for and shares the foreign move, so it stays a suspect.
+    expect(suspectsFor(facts, WEAVILE, bothZoroarks, new Set(['zoroark'])).map((s) => s.species))
+      .toEqual(['Zoroark-Hisui']);
+    // Settling BOTH — the whole team's Illusion holders are now accounted for — suspects nobody.
+    expect(suspectsFor(facts, WEAVILE, bothZoroarks, new Set(['zoroark', 'zoroarkhisui']))).toEqual([]);
+  });
 });
 
 describe('incomingMovesFor', () => {

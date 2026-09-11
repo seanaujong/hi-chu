@@ -700,6 +700,15 @@ describe('Illusion suspicion drops once the real Zoroark is SETTLED elsewhere on
     const {battle, klawf} = battleWithFoeRoster([faintedZoroark]);
     expect(buildPokemonSection(battle, klawf, feed)).not.toContain('Zoroark');
   });
+
+  it('stays dropped after a Revival Blessing — settling is about IDENTITY, not vital status', () => {
+    // Same roster slot as the fainted case, just alive again. `settledElsewhere` never reads
+    // hp at all, so nothing about this needs a special case: it was already excluding by
+    // species identity, and identity doesn't change when a Revival Blessing restores HP.
+    const revivedZoroark = {speciesForme: 'Zoroark', level: 83, hp: 118, maxhp: 235, status: '', boosts: {}, terastallized: '', moveTrack: []};
+    const {battle, klawf} = battleWithFoeRoster([revivedZoroark]);
+    expect(buildPokemonSection(battle, klawf, feed)).not.toContain('Zoroark');
+  });
 });
 
 describe('the MOVE TOOLTIP narrows the same way — it never called revealsAgainst at all', () => {

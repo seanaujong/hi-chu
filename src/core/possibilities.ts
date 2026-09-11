@@ -15,6 +15,7 @@
 // than pre-filtering it: the enumeration is the feed's business, the filtering is this file's.
 
 import {buildableAbilities} from './narrow.js';
+import {toId} from './facts.js';
 import {illusionSuspects, type IllusionSuspect} from './illusion.js';
 import {inferSets} from './knowledge.js';
 import {resolveMon, resolveVariants} from './resolve.js';
@@ -49,22 +50,36 @@ export function entryOrMinimal(entry: RandbatsEntry | undefined, facts: LiveFact
 }
 
 /** The species a disguise could be drawn from: those whose sets could be BUILT with
- *  Illusion, which is not the same as those the dex allows it on. */
-function illusionHolders(source: SetSource): IllusionSuspect[] {
+ *  Illusion, which is not the same as those the dex allows it on — minus any species
+ *  already SETTLED as one specific, currently-tracked teammate elsewhere on the roster
+ *  (`settledElsewhere`, see `suspectsFor`). The real individual behind an Illusion is
+ *  exactly one teammate, so once the evidence has pinned it to a slot — revealed alive,
+ *  or fainted — it can no longer ALSO be lurking behind a second, different disguise. */
+function illusionHolders(source: SetSource, settledElsewhere: ReadonlySet<string>): IllusionSuspect[] {
   return source
     .allEntries()
-    .filter(({entry}) => buildableAbilities(entry).has('illusion'))
+    .filter(({species, entry}) => buildableAbilities(entry).has('illusion') && !settledElsewhere.has(toId(species)))
     .map(({species, entry}) => ({species, entry}));
 }
 
-/** Which species the evidence actually implicates for this Pokémon — the candidate blocks
- *  need them as sources of their own, not only as defender variants. */
+/**
+ * Which species the evidence actually implicates for this Pokémon — the candidate blocks
+ * need them as sources of their own, not only as defender variants.
+ *
+ * `settledElsewhere` names species already pinned to a DIFFERENT roster slot (a species id
+ * per entry the shell already knows the true identity of, whether that teammate is alive or
+ * fainted) — a fact about the rest of the team that only the shell can read (`section.ts`'s
+ * `settledElsewhere`), so it arrives as a plain set rather than being derived here. Reviving
+ * a fainted teammate (Revival Blessing) needs no special handling: it stays the SAME slot,
+ * so the set built fresh from the live roster already reflects it.
+ */
 export function suspectsFor(
   facts: LiveFacts,
   entry: RandbatsEntry | undefined,
   source: SetSource,
+  settledElsewhere: ReadonlySet<string> = new Set(),
 ): IllusionSuspect[] {
-  return illusionSuspects(facts, entry, illusionHolders(source));
+  return illusionSuspects(facts, entry, illusionHolders(source, settledElsewhere));
 }
 
 /**
@@ -75,11 +90,12 @@ export function illusionVariants(
   defenderFacts: LiveFacts,
   defenderEntry: RandbatsEntry | undefined,
   source: SetSource,
+  settledElsewhere: ReadonlySet<string> = new Set(),
 ): SetVariant[] {
   // The suspect is a DIFFERENT species than shown, so the shown forme's dex data
   // (facts.speciesData) must not ride along into the Zoroark's resolution.
   const {speciesData: _shownFormes, transformedInto: _notItsCopy, ...publicFacts} = defenderFacts;
-  return suspectsFor(defenderFacts, defenderEntry, source).map(({species, entry}) => ({
+  return suspectsFor(defenderFacts, defenderEntry, source, settledElsewhere).map(({species, entry}) => ({
     mon: resolveMon({...publicFacts, speciesForme: species, level: entry.level}, entry),
     role: species,
   }));
@@ -88,17 +104,25 @@ export function illusionVariants(
 /** Every still-possible set for a foe: the hidden item/ability fan-out, plus any disguised
  *  Zoroark the reveals betray. Move-independent — the same pool answers "how hard does it
  *  get hit" and "how fast is it". */
-export function foeVariants(source: SetSource, facts: LiveFacts): readonly SetVariant[] {
+export function foeVariants(
+  source: SetSource,
+  facts: LiveFacts,
+  settledElsewhere: ReadonlySet<string> = new Set(),
+): readonly SetVariant[] {
   const entry = source.entryFor(facts);
-  return [...resolveVariants(facts, entryOrMinimal(entry, facts)), ...illusionVariants(facts, entry, source)];
+  return [
+    ...resolveVariants(facts, entryOrMinimal(entry, facts)),
+    ...illusionVariants(facts, entry, source, settledElsewhere),
+  ];
 }
 
 /** The feed-backed `DefenderVariantsFor`: every still-possible set, identical for every move
  *  — where the open-format adapter (`assume.openVariantsFor`) must vary with the move's
- *  category, because a bracketed spread is chosen per axis. */
-export function variantsFor(source: SetSource): DefenderVariantsFor {
+ *  category, because a bracketed spread is chosen per axis. `settledElsewhere` is fixed for
+ *  the whole closure: every foe a single hover fans this out over shares one opposing side. */
+export function variantsFor(source: SetSource, settledElsewhere: ReadonlySet<string> = new Set()): DefenderVariantsFor {
   return (facts) => {
-    const variants = foeVariants(source, facts);
+    const variants = foeVariants(source, facts, settledElsewhere);
     return () => variants;
   };
 }

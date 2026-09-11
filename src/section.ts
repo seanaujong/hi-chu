@@ -399,6 +399,20 @@ function toId(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+/**
+ * Species already SETTLED as one specific, currently-tracked teammate on `side`'s roster —
+ * revealed alive, or fainted. The real individual behind an Illusion is exactly one
+ * teammate, so once the evidence (a break, a faint) has pinned it to a slot, it can no
+ * longer ALSO be suggested behind a second, different disguise on the same team.
+ *
+ * Built fresh from the live roster on every call rather than cached, so a Revival Blessing
+ * needs no separate handling: the revived slot just shows a live HP again, still under the
+ * same identity, and the very next hover already reflects it.
+ */
+function settledElsewhere(side: ClientSide | undefined): ReadonlySet<string> {
+  return new Set((side?.pokemon ?? []).map((p) => toId(p.speciesForme)));
+}
+
 
 
 /**
@@ -793,7 +807,7 @@ function ownHoverMatchup(
   // truth, and showing US our own speed as uncertain would be absurd.
   const revealsFor: RevealsFor = (foe) => revealsAgainst(battle, foe, data, format, readFacts);
   const speedFor = (foe: ClientPokemon, foeFacts: LiveFacts): readonly SetVariant[] => {
-    const all = stillPossibleSets(feedSource(data), foeFacts);
+    const all = stillPossibleSets(feedSource(data), foeFacts, settledElsewhere(foe.side));
     return revealsFor(foe)?.narrow(all) ?? all;
   };
   // Which of the three halves this target carries is the grid's call, not this
@@ -807,8 +821,12 @@ function ownHoverMatchup(
   const switchInAttacker = previewsHazards ? applySwitchInHazards(attacker, ownHazards, format.gen) : attacker;
   const hazardFaints = previewsHazards && switchInAttacker.hpPercent <= 0;
   const outgoingMoves = shows(target, 'outgoing') ? moves : [];
+  // The opposing side's roster — fixed for every foe this hover fans the matchup out
+  // over, so the Illusion exclusion above is computed once rather than per foe.
+  const oppSide = activesOpposing(battle, pokemon.side)[0]?.side;
   return ownMovesSection(
-    battle, pokemon.side, switchInAttacker, outgoingMoves, format, readFacts, variantsFor(feedSource(data)), speedFor,
+    battle, pokemon.side, switchInAttacker, outgoingMoves, format, readFacts,
+    variantsFor(feedSource(data), settledElsewhere(oppSide)), speedFor,
     speedAttacker, hazardFaints ? undefined : incomingMovesFor, hazardFaints, revealsFor,
   );
 }
@@ -857,7 +875,7 @@ function foeSwitchInDamage(
   const applyTera = teraPreviewFor(battle, ourActive, teraSelected, ourFacts);
   const attacker = applyPreviews(base, [applyMega, applyTera]);
 
-  const all = stillPossibleSets(feedSource(data), foeFacts);
+  const all = stillPossibleSets(feedSource(data), foeFacts, settledElsewhere(hoveredFoe.side));
   // The same log-derived rule-out every other surface showing this foe's set already
   // applies (see `foeReveals`'s "EVERY surface" invariant) — without it, a foe whose
   // Assault Vest/Choice Band split the foe's own hover has already settled goes on
@@ -919,7 +937,7 @@ export function buildSwitchSection(battle: ClientBattle, server: ClientServerPok
       // and it carries no boosts, because it enters with none.
       const revealsFor: RevealsFor = (foe) => revealsAgainst(battle, foe, data, format, readFacts);
       const speedFor = (foe: ClientPokemon, foeFacts: LiveFacts): readonly SetVariant[] => {
-        const all = stillPossibleSets(feedSource(data), foeFacts);
+        const all = stillPossibleSets(feedSource(data), foeFacts, settledElsewhere(foe.side));
         return revealsFor(foe)?.narrow(all) ?? all;
       };
       // Every switch-menu candidate is, by construction, not yet on the field — which is
@@ -930,9 +948,12 @@ export function buildSwitchSection(battle: ClientBattle, server: ClientServerPok
       const switchInAttacker = applySwitchInHazards(attacker, ownHazards, format.gen);
       const hazardFaints = switchInAttacker.hpPercent <= 0;
       const incomingMovesFor = shows(target, 'incoming') ? incomingMovesSupplier(feedSource(data), statusMoveReader(battle)) : undefined;
+      // The opposing side's roster — fixed for every foe this hover fans the matchup out
+      // over, so the Illusion exclusion above is computed once rather than per foe.
+      const oppSide = activesOpposing(battle, ourSide)[0]?.side;
       return ownMovesSection(
         battle, ourSide, switchInAttacker, shows(target, 'outgoing') ? moves : [], format, readFacts,
-        variantsFor(feedSource(data)), speedFor,
+        variantsFor(feedSource(data), settledElsewhere(oppSide)), speedFor,
         switchInAttacker, hazardFaints ? undefined : incomingMovesFor, hazardFaints, revealsFor,
       );
     }
@@ -1122,7 +1143,7 @@ function moveVsFoe(
   // showing both long after a landed hit had already settled which one.
   const all = [
     ...resolveVariants(defenderFacts, entryOrMinimal(defenderEntry, defenderFacts)),
-    ...illusionVariants(defenderFacts, defenderEntry, feedSource(data)),
+    ...illusionVariants(defenderFacts, defenderEntry, feedSource(data), settledElsewhere(defenderMon.side)),
   ];
   const defenderVariants = revealsAgainst(battle, defenderMon, data, format, readFacts)?.narrow(all) ?? all;
 
@@ -1317,7 +1338,7 @@ function randbatsPokemonSection(
   // is still the same Pokémon, just a set living under a different feed entry.
   const sources = [
     {facts, entry, species: undefined as string | undefined, knowledge: shown},
-    ...suspectsFor(facts, entry, feedSource(data)).map(({species, entry: e}) => {
+    ...suspectsFor(facts, entry, feedSource(data), settledElsewhere(pokemon.side)).map(({species, entry: e}) => {
       // A suspected Zoroark is a different Pokémon: neither the shown forme's dex data nor
       // any Transform copy belongs to it.
       const {transformedInto: _notItsCopy, ...shownFacts} = facts;
@@ -1418,7 +1439,7 @@ function randbatsPokemonSection(
         // The same narrowing the blocks below get: a Scarf the move order has ruled out must
         // not survive as an "if Choice Scarf" aside over a block that no longer lists it.
         (() => {
-          const all = [...resolveVariants(facts, entry), ...illusionVariants(facts, entry, feedSource(data))];
+          const all = [...resolveVariants(facts, entry), ...illusionVariants(facts, entry, feedSource(data), settledElsewhere(pokemon.side))];
           return reveals ? reveals.narrow(all) : all;
         })(),
         findOpposingActives(battle, pokemon),

@@ -7,6 +7,7 @@ import {
   GUARD_MON, guardFacts,
   ORB_MON, orbFacts, DUAL_ABILITY,
   MEGANIUM_MEGA, megaMeganiumFacts,
+  TERAPAGOS, terapagosFacts,
 } from './sets.testfixtures.js';
 
 const names = (k: ReturnType<typeof inferSets>): string[] => k.candidates.map((c) => c.name);
@@ -228,5 +229,33 @@ describe('a revealed Choice item narrows the moves it could still be running', (
 
   it('narrows nothing without a dex to classify moves with', () => {
     expect(moveNames(inferSets(banded(), GARDEVOIR))).toContain('Calm Mind');
+  });
+});
+
+describe('a revealed Rest narrows the item, and a settled item narrows Rest back out', () => {
+  // `restitem.ts`'s law, read both ways, over Terapagos' real gen9randombattle role: Rest
+  // sits in both roles' pools with no Sleep Talk to pair it with, so the generator forces
+  // Chesto Berry over Heavy-Duty Boots whenever a set actually runs it.
+  const itemNamesAll = (k: ReturnType<typeof inferSets>): string[][] => k.candidates.map((c) => c.items.map((i) => i.name));
+  const moveNamesAll = (k: ReturnType<typeof inferSets>): string[][] => k.candidates.map((c) => c.moves.map((m) => m.name));
+
+  it('narrows the item to Chesto Berry once Rest is revealed as used', () => {
+    const k = inferSets(terapagosFacts({revealedMoves: ['Rest']}), TERAPAGOS);
+    expect(itemNamesAll(k)).toEqual([['Chesto Berry'], ['Chesto Berry']]);
+  });
+
+  it('keeps both items while Rest has not been revealed', () => {
+    const k = inferSets(terapagosFacts({revealedMoves: ['Calm Mind']}), TERAPAGOS);
+    expect(itemNamesAll(k)).toEqual([['Chesto Berry', 'Heavy-Duty Boots'], ['Chesto Berry', 'Heavy-Duty Boots']]);
+  });
+
+  it('drops Rest from the candidate moves once the item settles on Heavy-Duty Boots', () => {
+    const k = inferSets(terapagosFacts({item: 'Heavy-Duty Boots'}), TERAPAGOS);
+    for (const moves of moveNamesAll(k)) expect(moves).not.toContain('Rest');
+  });
+
+  it('keeps Rest live while the item could still be Chesto Berry', () => {
+    const k = inferSets(terapagosFacts(), TERAPAGOS);
+    for (const moves of moveNamesAll(k)) expect(moves).toContain('Rest');
   });
 });

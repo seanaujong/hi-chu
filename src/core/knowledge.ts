@@ -98,7 +98,7 @@ export function inferSets(facts: LiveFacts, entry: RandbatsEntry, isStatusMove?:
     const teraTypes = exclusiveOptions(role.teraTypes, activeTera);
     // Pruned against `items` — the list this very block will print — so the two lines
     // cannot make a joint claim about a set the generator never builds.
-    const pool = candidateMoves(entry, role, items.map((i) => i.name), isStatusMove);
+    const pool = candidateMoves(entry, role, items.map((i) => i.name), isStatusMove, facts);
     return {
       name,
       abilities: exclusiveOptions(role.abilities, revealedAbility ? [revealedAbility] : []),

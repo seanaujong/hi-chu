@@ -31,6 +31,7 @@
     "lint": "oxlint --deny-warnings src fitness gallery scripts build.mjs",
     "fitness-retro": "node scripts/fitness-retro.mjs",
     "choice-exclusions": "node scripts/choice-exclusions.mjs",
+    "rest-item-exclusions": "node scripts/rest-item-exclusions.mjs",
     "status-move-data": "node scripts/status-move-data.mjs"
   },
   "dependencies": {

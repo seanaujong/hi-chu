@@ -685,11 +685,20 @@ picture and not in this list, this list is the thing that's wrong.
       at both ends. What separates it from every rule next door is that it reads no
       BEHAVIOUR: the sim will happily lock a Choice Band holder into Swords Dance, and what
       cannot happen is the GENERATOR handing that set out — which is also why it needs no
-      ability guard, since no ability changes how a set was built. Its seven exceptions
-      (Trick, Switcheroo, Healing Wish, Transform, Nature Power, Baton Pass, Parting Shot)
-      are MEASURED, not recalled — `npm run choice-exclusions` re-derives them from
-      Showdown's own generator, and a missing one is a false deduction rather than a
+      ability guard, since no ability changes how a set was built. Its eight exceptions
+      (Trick, Switcheroo, Healing Wish, Transform, Nature Power, Baton Pass, Parting Shot,
+      Aurora Veil) are MEASURED, not recalled — `npm run choice-exclusions` re-derives them
+      from Showdown's own generator, and a missing one is a false deduction rather than a
       missed one. Adding a status move to the exception list = re-run that script.
+      A THIRD direction lives here too, over just three of those eight: Trick, Switcheroo
+      and Healing Wish don't merely escape the rule-out, they PIN the item, since the
+      generator hands them one on purpose. That needs a stronger claim than the other two
+      directions (a percentage, not a certainty — Trick 100%, Switcheroo 90%, Healing Wish
+      79% of their own sets), so `npm run choice-exclusions` also verifies the property that
+      makes narrowing on it safe anyway: every (format, species, role) it appears in is
+      all-or-nothing, never a genuine per-instance mix, so the "narrow only toward what the
+      role already declares, never emptying" guard `restitem.ts` uses for Rest never misfires
+      here either.
     - `restitem.ts` — `choiceitems.ts`'s sibling in kind, one Rest away from it: a set
       running Rest without Sleep Talk holds Chesto Berry, nothing else, so Rest revealed
       narrows the item to Chesto Berry and a settled non-Chesto item rules Rest back out
@@ -1034,7 +1043,9 @@ was always undefined.
 | A switch-in whose Quark Drive/Protosynthesis stayed quiet rules Booster Energy out — the same silence, read through the ABILITY's own activation line rather than one of the item's own, and needing no ability guard since the ability being checked IS the one every Paradox species is fixed to | ✅ | `core/deductions.ts`, `battle/readState.ts` (`switchedInWithoutBoosterActivation`) | `deductions.test.ts`, `resolve.test.ts`, `readState.test.ts` |
 | A status move rules out all three Choice items — a claim about how the set was BUILT, so it needs no ability guard and settles on the FIRST such move | ✅ | `core/choiceitems.ts` (`choiceRuledOutByStatusMoves`), `core/deductions.ts` (`choiceRuledOutBySetShape`) | `choiceitems.test.ts`, `deductions.test.ts`, `resolve.test.ts`, `section.test.ts` |
 | …and the same law backwards: a revealed Choice item rules the status moves out of what the set could still be RUNNING, pruned against the very Items line the block prints | ✅ | `core/choiceitems.ts` (`movesUnderChoiceItem`), `core/narrow.ts` (`candidateMoves`) | `choiceitems.test.ts`, `knowledge.test.ts`, `section.test.ts` |
-| The seven status moves a Choice set DOES hold are measured from Showdown's own generator, never recalled — a missing one is a FALSE deduction | ✅ | `core/choiceitems.ts` (`PAIRS_WITH_CHOICE`), `scripts/choice-exclusions.mjs` | `choiceitems.test.ts`, `npm run choice-exclusions` |
+| The eight status moves a Choice set DOES hold are measured from Showdown's own generator, never recalled — a missing one is a FALSE deduction | ✅ | `core/choiceitems.ts` (`PAIRS_WITH_CHOICE`), `scripts/choice-exclusions.mjs` | `choiceitems.test.ts`, `npm run choice-exclusions` |
+| …and a third direction over three of those eight: Trick/Switcheroo/Healing Wish don't just escape the rule-out, they PIN the item to a Choice one | ✅ | `core/choiceitems.ts` (`choiceConfirmedByMoves`, `itemsConfirmedByMoves`), `core/narrow.ts` (`candidateItems`) | `choiceitems.test.ts`, `knowledge.test.ts` |
+| The Choice-item confirmation is safe despite a sub-100% rate because every (format, species, role) it appears in is all-or-nothing, never a genuine per-instance mix | ✅ | `core/choiceitems.ts` (`CONFIRMS_CHOICE`), `scripts/choice-exclusions.mjs` | `choiceitems.test.ts`, `npm run choice-exclusions` |
 | Rest without Sleep Talk forces Chesto Berry — a revealed Rest narrows the item to it | ✅ | `core/restitem.ts` (`itemsUnderRevealedRest`), `core/narrow.ts` (`candidateItems`) | `restitem.test.ts`, `knowledge.test.ts` |
 | …and the same law backwards: a settled non-Chesto item rules Rest back out of the moves a role could still be running | ✅ | `core/restitem.ts` (`movesUnderNonChestoItem`), `core/narrow.ts` (`candidateMoves`) | `restitem.test.ts`, `knowledge.test.ts` |
 | The Rest/Chesto forcing needs Chesto Berry to already be a live possibility in the role's OWN declared item pool — an evolution-stage override or Giratina's species carve-out is never hardcoded, since a role whose pool never produced Chesto Berry says so on its own | ✅ | `core/restitem.ts` (`poolHasChestoBerry`) | `restitem.test.ts` |

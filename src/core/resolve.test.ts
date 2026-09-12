@@ -297,12 +297,14 @@ describe('resolveVariants — the still-possible sets to calc over', () => {
     expect(items(resolveVariants(setup, GARDEVOIR))).toEqual(['Life Orb']);
   });
 
-  it('keeps them for the status move the generator pairs with a Choice item', () => {
-    // Trick is in the same Gardevoir pool, and it is the counterexample the rule is built
-    // around: a Trick set holds a Choice item BECAUSE it Tricks. Reading it as evidence
-    // against one would rule out the very set most likely to be standing there.
+  it('pins them to a Choice item for the move the generator hands one out FOR', () => {
+    // Trick is in the same Gardevoir pool, and it is the counterexample the rule-out is
+    // built around: a Trick set holds a Choice item BECAUSE it Tricks. Reading it as
+    // evidence against one would rule out the very set most likely to be standing there —
+    // and `choiceitems.ts`'s own measurement shows the pairing is never a genuine
+    // per-instance mix, so seeing Trick used pins the item rather than merely permitting it.
     const trick = gardevoirFacts({baseAbility: 'Trace', revealedMoves: ['Trick'], revealedStatusMoves: ['Trick']});
-    expect(items(resolveVariants(trick, GARDEVOIR)).sort()).toEqual(['Choice Scarf', 'Choice Specs', 'Life Orb']);
+    expect(items(resolveVariants(trick, GARDEVOIR)).sort()).toEqual(['Choice Scarf', 'Choice Specs']);
   });
 
   it('rules out a Choice-ONLY role outright, not just its item line', () => {

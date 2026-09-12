@@ -1,12 +1,21 @@
-// Re-derives the exception list `src/core/choiceitems.ts` is built on: which status moves
-// Showdown's team generator will pair with a Choice item.
+// Re-derives the two exception lists `src/core/choiceitems.ts` is built on: which status
+// moves Showdown's team generator will PAIR with a Choice item (`PAIRS_WITH_CHOICE`, the
+// rule-out's exception), and, of those, which ones it PINS a Choice item TO
+// (`CONFIRMS_CHOICE`, the separate confirmation law).
 //
-// The law that file states — a Choice item and a status move never share a random-battle
-// set — is not a mechanic anyone can read off the sim. It is a property of how
+// Neither law is a mechanic anyone can read off the sim. Both are properties of how
 // `data/random-battles/*/teams.ts` assembles sets, which is a thousand lines of interacting
-// special cases, so the only honest way to know it is to generate sets and look. This is
-// that measurement, kept in the tree so the claim stays falsifiable rather than becoming
+// special cases, so the only honest way to know either is to generate sets and look. This is
+// that measurement, kept in the tree so the claims stay falsifiable rather than becoming
 // folklore about a generator that has since moved on.
+//
+// The confirmation's own soundness rests on a narrower, stronger claim than a percentage:
+// every (format, species, role) combination that carries a `CONFIRMS_CHOICE` move must be
+// ALL-OR-NOTHING — never a mix of Choice and non-Choice outcomes for the exact same role.
+// That is what lets `itemsConfirmedByMoves` narrow safely despite Switcheroo and Healing
+// Wish sitting under 100% overall: the sub-100% average is many all-or-nothing roles
+// averaged together, not genuine per-instance randomness inside any one of them. This
+// script fails if it ever finds a role that IS mixed, which would break that argument.
 //
 // LOCAL, needs the `.ps-server` checkout (cloned on first use, as `player-check` does).
 // Deliberately NOT part of `npm run check`: it needs a checkout CI has no reason to carry,
@@ -37,12 +46,15 @@ const FORMATS = [
 const CHOICE = new Set(['choiceband', 'choicespecs', 'choicescarf']);
 const toId = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '');
 
-/** The list as `choiceitems.ts` currently has it, read from the source so the two cannot
- *  drift apart silently — a check that compares a file against itself checks nothing. */
-function declaredExceptions() {
-  const src = readFileSync(fileURLToPath(new URL('../src/core/choiceitems.ts', import.meta.url)), 'utf8');
-  const block = /const PAIRS_WITH_CHOICE: ReadonlySet<string> = new Set\(\[([^\]]*)\]\)/s.exec(src);
-  if (!block) throw new Error('could not find PAIRS_WITH_CHOICE in src/core/choiceitems.ts');
+const SRC_PATH = fileURLToPath(new URL('../src/core/choiceitems.ts', import.meta.url));
+
+/** One `const NAME: ReadonlySet<string> = new Set([...])` as currently declared in
+ *  `choiceitems.ts`, read from the source so the two cannot drift apart silently — a check
+ *  that compares a file against itself checks nothing. */
+function declaredSet(constName) {
+  const src = readFileSync(SRC_PATH, 'utf8');
+  const block = new RegExp(`const ${constName}: ReadonlySet<string> = new Set\\(\\[([^\\]]*)\\]\\)`, 's').exec(src);
+  if (!block) throw new Error(`could not find ${constName} in src/core/choiceitems.ts`);
   return new Set([...block[1].matchAll(/'([a-z0-9]+)'/g)].map((m) => m[1]));
 }
 
@@ -51,7 +63,9 @@ async function main() {
   const simPath = ensureLocalCheckout();
   const {Teams, Dex} = (await import(simPath)).default ?? (await import(simPath));
 
+  const confirms = declaredSet('CONFIRMS_CHOICE');
   const stat = new Map(); // move id → {name, total, choice, example}
+  const byRole = new Map(); // "move|format|species|role" → {choice, nonChoice}
   let sets = 0;
   let choiceSets = 0;
   for (const format of FORMATS) {
@@ -80,6 +94,12 @@ async function main() {
             row.example ||= `${format} ${set.species} ${set.item}`;
           }
           stat.set(id, row);
+          if (confirms.has(id)) {
+            const key = `${id}|${format}|${set.species}|${set.role}`;
+            const roleRow = byRole.get(key) ?? {choice: 0, nonChoice: 0};
+            if (choice) roleRow.choice++; else roleRow.nonChoice++;
+            byRole.set(key, roleRow);
+          }
         }
       }
     }
@@ -95,7 +115,7 @@ async function main() {
       `(${((r.choice / r.total) * 100).toFixed(1)}%)  e.g. ${r.example}  [${id}]`);
   }
 
-  const declared = declaredExceptions();
+  const declared = declaredSet('PAIRS_WITH_CHOICE');
   const found = new Set(measured.map(([id]) => id));
   const missing = [...found].filter((id) => !declared.has(id));
   const unseen = [...declared].filter((id) => !found.has(id));
@@ -115,7 +135,20 @@ async function main() {
     process.exitCode = 1;
     return;
   }
-  console.log('\nOK: the source\'s exception list covers everything this run measured.');
+  console.log('\nOK: the source\'s rule-out exception list covers everything this run measured.');
+
+  console.log(`\nCONFIRMS_CHOICE (${[...confirms].join(', ')}) — checking every ` +
+    `(format, species, role) combination is all-or-nothing:`);
+  const mixed = [...byRole.entries()].filter(([, r]) => r.choice > 0 && r.nonChoice > 0);
+  console.log(`  ${byRole.size} combinations sampled, ${mixed.length} genuinely mixed.`);
+  if (mixed.length > 0) {
+    console.error(`\nFAIL: these roles produced BOTH a Choice and a non-Choice item, which breaks the ` +
+      "argument itemsConfirmedByMoves' safety rests on — it would sometimes narrow away the correct item:");
+    for (const [key, r] of mixed.slice(0, 10)) console.error(`  ${key}  choice=${r.choice} nonChoice=${r.nonChoice}`);
+    process.exitCode = 1;
+    return;
+  }
+  console.log("OK: CONFIRMS_CHOICE's confirmation is safe to narrow on — no role split both ways.");
 }
 
 await main();

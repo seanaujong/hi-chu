@@ -9,8 +9,9 @@
 import type {IsStatusMove, LiveFacts, RandbatsEntry, RandbatsRole} from './types.js';
 import {toId, innateAbility} from './facts.js';
 import {survivingItems} from './deductions.js';
-import {isChoiceItem, movesUnderChoiceItem} from './choiceitems.js';
+import {isChoiceItem, movesUnderChoiceItem, itemsConfirmedByMoves} from './choiceitems.js';
 import {itemsUnderRevealedRest, movesUnderNonChestoItem} from './restitem.js';
+import {itemsUnderRevealedMoveRules, movesUnderSettledMoveRuleItem, itemsUnderGutsOrFacade} from './moveitems.js';
 
 /**
  * Every ability the feed says this species can be BUILT with — the union over its roles.
@@ -112,8 +113,9 @@ function consistentRoles(
 
 /**
  * The items ONE candidate could still be holding — the role's own pool (or the entry's,
- * where the role declares none), with the behavioural rule-outs and a revealed Rest (see
- * `restitem.ts`) allowed to narrow it but never to empty it.
+ * where the role declares none), with the behavioural rule-outs, a revealed Rest (see
+ * `restitem.ts`), and a revealed Trick/Switcheroo/Healing Wish (see `choiceitems.ts`)
+ * allowed to narrow it but never to empty it.
  *
  * The item-level twin of `consistentRoles`, and it lives here for the reason this file's
  * header already gives: resolution and display must narrow through ONE rule. They did not.
@@ -151,7 +153,14 @@ export function candidateItems(
   const pool = surviving.length > 0 ? surviving : declared;
   // A revealed Rest (see `restitem.ts`) narrows this the same way a behavioural
   // deduction does — it just reads a moves-known fact instead of a side effect.
-  return itemsUnderRevealedRest(declared, pool, movePool, facts, abilities);
+  const afterRest = itemsUnderRevealedRest(declared, pool, movePool, facts, abilities);
+  // A revealed Trick/Switcheroo/Healing Wish (see `choiceitems.ts`) PINS this to a Choice
+  // item rather than merely narrowing toward one.
+  const afterChoice = itemsConfirmedByMoves(afterRest, facts.revealedMoves);
+  // Court Change, Belly Drum, Meteor Beam, Aurora Veil, Shell Smash and Guts/Facade each
+  // force their own item the same way (see `moveitems.ts`).
+  const afterMoveRules = itemsUnderRevealedMoveRules(declared, afterChoice, facts, abilities);
+  return itemsUnderGutsOrFacade(declared, afterMoveRules, movePool, facts, abilities);
 }
 
 /**
@@ -193,7 +202,10 @@ export function candidateMoves(
   // confirmed Choice item rules a status move out above — the item read backwards onto moves.
   const declaredItems = role?.items?.length ? role.items : (entry.items ?? []);
   const abilities = role?.abilities?.length ? role.abilities : (entry.abilities ?? []);
-  return movesUnderNonChestoItem(pool, declaredItems, items, facts, abilities);
+  const afterRest = movesUnderNonChestoItem(pool, declaredItems, items, facts, abilities);
+  // A settled item away from Court Change/Belly Drum/etc.'s own forced item (see
+  // `moveitems.ts`) rules that move back out the same way.
+  return movesUnderSettledMoveRuleItem(afterRest, declaredItems, items, facts, abilities);
 }
 
 /**

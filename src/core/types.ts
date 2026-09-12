@@ -62,7 +62,8 @@ export interface RandbatsRole {
   readonly nature?: string;
 }
 
-/** A species' full set of possibilities. Gen 9 entries carry per-role `roles`. */
+/** A species' full set of possibilities. Every generation but gen1 carries per-role
+ *  `roles`; gen1 entries are role-less, a flat pool straight on the entry. */
 export interface RandbatsEntry {
   readonly level: number;
   readonly abilities: readonly string[];

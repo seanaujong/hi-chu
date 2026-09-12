@@ -29,8 +29,12 @@ import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {ensureLocalCheckout} from './lib/local-server.mjs';
 
-// The gen9-family formats `pkmn.github.io/randbats` publishes — the only ones whose feed
-// carries the per-role shape `restitem.ts` reads at all.
+// The gen9-family formats this law is actually MEASURED against. Every generation but
+// gen1 and Let's Go carries the same per-role feed shape (see `types.ts`'s
+// `RandbatsEntry`), but that shape is not this law: gen2/gen3 have no Chesto-Berry branch
+// at all, and gen4 (Shuckle) and gen6/7 (Hydration) hand-carve their own extra exceptions
+// this file's `RECOVERY_EXCUSES` does not enumerate. Sampling those generations here would
+// just report their DIFFERENT law as a failure of this one.
 const FORMATS = [
   'gen9randombattle', 'gen9randomdoublesbattle', 'gen9babyrandombattle',
   'gen9championsrandombattle', 'gen9championsrandomdoublesbattle',

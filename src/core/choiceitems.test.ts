@@ -1,5 +1,8 @@
 import {describe, it, expect} from 'vitest';
-import {CHOICE_ITEMS, isChoiceItem, choiceRuledOutByStatusMoves, movesUnderChoiceItem} from './choiceitems.js';
+import {
+  CHOICE_ITEMS, isChoiceItem, choiceRuledOutByStatusMoves, movesUnderChoiceItem,
+  choiceConfirmedByMoves, itemsConfirmedByMoves,
+} from './choiceitems.js';
 
 // The shell reads a move's category off the client dex; here a small table stands in for
 // it, so these tests state the law rather than Showdown's move data.
@@ -74,5 +77,48 @@ describe('movesUnderChoiceItem — the moves read off the item', () => {
     // An unclassified move is not evidence that it is an attack — the same "never lie"
     // preference the deductions layer states, one direction over.
     expect(movesUnderChoiceItem(URSHIFU, () => false)).toEqual(URSHIFU);
+  });
+});
+
+describe('choiceConfirmedByMoves — the item PINNED by the moves', () => {
+  it('confirms on Trick, Switcheroo, or Healing Wish', () => {
+    for (const move of ['Trick', 'Switcheroo', 'Healing Wish']) {
+      expect(choiceConfirmedByMoves([move]), move).toBe(true);
+    }
+  });
+
+  it('does not confirm on the other five exceptions — they only ever escape the rule-out', () => {
+    for (const move of ['Transform', 'Nature Power', 'Baton Pass', 'Parting Shot', 'Aurora Veil']) {
+      expect(choiceConfirmedByMoves([move]), move).toBe(false);
+    }
+  });
+
+  it('does not confirm on an ordinary status move', () => {
+    expect(choiceConfirmedByMoves(['Calm Mind'])).toBe(false);
+  });
+
+  it('says nothing when nothing has been revealed', () => {
+    expect(choiceConfirmedByMoves([])).toBe(false);
+  });
+});
+
+describe('itemsConfirmedByMoves — the item pool narrowed by the moves', () => {
+  it('pins the pool to a Choice item once Trick is revealed', () => {
+    expect(itemsConfirmedByMoves(['Choice Specs', 'Life Orb'], ['Trick'])).toEqual(['Choice Specs']);
+  });
+
+  it('pins to every Choice item still in the pool, not just one', () => {
+    expect(itemsConfirmedByMoves(['Choice Scarf', 'Choice Specs', 'Life Orb'], ['Switcheroo']))
+      .toEqual(['Choice Scarf', 'Choice Specs']);
+  });
+
+  it('leaves the pool untouched while none of the three moves has been revealed', () => {
+    expect(itemsConfirmedByMoves(['Choice Specs', 'Life Orb'], ['Psychic'])).toEqual(['Choice Specs', 'Life Orb']);
+  });
+
+  it('never empties the pool — a role whose declared items hold no Choice item stays as it was', () => {
+    // The shape a Giratina/NFE-style carve-out would take for this law: the confirmation
+    // genuinely does not apply to a role that never had a Choice item to pin.
+    expect(itemsConfirmedByMoves(['Eviolite'], ['Healing Wish'])).toEqual(['Eviolite']);
   });
 });

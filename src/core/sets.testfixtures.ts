@@ -241,3 +241,37 @@ export const terapagosFacts = (over: Partial<LiveFacts> = {}): LiveFacts =>
     },
     ...over,
   });
+
+// Real gen9randombattle entry: Court Change forces Heavy-Duty Boots (`moveitems.ts`), and
+// this role's OWN pool has both a Choice Band build and a Boots one to narrow between.
+export const CINDERACE: RandbatsEntry = {
+  level: 77,
+  abilities: ['Libero'],
+  items: ['Choice Band', 'Heavy-Duty Boots'],
+  roles: {
+    'Fast Attacker': {
+      abilities: ['Libero'],
+      items: ['Choice Band', 'Heavy-Duty Boots'],
+      teraTypes: ['Fighting'],
+      moves: ['Court Change', 'Gunk Shot', 'Pyro Ball', 'U-turn'],
+    },
+  },
+};
+export const cinderaceFacts = (over: Partial<LiveFacts> = {}): LiveFacts => liveFacts({speciesForme: 'Cinderace', level: 77, ...over});
+
+// Real gen9randombattle entry: Belly Drum forces Sitrus Berry (`moveitems.ts`), and this
+// role's own pool has both a Choice Band build and a Sitrus Berry one to narrow between.
+export const AZUMARILL: RandbatsEntry = {
+  level: 82,
+  abilities: ['Huge Power'],
+  items: ['Choice Band', 'Sitrus Berry'],
+  roles: {
+    'Bulky Attacker': {
+      abilities: ['Huge Power'],
+      items: ['Choice Band', 'Sitrus Berry'],
+      teraTypes: ['Water'],
+      moves: ['Aqua Jet', 'Belly Drum', 'Knock Off', 'Liquidation', 'Play Rough'],
+    },
+  },
+};
+export const azumarillFacts = (over: Partial<LiveFacts> = {}): LiveFacts => liveFacts({speciesForme: 'Azumarill', level: 82, ...over});

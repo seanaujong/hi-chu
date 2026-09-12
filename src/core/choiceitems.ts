@@ -1,7 +1,8 @@
 // The set-shape law: a Choice item and a status move do not share a random-battle set.
 // Read in two directions, because one law answers two questions — a status move seen
 // rules the Choice items OUT, and a Choice item seen rules the status moves out of what
-// the set could still be RUNNING.
+// the set could still be RUNNING. A third function near the bottom is a related but
+// separate law over the same exception moves — see WHY THE CONFIRMATION IS SEPARATE below.
 //
 // It is a claim about how the feed's sets were BUILT, which makes it a different kind of
 // evidence from everything in `deductions.ts` next door. Those read a mark the item's own
@@ -104,6 +105,30 @@ export function movesUnderChoiceItem(pool: readonly string[], isStatusMove: IsSt
   return pool.filter((m) => !isStatusMove(m) || PAIRS_WITH_CHOICE.has(toId(m)));
 }
 
+/**
+ * The subset of `PAIRS_WITH_CHOICE` measured well past "doesn't rule it out" and into
+ * "confirms it" — see WHY THE CONFIRMATION IS SEPARATE below for what backs each one and
+ * why the other five (Transform, and the four passengers) are left out.
+ */
+const CONFIRMS_CHOICE: ReadonlySet<string> = new Set(['trick', 'switcheroo', 'healingwish']);
+
+/** Direction three — has this Pokémon been seen using a move the generator hands a
+ *  Choice item FOR? True once any of Trick, Switcheroo or Healing Wish is revealed. */
+export function choiceConfirmedByMoves(revealedMoves: readonly string[]): boolean {
+  return revealedMoves.some((m) => CONFIRMS_CHOICE.has(toId(m)));
+}
+
+/**
+ * `pool` narrowed to a Choice item once one of those three moves is revealed — never
+ * emptied, so a role whose declared pool never held one (the confirmation genuinely
+ * doesn't apply to it — see WHY THE CONFIRMATION IS SEPARATE) is left exactly as it was.
+ */
+export function itemsConfirmedByMoves(pool: readonly string[], revealedMoves: readonly string[]): readonly string[] {
+  if (!choiceConfirmedByMoves(revealedMoves)) return pool;
+  const narrowed = pool.filter(isChoiceItem);
+  return narrowed.length > 0 ? narrowed : pool;
+}
+
 // WHAT THIS DELIBERATELY DOES NOT COVER.
 //
 // The setup moves that are ATTACKS — Power-Up Punch, Charge Beam, Torch Song, Meteor
@@ -113,8 +138,23 @@ export function movesUnderChoiceItem(pool: readonly string[], isStatusMove: IsSt
 // on a few hundred sets rather than the hundreds of thousands behind the status-move
 // half, and "prefer missing a rule-out to making a false one" decides a case like that.
 //
-// Nor is the POSITIVE reading made, though the data offers it plainly: Trick held a
-// Choice item in 100% of the sets it appeared on, so seeing Trick very nearly confirms
-// one, the way `deductions.ts` confirms Heavy-Duty Boots from a dodged Stealth Rock. It
-// is a different law — one that would pin an item rather than release one — and it wants
-// its own measurement of what the remaining 0% is, not a corner of this file.
+// WHY THE CONFIRMATION IS SEPARATE. `choiceConfirmedByMoves`/`itemsConfirmedByMoves` below
+// are a related but different claim from the two functions above: those RELEASE an item
+// (a Choice item stays possible), this one PINS one (only a Choice item is possible) — the
+// same asymmetry `deductions.ts`'s `bootsRuledIn` has beside its `bootsRuledOut`. Pinning
+// demands more evidence than releasing does, which is why it covers only three of the
+// eight exceptions above: Trick held a Choice item in 100% of its sets, Switcheroo 89%,
+// Healing Wish 78% (this file's own run of record). Transform sits at 40% and the four
+// passengers lower still — nowhere near enough to pin anything, so they confirm nothing.
+//
+// A rate under 100% looks like it should rule out pinning Switcheroo and Healing Wish too,
+// but the average hides a cleaner fact underneath: sampled per (format, species, role) —
+// `npm run choice-exclusions`'s own run of record found 253 combinations across every
+// generation `pkmn.github.io/randbats` publishes — NOT ONE ever produced both a Choice and
+// a non-Choice item. Each specific role is one or the other, always; the sub-100% average
+// is just many all-or-nothing roles mixed together.
+// `itemsConfirmedByMoves` narrows to a Choice item only when one is ALREADY in the pool
+// the role declares, so a role on the "never" side simply has none there to narrow to and
+// the pool comes back untouched — the same "narrow toward what's already declared, never
+// empty" guard `restitem.ts` uses for Rest and Chesto Berry. That per-role determinism is
+// what makes 89%/78% safe to build on rather than a rate to distrust.

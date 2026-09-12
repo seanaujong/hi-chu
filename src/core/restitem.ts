@@ -45,11 +45,17 @@
 //     explained by an NFE species (Happiny, Phantump, Scraggy, Dratini, Silicobra),
 //     Giratina, or an ability in RECOVERY_EXCUSES below. Nothing else ever showed up.
 //
-// Every OTHER generation is out of scope on purpose, not by oversight: gen1-3 lack this
-// branch entirely (no Chesto Berry at all), and gen4 (Shuckle) and gen6/7 (Hydration)
-// hand-carve their own extra exceptions gen9 does not share. Scoping this law to per-role
-// feed entries sidesteps all of it — only gen9-family formats carry `roles`, so an
-// older-gen, role-less entry never reaches either function below.
+// Every OTHER generation is out of scope on purpose, not by oversight — and not because
+// they lack `roles`: every generation but gen1 and Let's Go carries the same per-role feed
+// shape (`types.ts`'s `RandbatsEntry`). What they don't share is this LAW: gen1-3 have no
+// Chesto Berry branch at all, and gen4 (Shuckle) and gen6/7 (Hydration) hand-carve their
+// own extra exceptions RECOVERY_EXCUSES does not enumerate. The `poolHasChestoBerry` guard
+// below likely keeps this safe there anyway — a generation with no such branch, or a
+// species carved out of it by name, simply never puts Chesto Berry in that role's declared
+// pool for this file to narrow toward — but "likely keeps it safe" is exactly the kind of
+// claim this file's own header insists on measuring rather than reasoning through, so the
+// exception list and `npm run rest-item-exclusions` stay scoped to the formats it actually
+// covers until someone does that measurement.
 //
 // Pure: no DOM, no network, no @smogon/calc.
 

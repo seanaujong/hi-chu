@@ -711,9 +711,10 @@ picture and not in this list, this list is the thing that's wrong.
       ability exceptions ARE measured, the same discipline `choiceitems.ts`'s
       `PAIRS_WITH_CHOICE` holds — `npm run rest-item-exclusions` re-derives them, and a
       missing one is a false deduction rather than a missed one. Scoped to gen9-family
-      formats by construction — only their per-role feed entries carry a move pool to
-      check Sleep Talk against, so a role-less older-gen entry never reaches either
-      direction.
+      formats — not because other generations lack `roles` (every generation but gen1 and
+      Let's Go has them), but because this specific LAW is theirs alone: gen1-3 have no
+      Chesto Berry branch at all, and gen4/gen6/7 hand-carve their own extra exceptions
+      this file doesn't enumerate. Widening it is future work, not a correctness fix.
     - `moveitems.ts` — five more set-shape laws of the same kind, table-driven: Court
       Change, Belly Drum/Fillet Away, Meteor Beam, Aurora Veil and Shell Smash each force
       their own item (`SIMPLE_RULES`), read both ways like `restitem.ts`'s Rest. A sixth,

@@ -344,6 +344,12 @@ export interface LiveFacts {
    * it has no notion of this volatile at all.
    */
   readonly magnetRise?: boolean;
+  /**
+   * True while Slow Start's Attack/Speed halving is in effect, read straight off the sim's
+   * `slowstart` volatile — presence-or-absence, the same shape as `charged`. See
+   * `ResolvedMon.abilityOn` for why the calc needs this passed explicitly at all.
+   */
+  readonly slowStart?: boolean;
 }
 
 /**
@@ -594,13 +600,15 @@ export interface ResolvedMon {
   readonly item: string | undefined;
   /**
    * True when a CONDITIONAL ability's boost is currently ACTIVE and the calc has no way to
-   * infer that itself. `@smogon/calc`'s `getFinalSpeed` reads Unburden's ×2 Speed off an
-   * explicit `abilityOn` flag on the calc's `Pokemon` — the same generic toggle other
-   * gen-8/9 abilities (Flash Fire, Slow Start, Stakeout, …) use — rather than deriving it
-   * from `item`/turn count itself. hi-chu sets it only for Unburden today:
-   * `resolve.buildResolved` turns it on exactly when the ability is Unburden AND the item
-   * is confirmed GONE, never merely absent (Unburden triggers on a mid-battle LOSS, not a
-   * mon that started itemless). Absent/false means "not applicable — off".
+   * infer that itself. `@smogon/calc`'s `getFinalSpeed`/damage code reads Unburden's ×2
+   * Speed and Slow Start's ×0.5 Attack/Speed off the same explicit `abilityOn` flag on the
+   * calc's `Pokemon` — the generic toggle other gen-8/9 abilities (Flash Fire, Stakeout, …)
+   * use too — rather than deriving it from `item`/turn count itself. `resolve.buildResolved`
+   * arms it in two independent cases: Unburden, when the item is confirmed GONE (never
+   * merely absent — Unburden triggers on a mid-battle LOSS, not a mon that started
+   * itemless), and Slow Start, straight off `LiveFacts.slowStart` (itself read off the
+   * sim's own `slowstart` volatile, which already tracks the 5-turn window). Absent/false
+   * means "not applicable — off".
    */
   readonly abilityOn?: boolean;
   /**

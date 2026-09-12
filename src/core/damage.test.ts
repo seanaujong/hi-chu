@@ -612,6 +612,22 @@ describe('Guts negates burn (the bug the baseline gets wrong)', () => {
   });
 });
 
+describe('Slow Start halves a physical attacker\'s damage only once armed via abilityOn — the same shared toggle Unburden uses', () => {
+  it('a Regigigas with abilityOn hits for roughly half of the same attacker unarmed', () => {
+    const target = mon({speciesForme: 'Blissey'});
+    const unarmed = calcDamage(mon({speciesForme: 'Regigigas', ability: 'Slow Start'}), target, 'Return');
+    const armed = calcDamage(mon({speciesForme: 'Regigigas', ability: 'Slow Start', abilityOn: true}), target, 'Return');
+    expect(armed.total.mean).toBeLessThan(unarmed.total.mean);
+  });
+
+  it('leaves a special move untouched — Slow Start halves Attack, not Special Attack', () => {
+    const target = mon({speciesForme: 'Blissey'});
+    const unarmed = calcDamage(mon({speciesForme: 'Regigigas', ability: 'Slow Start'}), target, 'Focus Blast');
+    const armed = calcDamage(mon({speciesForme: 'Regigigas', ability: 'Slow Start', abilityOn: true}), target, 'Focus Blast');
+    expect(armed.total.mean).toBe(unarmed.total.mean);
+  });
+});
+
 describe('Quark Drive/Protosynthesis boosts damage only once armed via boostedStat (a calc gap: it refuses to activate at all otherwise, terrain or no terrain)', () => {
   it('a Quark Drive attacker with boostedStat "spa" hits harder than the same mon unarmed', () => {
     const target = mon({speciesForme: 'Blissey'});

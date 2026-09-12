@@ -1196,7 +1196,14 @@ rather than in our code. Run the named check by hand after a Showdown client upd
   distinguish which one, so a renamed key would silently stop doubling every charged Electric
   move regardless of source. To exercise it, pick a replay with a Bellibolt or Kilowattrel
   that has taken a hit (Electromorphosis) or used a wind move / seen Tailwind start on its own
-  side (Wind Power). And the `|-start|` line's `quarkdrive<stat>`/`protosynthesis<stat>` id —
+  side (Wind Power). And
+  `volatiles.slowstart` — presence-only, same shape as Charge, but the SAFE-not-dangerous
+  direction: the sim sets and clears it automatically across Slow Start's 5-turn window, and
+  `readSlowStart` feeds it to the same `abilityOn` toggle Unburden uses, so a renamed key
+  would silently leave a Regigigas calculated at full, unhalved Attack and Speed for its whole
+  weakened window — overstating a threat that isn't real yet, rather than hiding one that is.
+  To exercise it, pick a replay with a Regigigas in the first 5 turns after it switches in.
+  And the `|-start|` line's `quarkdrive<stat>`/`protosynthesis<stat>` id —
   read raw off `stepQueue` this time, not off the parsed volatile table `readParadoxBoost`
   trusts, because the Booster Energy rule-out needs to know whether the id appeared during ONE
   particular switch-in, not merely whether it is on right now. Read in the DANGEROUS

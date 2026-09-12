@@ -357,6 +357,17 @@ export function readMagnetRise(p: ClientPokemon): boolean {
 }
 
 /**
+ * True while Slow Start's Attack/Speed halving is in effect — the sim's own `slowstart`
+ * volatile, which it sets on switch-in and clears automatically once the holder's 5th turn
+ * ends, so presence-or-absence is the whole fact, the same shape as `readCharged`. See
+ * `ResolvedMon.abilityOn` for why `@smogon/calc` needs this passed explicitly: it halves
+ * Attack and Speed off that generic toggle, not off a turn count it has no way to track.
+ */
+export function readSlowStart(p: ClientPokemon): boolean {
+  return p.volatiles?.['slowstart'] !== undefined;
+}
+
+/**
  * The Pokémon this one has TRANSFORMED into, or undefined. The client keeps the target's
  * live `Pokemon` object right in the volatile — `['transform', target, shiny, gender,
  * level]` — so the copy can be read with exactly the machinery every other Pokémon on the
@@ -456,6 +467,7 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, spe
   const boostedStat = readParadoxBoost(p);
   const charged = readCharged(p);
   const magnetRise = readMagnetRise(p);
+  const slowStart = readSlowStart(p);
 
   // `?? {}` because the client does not always have it — see the `boosts` field's own note.
   // An absent boost table means "no boosts", which is the honest reading and the common case.
@@ -510,6 +522,7 @@ export function toLiveFacts(p: ClientPokemon, signals: BehaviorSignals = {}, spe
     ...(boostedStat ? {boostedStat} : {}),
     ...(charged ? {charged: true} : {}),
     ...(magnetRise ? {magnetRise: true} : {}),
+    ...(slowStart ? {slowStart: true} : {}),
     // `shedTailMaker` deliberately does not come along: LiveFacts names no other Pokémon by
     // ident, and turning that ident into the max HP it stands for takes the feed. The shell
     // (`section.factsReader`) resolves it and overlays `sizedOnMaxHP`, exactly as it does for

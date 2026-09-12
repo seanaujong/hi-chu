@@ -123,6 +123,17 @@ describe('resolveMon', () => {
     const grounded = resolveMon(dragoniteFacts(), DRAGONITE);
     expect(grounded.magnetRise).toBeUndefined();
   });
+
+  it('arms Slow Start (abilityOn) off LiveFacts.slowStart, the same shared toggle Unburden uses', () => {
+    const active = resolveMon(dragoniteFacts({ability: 'Slow Start', slowStart: true}), DRAGONITE);
+    expect(active.abilityOn).toBe(true);
+    // The volatile hasn't started (or already ended after 5 turns) — must not stay armed.
+    const inactive = resolveMon(dragoniteFacts({ability: 'Slow Start'}), DRAGONITE);
+    expect(inactive.abilityOn).toBeUndefined();
+    // Volatile present but the ability isn't Slow Start — no reason to arm it.
+    const otherAbility = resolveMon(dragoniteFacts({ability: 'Multiscale', slowStart: true}), DRAGONITE);
+    expect(otherAbility.abilityOn).toBeUndefined();
+  });
 });
 
 describe('resolveMon reflects the same narrowing/deductions the display does', () => {

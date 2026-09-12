@@ -78,7 +78,7 @@ function probeLiveClient() {
   // Which of the rarer client shapes this replay actually exercised — a random replay
   // usually has no transformed or forme-changed Pokémon, and a probe that never fired is
   // not a probe that passed. Reported, not failed on.
-  const seen = {formeChange: false, transform: false, calledMove: false, balloonAnnounce: false, statusLine: false, substitute: false, shedTail: false, typeChange: false, proteanLine: false, roost: false, weatherUpkeep: false, paradoxBoost: false, paradoxBoostStartLine: false, charge: false, magnetRise: false, leftoversHeal: false};
+  const seen = {formeChange: false, transform: false, calledMove: false, balloonAnnounce: false, statusLine: false, substitute: false, shedTail: false, typeChange: false, proteanLine: false, roost: false, weatherUpkeep: false, paradoxBoost: false, paradoxBoostStartLine: false, charge: false, magnetRise: false, leftoversHeal: false, slowStart: false};
 
   const format = R.detectFormat(b);
   if (!format || format.kind !== 'randbats' || !/^gen\d+random/.test(format.formatId)) {
@@ -440,6 +440,20 @@ function probeLiveClient() {
     } else if (R.readMagnetRise(mon)) {
       problems.push(`readMagnetRise(${f.speciesForme || '?'}) invented a Magnet Rise with no volatile to justify it`);
     }
+    // Slow Start is PRESENCE only, same shape as Charge: the sim sets and clears the
+    // volatile itself across the 5-turn window, so there is nothing to decode beyond it.
+    const slowstart = mon.volatiles?.['slowstart'];
+    if (slowstart !== undefined) {
+      if (!Array.isArray(slowstart) || slowstart[0] !== 'slowstart') {
+        problems.push(`${f.speciesForme || '?'}.volatiles.slowstart = ${JSON.stringify(slowstart)} (expected ['slowstart'])`);
+      }
+      if (!R.readSlowStart(mon)) {
+        problems.push(`readSlowStart(${f.speciesForme || '?'}) missed a slowstart the volatile plainly shows`);
+      }
+      seen.slowStart = true;
+    } else if (R.readSlowStart(mon)) {
+      problems.push(`readSlowStart(${f.speciesForme || '?'}) invented a slowstart with no volatile to justify it`);
+    }
     // The transform volatile holds the TARGET's own Pokemon object — that is what makes a
     // copy resolvable at all (we go and read the Pokémon it copied).
     if (mon.volatiles?.transform !== undefined) {
@@ -559,6 +573,8 @@ async function main() {
     // Magnet Rise needs a replay with something that used the move — to exercise this,
     // pick one with a Klefki, Magnezone, or anything else that ran it.
     console.log(`  Magnet Rise: ${seen.magnetRise ? 'SEEN — checked' : 'absent (not exercised)'}`);
+    // Slow Start needs a Regigigas within its first 5 turns after switching in.
+    console.log(`  Slow Start: ${seen.slowStart ? 'SEEN — checked' : 'absent (not exercised)'}`);
 
     if (problems.length) {
       console.error('\n✗ DRIFT DETECTED — readState.ts no longer matches the live client:');

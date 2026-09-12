@@ -8,6 +8,8 @@ import {
   ORB_MON, orbFacts, DUAL_ABILITY,
   MEGANIUM_MEGA, megaMeganiumFacts,
   TERAPAGOS, terapagosFacts,
+  CINDERACE, cinderaceFacts,
+  AZUMARILL, azumarillFacts,
 } from './sets.testfixtures.js';
 
 const names = (k: ReturnType<typeof inferSets>): string[] => k.candidates.map((c) => c.name);
@@ -272,5 +274,27 @@ describe('a revealed Trick PINS the item to a Choice item', () => {
   it('keeps all three items while Trick has not been revealed', () => {
     const k = inferSets(gardevoirFacts({revealedMoves: ['Psychic']}), GARDEVOIR);
     expect(itemNames(k)).toEqual(['Choice Scarf', 'Choice Specs', 'Life Orb']);
+  });
+});
+
+describe('moveitems.ts — Court Change and Belly Drum force their own item', () => {
+  it('narrows to Heavy-Duty Boots once Court Change is revealed, over Cinderace', () => {
+    const k = inferSets(cinderaceFacts({revealedMoves: ['Court Change']}), CINDERACE);
+    expect(itemNames(k)).toEqual(['Heavy-Duty Boots']);
+  });
+
+  it('drops Court Change from the candidates once the item settles on Choice Band', () => {
+    const k = inferSets(cinderaceFacts({item: 'Choice Band'}), CINDERACE);
+    expect(k.candidates[0]!.moves.map((m) => m.name)).not.toContain('Court Change');
+  });
+
+  it('narrows to Sitrus Berry once Belly Drum is revealed, over Azumarill', () => {
+    const k = inferSets(azumarillFacts({revealedMoves: ['Belly Drum']}), AZUMARILL);
+    expect(itemNames(k)).toEqual(['Sitrus Berry']);
+  });
+
+  it('keeps both items on Azumarill while Belly Drum has not been revealed', () => {
+    const k = inferSets(azumarillFacts({revealedMoves: ['Knock Off']}), AZUMARILL);
+    expect(itemNames(k)).toEqual(['Choice Band', 'Sitrus Berry']);
   });
 });

@@ -714,6 +714,25 @@ picture and not in this list, this list is the thing that's wrong.
       formats by construction — only their per-role feed entries carry a move pool to
       check Sleep Talk against, so a role-less older-gen entry never reaches either
       direction.
+    - `moveitems.ts` — five more set-shape laws of the same kind, table-driven: Court
+      Change, Belly Drum/Fillet Away, Meteor Beam, Aurora Veil and Shell Smash each force
+      their own item (`SIMPLE_RULES`), read both ways like `restitem.ts`'s Rest. A sixth,
+      Guts/Facade forcing an orb, shares the shape but not a fixed target — the orb colour
+      depends on the species' own (always-known) type, so it gets its own function
+      (`possibleOrbs`) rather than a table row, and reads forward only (no move-narrowing
+      back, since Guts is an ABILITY `narrow.buildableAbilities` already owns). All six are
+      MEASURED per (format, species, role) for the all-or-nothing property
+      `choiceitems.ts`'s confirmation direction rests on — `npm run move-item-exclusions`
+      re-derives the ability exceptions it found (Ice Face on Belly Drum, Weak Armor and
+      Solid Rock on Shell Smash) and the one non-ability exception, a Mega-capable role
+      sometimes keeping its stone instead: `allowGimmickItems` handles that the same way
+      `restitem.ts` handles Giratina — require the alternative to already be a live,
+      declared possibility, never hardcode the species. Left uncovered on purpose: Light
+      Screen+Reflect forcing Light Clay together (a conjunction, not an "any of" trigger,
+      so reversing it would have to say "not BOTH", which no rule here can state), and
+      Acrobatics forcing no item (measured clean, but every current role that carries it
+      already resolves to one item for an unrelated reason, so there is nothing left to
+      narrow).
     - `narrow.ts` — the evidence law: `roleMatches` + `selectRoles` narrow roles by ALL
       public evidence (moves, item incl. `prevItem`, innate ability, active Tera) plus the
       deduction rule-outs. The one place the "which roles survive" rule lives —
@@ -1050,6 +1069,10 @@ was always undefined.
 | …and the same law backwards: a settled non-Chesto item rules Rest back out of the moves a role could still be running | ✅ | `core/restitem.ts` (`movesUnderNonChestoItem`), `core/narrow.ts` (`candidateMoves`) | `restitem.test.ts`, `knowledge.test.ts` |
 | The Rest/Chesto forcing needs Chesto Berry to already be a live possibility in the role's OWN declared item pool — an evolution-stage override or Giratina's species carve-out is never hardcoded, since a role whose pool never produced Chesto Berry says so on its own | ✅ | `core/restitem.ts` (`poolHasChestoBerry`) | `restitem.test.ts` |
 | The two abilities that DO excuse the Rest/Chesto forcing (Natural Cure, Shed Skin) are measured from Showdown's own generator, never recalled | ✅ | `core/restitem.ts` (`RECOVERY_EXCUSES`), `scripts/rest-item-exclusions.mjs` | `restitem.test.ts`, `npm run rest-item-exclusions` |
+| Court Change, Belly Drum/Fillet Away, Meteor Beam, Aurora Veil and Shell Smash each force their own item — read both ways, like Rest/Chesto | ✅ | `core/moveitems.ts` (`itemsUnderRevealedMoveRules`, `movesUnderSettledMoveRuleItem`), `core/narrow.ts` (`candidateItems`, `candidateMoves`) | `moveitems.test.ts`, `knowledge.test.ts` |
+| …and a Mega-capable role sometimes keeps its stone instead of any of those — never hardcoded, since requiring the stone to already be a live possibility in the pool covers it for free | ✅ | `core/moveitems.ts` (`isGimmickItem`) | `moveitems.test.ts` |
+| Guts (ability) or Facade (move), without Sleep Talk, forces an orb whose colour is read off the species' own type — Poison Heal/Quick Feet excused, since they reach Toxic Orb through an unrelated, unconditional branch of their own | ✅ | `core/moveitems.ts` (`itemsUnderGutsOrFacade`, `possibleOrbs`) | `moveitems.test.ts` |
+| Every `moveitems.ts` ability exception (Ice Face, Weak Armor, Solid Rock) is measured from Showdown's own generator, never recalled, and each rule's all-or-nothing property is checked per (format, species, role) | ✅ | `core/moveitems.ts` (`SIMPLE_RULES`), `scripts/move-item-exclusions.mjs` | `moveitems.test.ts`, `npm run move-item-exclusions` |
 | A deduction narrows the candidate roles but never empties them — nor the item pool a chosen role calcs with | ✅ | `core/narrow.ts` (`consistentRoles`, `candidateItems`) | `resolve.test.ts` |
 | ONE rule decides a candidate's item pool, so the block's Items line and its damage can't disagree | ✅ | `core/narrow.ts` (`candidateItems`) | `resolve.test.ts`, `section.test.ts` |
 | A log reading goes stale only when the state really MOVED — the weather's end-of-turn tick announces the weather, it does not change it | ✅ | `battle/readState.ts` (`changesState`, `STATE_CHANGING_TAGS`) | `readState.test.ts`, `npm run drift-check` |

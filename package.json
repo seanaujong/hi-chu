@@ -32,6 +32,7 @@
     "fitness-retro": "node scripts/fitness-retro.mjs",
     "choice-exclusions": "node scripts/choice-exclusions.mjs",
     "rest-item-exclusions": "node scripts/rest-item-exclusions.mjs",
+    "move-item-exclusions": "node scripts/move-item-exclusions.mjs",
     "status-move-data": "node scripts/status-move-data.mjs"
   },
   "dependencies": {

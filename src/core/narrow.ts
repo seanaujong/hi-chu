@@ -10,6 +10,7 @@ import type {IsStatusMove, LiveFacts, RandbatsEntry, RandbatsRole} from './types
 import {toId, innateAbility} from './facts.js';
 import {survivingItems} from './deductions.js';
 import {isChoiceItem, movesUnderChoiceItem} from './choiceitems.js';
+import {itemsUnderRevealedRest, movesUnderNonChestoItem} from './restitem.js';
 
 /**
  * Every ability the feed says this species can be BUILT with — the union over its roles.
@@ -111,8 +112,8 @@ function consistentRoles(
 
 /**
  * The items ONE candidate could still be holding — the role's own pool (or the entry's,
- * where the role declares none), with the behavioural rule-outs allowed to narrow it but
- * never to empty it.
+ * where the role declares none), with the behavioural rule-outs and a revealed Rest (see
+ * `restitem.ts`) allowed to narrow it but never to empty it.
  *
  * The item-level twin of `consistentRoles`, and it lives here for the reason this file's
  * header already gives: resolution and display must narrow through ONE rule. They did not.
@@ -139,47 +140,60 @@ function consistentRoles(
  */
 export function candidateItems(
   entry: RandbatsEntry,
-  role: Pick<RandbatsRole, 'items' | 'abilities'> | undefined,
+  role: Pick<RandbatsRole, 'items' | 'abilities' | 'moves'> | undefined,
   facts: LiveFacts,
 ): readonly string[] {
   // A feed omits an empty array rather than writing one, so neither list is guaranteed present.
   const declared = role?.items?.length ? role.items : (entry.items ?? []);
   const abilities = role?.abilities?.length ? role.abilities : (entry.abilities ?? []);
+  const movePool = role?.moves?.length ? role.moves : (entry.moves ?? []);
   const surviving = survivingItems(abilities, declared, facts);
-  return surviving.length > 0 ? surviving : declared;
+  const pool = surviving.length > 0 ? surviving : declared;
+  // A revealed Rest (see `restitem.ts`) narrows this the same way a behavioural
+  // deduction does — it just reads a moves-known fact instead of a side effect.
+  return itemsUnderRevealedRest(declared, pool, movePool, facts, abilities);
 }
 
 /**
  * The moves ONE candidate could still be running — the role's own pool, with a known
- * Choice item allowed to narrow it but never to empty it.
+ * Choice item allowed to narrow it (see `choiceitems.ts`), then a settled non-Chesto item
+ * ruling Rest back out (see `restitem.ts`) — neither ever emptying it.
  *
  * `candidateItems`' twin, and it takes that function's answer as an argument rather than
  * recomputing one, for the reason its docblock spends a page on: two layers deriving the
  * same pool is how a block's Items line came to contradict the damage printed under it.
  * Here the coupling is tighter still, because the two lines make a JOINT claim — "Choice
- * Band" over "Swords Dance" describes a set the generator does not build (see
- * `choiceitems.ts`). Pruning against the very list the block will display is what keeps
- * the block honest with itself.
+ * Band" over "Swords Dance", or "Leftovers" over "Rest", each describes a set the
+ * generator does not build. Pruning against the very list the block will display is what
+ * keeps the block honest with itself.
  *
- * The narrowing needs the item to be SETTLED: while a role could still be holding a Life
- * Orb, its setup moves are all live possibilities, and only once every survivor is a
- * Choice item does the law have anything to say. That is usually a reveal — a Knock Off
- * exposing a Choice Band — but a role whose whole pool is Choice items qualifies from the
- * start.
+ * Both narrowings need their item read to be SETTLED: while a role could still be holding
+ * a Life Orb, its setup moves are all live possibilities, and only once every survivor is
+ * a Choice item (or, for Rest, once every survivor is a non-Chesto item) does either law
+ * have anything to say. That is usually a reveal — a Knock Off exposing a Choice Band —
+ * but a role whose whole pool already agrees qualifies from the start.
  */
 export function candidateMoves(
   entry: RandbatsEntry,
-  role: Pick<RandbatsRole, 'moves'> | undefined,
+  role: Pick<RandbatsRole, 'moves' | 'items' | 'abilities'> | undefined,
   items: readonly string[],
   isStatusMove: IsStatusMove | undefined,
+  facts: LiveFacts,
 ): readonly string[] {
   // A feed omits an empty array rather than writing one, so neither list is guaranteed present.
   const declared = role?.moves?.length ? role.moves : (entry.moves ?? []);
-  if (!isStatusMove || items.length === 0 || !items.every(isChoiceItem)) return declared;
-  const surviving = movesUnderChoiceItem(declared, isStatusMove);
-  // Never empty, for the reason `consistentRoles` gives: a deduction that leaves a
-  // Pokémon with no moves at all has failed, and saying so beats printing the finding.
-  return surviving.length > 0 ? surviving : declared;
+  let pool = declared;
+  if (isStatusMove && items.length > 0 && items.every(isChoiceItem)) {
+    const surviving = movesUnderChoiceItem(declared, isStatusMove);
+    // Never empty, for the reason `consistentRoles` gives: a deduction that leaves a
+    // Pokémon with no moves at all has failed, and saying so beats printing the finding.
+    pool = surviving.length > 0 ? surviving : declared;
+  }
+  // A confirmed non-Chesto item (see `restitem.ts`) rules Rest itself out the same way a
+  // confirmed Choice item rules a status move out above — the item read backwards onto moves.
+  const declaredItems = role?.items?.length ? role.items : (entry.items ?? []);
+  const abilities = role?.abilities?.length ? role.abilities : (entry.abilities ?? []);
+  return movesUnderNonChestoItem(pool, declaredItems, items, facts, abilities);
 }
 
 /**

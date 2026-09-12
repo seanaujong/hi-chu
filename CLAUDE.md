@@ -690,6 +690,21 @@ picture and not in this list, this list is the thing that's wrong.
       are MEASURED, not recalled — `npm run choice-exclusions` re-derives them from
       Showdown's own generator, and a missing one is a false deduction rather than a
       missed one. Adding a status move to the exception list = re-run that script.
+    - `restitem.ts` — `choiceitems.ts`'s sibling in kind, one Rest away from it: a set
+      running Rest without Sleep Talk holds Chesto Berry, nothing else, so Rest revealed
+      narrows the item to Chesto Berry and a settled non-Chesto item rules Rest back out
+      of the moves. Unlike its neighbour it DOES need an ability guard — Natural Cure and
+      Shed Skin cure the sleep for free, so the generator skips arming Chesto Berry for
+      them — but its other two exceptions (an evolution-stage override, Giratina's own
+      species carve-out) are never hardcoded: requiring Chesto Berry to already be a live
+      possibility in the role's OWN declared item pool makes both fall out for free, since
+      that pool is the feed's own record of what the generator actually produced. The
+      ability exceptions ARE measured, the same discipline `choiceitems.ts`'s
+      `PAIRS_WITH_CHOICE` holds — `npm run rest-item-exclusions` re-derives them, and a
+      missing one is a false deduction rather than a missed one. Scoped to gen9-family
+      formats by construction — only their per-role feed entries carry a move pool to
+      check Sleep Talk against, so a role-less older-gen entry never reaches either
+      direction.
     - `narrow.ts` — the evidence law: `roleMatches` + `selectRoles` narrow roles by ALL
       public evidence (moves, item incl. `prevItem`, innate ability, active Tera) plus the
       deduction rule-outs. The one place the "which roles survive" rule lives —
@@ -1020,6 +1035,10 @@ was always undefined.
 | A status move rules out all three Choice items — a claim about how the set was BUILT, so it needs no ability guard and settles on the FIRST such move | ✅ | `core/choiceitems.ts` (`choiceRuledOutByStatusMoves`), `core/deductions.ts` (`choiceRuledOutBySetShape`) | `choiceitems.test.ts`, `deductions.test.ts`, `resolve.test.ts`, `section.test.ts` |
 | …and the same law backwards: a revealed Choice item rules the status moves out of what the set could still be RUNNING, pruned against the very Items line the block prints | ✅ | `core/choiceitems.ts` (`movesUnderChoiceItem`), `core/narrow.ts` (`candidateMoves`) | `choiceitems.test.ts`, `knowledge.test.ts`, `section.test.ts` |
 | The seven status moves a Choice set DOES hold are measured from Showdown's own generator, never recalled — a missing one is a FALSE deduction | ✅ | `core/choiceitems.ts` (`PAIRS_WITH_CHOICE`), `scripts/choice-exclusions.mjs` | `choiceitems.test.ts`, `npm run choice-exclusions` |
+| Rest without Sleep Talk forces Chesto Berry — a revealed Rest narrows the item to it | ✅ | `core/restitem.ts` (`itemsUnderRevealedRest`), `core/narrow.ts` (`candidateItems`) | `restitem.test.ts`, `knowledge.test.ts` |
+| …and the same law backwards: a settled non-Chesto item rules Rest back out of the moves a role could still be running | ✅ | `core/restitem.ts` (`movesUnderNonChestoItem`), `core/narrow.ts` (`candidateMoves`) | `restitem.test.ts`, `knowledge.test.ts` |
+| The Rest/Chesto forcing needs Chesto Berry to already be a live possibility in the role's OWN declared item pool — an evolution-stage override or Giratina's species carve-out is never hardcoded, since a role whose pool never produced Chesto Berry says so on its own | ✅ | `core/restitem.ts` (`poolHasChestoBerry`) | `restitem.test.ts` |
+| The two abilities that DO excuse the Rest/Chesto forcing (Natural Cure, Shed Skin) are measured from Showdown's own generator, never recalled | ✅ | `core/restitem.ts` (`RECOVERY_EXCUSES`), `scripts/rest-item-exclusions.mjs` | `restitem.test.ts`, `npm run rest-item-exclusions` |
 | A deduction narrows the candidate roles but never empties them — nor the item pool a chosen role calcs with | ✅ | `core/narrow.ts` (`consistentRoles`, `candidateItems`) | `resolve.test.ts` |
 | ONE rule decides a candidate's item pool, so the block's Items line and its damage can't disagree | ✅ | `core/narrow.ts` (`candidateItems`) | `resolve.test.ts`, `section.test.ts` |
 | A log reading goes stale only when the state really MOVED — the weather's end-of-turn tick announces the weather, it does not change it | ✅ | `battle/readState.ts` (`changesState`, `STATE_CHANGING_TAGS`) | `readState.test.ts`, `npm run drift-check` |

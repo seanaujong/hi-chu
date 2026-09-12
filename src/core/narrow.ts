@@ -11,6 +11,7 @@ import {toId, innateAbility} from './facts.js';
 import {survivingItems} from './deductions.js';
 import {isChoiceItem, movesUnderChoiceItem, itemsConfirmedByMoves} from './choiceitems.js';
 import {itemsUnderRevealedRest, movesUnderNonChestoItem} from './restitem.js';
+import {itemsUnderRevealedMoveRules, movesUnderSettledMoveRuleItem, itemsUnderGutsOrFacade} from './moveitems.js';
 
 /**
  * Every ability the feed says this species can be BUILT with — the union over its roles.
@@ -155,7 +156,11 @@ export function candidateItems(
   const afterRest = itemsUnderRevealedRest(declared, pool, movePool, facts, abilities);
   // A revealed Trick/Switcheroo/Healing Wish (see `choiceitems.ts`) PINS this to a Choice
   // item rather than merely narrowing toward one.
-  return itemsConfirmedByMoves(afterRest, facts.revealedMoves);
+  const afterChoice = itemsConfirmedByMoves(afterRest, facts.revealedMoves);
+  // Court Change, Belly Drum, Meteor Beam, Aurora Veil, Shell Smash and Guts/Facade each
+  // force their own item the same way (see `moveitems.ts`).
+  const afterMoveRules = itemsUnderRevealedMoveRules(declared, afterChoice, facts, abilities);
+  return itemsUnderGutsOrFacade(declared, afterMoveRules, movePool, facts, abilities);
 }
 
 /**
@@ -197,7 +202,10 @@ export function candidateMoves(
   // confirmed Choice item rules a status move out above — the item read backwards onto moves.
   const declaredItems = role?.items?.length ? role.items : (entry.items ?? []);
   const abilities = role?.abilities?.length ? role.abilities : (entry.abilities ?? []);
-  return movesUnderNonChestoItem(pool, declaredItems, items, facts, abilities);
+  const afterRest = movesUnderNonChestoItem(pool, declaredItems, items, facts, abilities);
+  // A settled item away from Court Change/Belly Drum/etc.'s own forced item (see
+  // `moveitems.ts`) rules that move back out the same way.
+  return movesUnderSettledMoveRuleItem(afterRest, declaredItems, items, facts, abilities);
 }
 
 /**

@@ -58,6 +58,15 @@ function unburdenActive(facts: LiveFacts, ability: string | undefined): boolean 
   return ability !== undefined && toId(ability) === 'unburden' && itemGone(facts);
 }
 
+/** Slow Start halves Attack and Speed for the holder's first 5 turns on the field. The sim
+ *  tracks that window as the `slowstart` volatile and clears it automatically once the 5
+ *  turns end, so `LiveFacts.slowStart` already IS "is it active right now" — this predicate
+ *  only has to confirm the mon's ability is actually Slow Start before arming the calc's
+ *  shared `abilityOn` toggle (see `ResolvedMon.abilityOn`). */
+function slowStartActive(facts: LiveFacts, ability: string | undefined): boolean {
+  return ability !== undefined && toId(ability) === 'slowstart' && Boolean(facts.slowStart);
+}
+
 /** Revealed moves (certainties) unioned over the candidate roles' pool for the rest. */
 function possibleMovesFor(facts: LiveFacts, candidates: readonly RandbatsRole[], entry: RandbatsEntry): string[] {
   const pool = unionMoves(candidates, entry);
@@ -101,7 +110,7 @@ export function buildResolved(
     ivs: fillStats(RANDBATS_BASE_IVS, role?.ivs ?? entry.ivs),
     ability,
     item,
-    ...(unburdenActive(facts, ability) ? {abilityOn: true} : {}),
+    ...(unburdenActive(facts, ability) || slowStartActive(facts, ability) ? {abilityOn: true} : {}),
     ...(facts.boostedStat ? {boostedStat: facts.boostedStat} : {}),
     ...(facts.charged ? {charged: true} : {}),
     ...(facts.magnetRise ? {magnetRise: true} : {}),

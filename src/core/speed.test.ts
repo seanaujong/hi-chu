@@ -72,6 +72,12 @@ describe('finalSpeed', () => {
     expect(finalSpeed(mon({ability: 'Unburden', abilityOn: true}))).toBe(546);
   });
 
+  it('halves Speed for Slow Start once armed via abilityOn — the same shared toggle Unburden uses', () => {
+    const bare = mon({ability: 'Slow Start'});
+    expect(finalSpeed(bare)).toBe(273); // volatile not active (abilityOn unset) — no halving
+    expect(finalSpeed(mon({ability: 'Slow Start', abilityOn: true}))).toBe(136);
+  });
+
   it('boosts Speed ×1.5 for Quark Drive/Protosynthesis once armed via boostedStat — a SEPARATE flag from abilityOn, not derived from terrain', () => {
     const bare = mon({ability: 'Quark Drive'});
     expect(finalSpeed(bare)).toBe(273); // not currently active (boostedStat unset) — no boost

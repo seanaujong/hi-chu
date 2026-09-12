@@ -9,6 +9,7 @@ import {
   readParadoxBoost,
   readCharged,
   readMagnetRise,
+  readSlowStart,
   proteanAlreadyFired,
   readTransformTarget,
   readSpeciesData,
@@ -207,6 +208,14 @@ describe('toLiveFacts', () => {
     expect(readMagnetRise(clientMon({volatiles: {}}))).toBe(false);
     expect(toLiveFacts(clientMon({volatiles: {magnetrise: ['magnetrise']}})).magnetRise).toBe(true);
     expect(toLiveFacts(clientMon()).magnetRise).toBeUndefined();
+  });
+
+  it('reads Slow Start as bare presence off the sim\'s own volatile', () => {
+    expect(readSlowStart(clientMon({volatiles: {slowstart: ['slowstart']}}))).toBe(true);
+    expect(readSlowStart(clientMon())).toBe(false);
+    expect(readSlowStart(clientMon({volatiles: {}}))).toBe(false);
+    expect(toLiveFacts(clientMon({volatiles: {slowstart: ['slowstart']}})).slowStart).toBe(true);
+    expect(toLiveFacts(clientMon()).slowStart).toBeUndefined();
   });
 
   it('reads the Transform target straight out of the volatile', () => {

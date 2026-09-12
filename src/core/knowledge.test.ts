@@ -259,3 +259,18 @@ describe('a revealed Rest narrows the item, and a settled item narrows Rest back
     for (const moves of moveNamesAll(k)) expect(moves).toContain('Rest');
   });
 });
+
+describe('a revealed Trick PINS the item to a Choice item', () => {
+  // `choiceitems.ts`'s third direction, over Gardevoir's real gen9randombattle role: Trick
+  // sits in its pool alongside Choice Scarf, Choice Specs AND Life Orb, so seeing it used
+  // narrows away the one non-Choice possibility rather than merely permitting all three.
+  it('drops Life Orb once Trick is revealed as used', () => {
+    const k = inferSets(gardevoirFacts({revealedMoves: ['Trick']}), GARDEVOIR);
+    expect(itemNames(k)).toEqual(['Choice Scarf', 'Choice Specs']);
+  });
+
+  it('keeps all three items while Trick has not been revealed', () => {
+    const k = inferSets(gardevoirFacts({revealedMoves: ['Psychic']}), GARDEVOIR);
+    expect(itemNames(k)).toEqual(['Choice Scarf', 'Choice Specs', 'Life Orb']);
+  });
+});

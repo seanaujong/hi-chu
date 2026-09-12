@@ -1148,10 +1148,10 @@ describe('buildPokemonSection speed order (the ⚡ line on a foe hover)', () => 
 
 describe('a status move rules out a Choice item, through the whole live pipeline', () => {
   // Gardevoir's one role pools Choice Scarf, Choice Specs and Life Orb against a move list
-  // holding Calm Mind and Trick, so it survives every reveal below and revealed-move
-  // narrowing decides nothing. What separates these three tooltips is only the set-shape
-  // law: the generator never builds a Choice set around a status move — except the handful,
-  // Trick among them, that hold one BECAUSE of the move.
+  // holding Calm Mind and Trick. What separates these three tooltips is the set-shape law:
+  // the generator never builds a Choice set around a status move — except the handful,
+  // Trick among them, that hold one BECAUSE of the move, which pins the item rather than
+  // merely permitting it.
   const gardevoirSets = (foeGardevoir: 'setup' | 'trick' | 'banded'): string => {
     const {battle: b, active: a} = loadBattle({foeGardevoir});
     return buildPokemonSection(b, a('Gardevoir'), scenarioDataWithGardevoir);
@@ -1168,10 +1168,10 @@ describe('a status move rules out a Choice item, through the whole live pipeline
     expect(setup).not.toContain('Choice Scarf');
   });
 
-  it('leaves all three standing for Trick, which is why such a set holds one', () => {
+  it('pins the item to a Choice one for Trick, which is why such a set holds one', () => {
     expect(trick).toContain('Choice Scarf');
     expect(trick).toContain('Choice Specs');
-    expect(trick).toContain('Life Orb');
+    expect(trick).not.toContain('Life Orb');
   });
 
   it('reads the same law backwards: a revealed Choice Specs cannot be running Calm Mind', () => {

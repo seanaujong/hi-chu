@@ -152,6 +152,17 @@ describe('buildMoveSection uses YOUR real item for your own attacker (via myPoke
     expect(dm(loadBattle({...untera, myNoivernItem: 'heavydutyboots'})))
       .toBeLessThan(dm(loadBattle({...untera, myNoivernItem: 'choicespecs'})));
   });
+
+  it('a CONFIRMED empty item slot is never guessed into the set\'s first candidate item', () => {
+    // The private team can say "holds nothing" as surely as it can name a held item — the
+    // empty string, same as `heavydutyboots` above, must reach the calc as real information
+    // rather than fall back to "unrevealed, assume Choice Specs". Otherwise a genuinely
+    // itemless attacker's offensive move reads as boosted, and (on a different attacker) an
+    // item-conditioned move like Acrobatics halves instead of doubling.
+    const assumedSpecs = dm(loadBattle(untera)); // no private team at all → assumes Choice Specs
+    const confirmedEmpty = dm(loadBattle({...untera, myNoivernItem: ''}));
+    expect(confirmedEmpty).toBeLessThan(assumedSpecs);
+  });
 });
 
 describe('an Illusion disguise on OUR side (the Pokémon in the slot is not the one shown)', () => {

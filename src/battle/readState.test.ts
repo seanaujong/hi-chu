@@ -1630,8 +1630,13 @@ describe('readOwnItem (your private item, for your own move damage only)', () =>
     expect(readOwnItem(battle([{ident: 'p1: Cetitan', item: 'leftovers'}]), mon)).toBeUndefined();
   });
 
-  it('treats an empty item string as no item', () => {
-    expect(readOwnItem(battle([{ident: 'p1: Iron Bundle', item: ''}]), mon)).toBeUndefined();
+  it('returns the empty string for a CONFIRMED empty slot, distinct from undefined ("we don\'t know")', () => {
+    // '' means the private team affirmatively says this Pokémon holds nothing — never held
+    // one, or had it knocked off/consumed. Collapsing it into `undefined` (as `||` once did)
+    // let a genuinely itemless mon's own move damage fall through to a GUESSED item from its
+    // set's pool: an inflated Thunderbolt from an assumed Life Orb, and an Acrobatics halved
+    // instead of doubled, on the very same Pokémon.
+    expect(readOwnItem(battle([{ident: 'p1: Iron Bundle', item: ''}]), mon)).toBe('');
   });
 });
 

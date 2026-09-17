@@ -1716,9 +1716,17 @@ export function readBehaviors(battle: ClientBattle, mon: ClientPokemon): Behavio
  * line), where a silent item like Heavy-Duty Boots or a Scarf we're holding is invisible
  * to the opponent so the public battle view can't supply it. It must never feed the
  * opponent's-knowledge views, which stay strictly public.
+ *
+ * `''` is a real answer, not a missing one — `ClientServerPokemon.item`'s own contract is
+ * that empty string means the item is KNOWN to be gone (never held, or knocked off/consumed),
+ * distinct from `undefined` (no private read at all, e.g. spectating). Collapsing the two
+ * with `||` is what let a genuinely itemless Pokémon's own move damage fall through to a
+ * GUESSED item from its set's pool (`resolve.ts`'s `candidateItems(...)[0]`) instead of the
+ * confirmed absence — inflating an offensive item's boost and, on the same mon, halving
+ * Acrobatics instead of doubling it.
  */
 export function readOwnItem(battle: ClientBattle, mon: ClientPokemon): string | undefined {
-  return readOwnServerPokemon(battle, mon)?.item || undefined;
+  return readOwnServerPokemon(battle, mon)?.item;
 }
 
 /**

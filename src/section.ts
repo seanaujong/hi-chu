@@ -420,13 +420,20 @@ function settledElsewhere(side: ClientSide | undefined): ReadonlySet<string> {
  * the private team and matched to `entry`'s item pool by id. Move buttons are always your
  * own Pokémon, and you know your item even when it's silent to the opponent (Heavy-Duty
  * Boots), so this makes your own damage exact instead of assuming the set's first item.
- * `undefined` when spectating, when nothing matches, or when the pool is unknown — in
- * which case the caller keeps the public-info behaviour. Matching by id is what bridges
- * the client's id form ("heavydutyboots") to the name @smogon/calc needs.
+ *
+ * Three distinct answers, and callers must tell them apart by `!== undefined` rather than
+ * truthiness: `undefined` when spectating (no private read at all) or when nothing in the
+ * pool matches — in which case the caller keeps the public-info behaviour; `''` when the
+ * private team CONFIRMS this Pokémon holds nothing, which must reach the resolved mon as a
+ * real, known absence rather than fall back to `undefined` and let `resolve.ts` guess an
+ * item from the pool. Matching by id is what bridges the client's id form
+ * ("heavydutyboots") to the name @smogon/calc needs; an empty read has no id to match, so
+ * it short-circuits before the pool lookup.
  */
 function ownItemName(battle: ClientBattle, pokemon: ClientPokemon, entry: RandbatsEntry): string | undefined {
   const raw = readOwnItem(battle, pokemon);
-  if (!raw) return undefined;
+  if (raw === undefined) return undefined;
+  if (raw === '') return '';
   const roleItems = entry.roles ? Object.values(entry.roles).flatMap((r) => r.items) : [];
   const pool = [...roleItems, ...(entry.items ?? [])];
   return pool.find((i) => toId(i) === toId(raw));
@@ -631,7 +638,7 @@ function speedSection(
     const publicFacts = ownTruth(battle, our, readFacts(our));
     const ourEntry = feedSource(data).entryFor(publicFacts);
     const realItem = ourEntry ? ownItemName(battle, our, ourEntry) : undefined;
-    const ourFacts = realItem ? {...publicFacts, item: realItem} : publicFacts;
+    const ourFacts = realItem !== undefined ? {...publicFacts, item: realItem} : publicFacts;
     // A ticked Mega changes our effective Speed for the verdict — but only from gen 7
     // (see megaSpeedApplies). This is why the ⚡ read builds its own resolved mon rather
     // than sharing the damage attacker: the two diverge in gen 6.
@@ -788,7 +795,7 @@ function ownHoverMatchup(
   // (same principle as buildMoveSection's attacker).
   const realItem = ownItemName(battle, pokemon, entry);
   const realAbility = ownAbilityName(battle, pokemon, entry);
-  const ownFacts = {...facts, ...(realItem ? {item: realItem} : {}), ...(realAbility ? {ability: realAbility} : {})};
+  const ownFacts = {...facts, ...(realItem !== undefined ? {item: realItem} : {}), ...(realAbility ? {ability: realAbility} : {})};
   const base = resolveMon(ownFacts, entry);
   // A ticked Mega or a ticked Terastallize previews the same way as the move tooltip: their
   // offensive stats/STAB hit this view's damage exactly like they hit the tooltip's — one
@@ -866,7 +873,7 @@ function foeSwitchInDamage(
   if (!ourEntry) return '';
   const realItem = ownItemName(battle, ourActive, ourEntry);
   const realAbility = ownAbilityName(battle, ourActive, ourEntry);
-  const attackerFacts = {...ourFacts, ...(realItem ? {item: realItem} : {}), ...(realAbility ? {ability: realAbility} : {})};
+  const attackerFacts = {...ourFacts, ...(realItem !== undefined ? {item: realItem} : {}), ...(realAbility ? {ability: realAbility} : {})};
   const base = resolveMon(attackerFacts, ourEntry);
   // A ticked Mega or Tera previews the same way as every other our-view attacker site
   // (`teraPreviewFor`/`megaPreviewFor`) — this is our ACTIVE mon's pending move, same
@@ -1057,7 +1064,7 @@ export function buildMoveSection(
       const realAbility = ownAbilityName(battle, pokemon, attackerEntry);
       const attackerFacts = {
         ...publicFacts,
-        ...(realItem ? {item: realItem} : {}),
+        ...(realItem !== undefined ? {item: realItem} : {}),
         ...(realAbility ? {ability: realAbility} : {}),
       };
       const attacker = withPreviews(resolveMon(attackerFacts, attackerEntry));
@@ -1074,7 +1081,7 @@ export function buildMoveSection(
       const knownStats = readOwnStats(battle, pokemon);
       const attackerFacts = {
         ...publicFacts,
-        ...(realItem ? {item: realItem} : {}),
+        ...(realItem !== undefined ? {item: realItem} : {}),
         ...(realAbility ? {ability: realAbility} : {}),
         ...(knownStats ? {knownStats} : {}),
       };
@@ -1291,7 +1298,7 @@ export function buildPokemonSection(
       const ourFacts = ownTruth(battle, pokemon, facts);
       const attackerFacts = {
         ...ourFacts,
-        ...(realItem ? {item: realItem} : {}),
+        ...(realItem !== undefined ? {item: realItem} : {}),
         ...(realAbility ? {ability: realAbility} : {}),
         ...(knownStats ? {knownStats} : {}),
       };

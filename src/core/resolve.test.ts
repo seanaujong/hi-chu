@@ -73,6 +73,16 @@ describe('resolveMon', () => {
     expect(resolveMon(dragoniteFacts(), DRAGONITE).item).toBe('Heavy-Duty Boots'); // still assumed when nothing's revealed
   });
 
+  it('resolves to NO item when `item` is the empty string — a CONFIRMED absence, not an unrevealed one', () => {
+    // '' is how our own private team reports a slot that was never filled at all, distinct
+    // from `undefined` (nothing revealed yet, still fair to assume the set's own item). A
+    // Pokémon that started itemless must not get the role's first candidate item guessed
+    // onto it here — that overestimates an item-boosted move (Life Orb on Thunderbolt) and
+    // underestimates an item-CONDITIONED one (Acrobatics halves instead of doubling) on the
+    // very same attacker.
+    expect(resolveMon(dragoniteFacts({item: ''}), DRAGONITE).item).toBe('');
+  });
+
   it('takes the nature from a role that carries one; feed roles without one stay Serious', () => {
     // The randbats feed never sets nature — only assumption/usage pools do. The Serious
     // default for natureless roles is the randbats byte-identity guard.

@@ -370,4 +370,10 @@ export const PREVIEWS: readonly Preview[] = [
     {tentacruelMagnetRise: true},
     'Earthquake',
   ),
+  moveHover(
+    'A CONFIRMED empty item slot, not an unrevealed one',
+    'The private team can say "holds nothing" as surely as it can name a held item. Read wrong, that empty slot fell back to "unrevealed" and got the set\'s first candidate item guessed onto it — an assumed Choice Specs that both inflates an ordinary attack and, on a move whose own power depends on holding nothing, works the opposite way: Acrobatics reads its holder\'s item directly, so the same wrong guess quietly HALVES it instead of doubling it.',
+    {noivernTerastallized: '', myNoivernItem: '', myNoivernMoves: ['acrobatics', 'dracometeor', 'flamethrower', 'hurricane']},
+    'Acrobatics',
+  ),
 ];

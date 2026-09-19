@@ -833,6 +833,18 @@ picture and not in this list, this list is the thing that's wrong.
     `speed.ts` does rather than the way `damage.ts` does. Reports where the sap LEAVES
     us, because the cap is most of the answer. Liquid Ooze inverts it; Big Root is a
     deliberate gap (no randbats set holds one).
+  - `beatup.ts` — the Beat Up law: hit COUNT and per-hit base POWER both come from the
+    user's own party roster, a full calc gap (`@smogon/calc` lists it as a flat 0 BP and
+    has no notion of a party at all) shaped like a variable-power multi-hit move rather
+    than a single override — `damage.ts`'s `beatUpProfile` builds it into the SAME
+    `MultiHitMove` shape `moves.ts`'s static table hands Triple Axel, at calc time instead
+    of ahead of it, since the numbers are DATA (the roster) rather than constants a table
+    could hold. The eligibility rule (`sim/data/moves.ts`'s `onModifyMove`): the user
+    itself always counts, no matter its own status; every other roster member counts only
+    while neither fainted nor statused. `roster` is a PRIVATE fact like `knownStats` — only
+    OUR-view surfaces ever set it (`readState.ts`'s `readOwnRoster`/
+    `readOwnRosterForServer`), so a foe's Beat Up is a documented, unaddressed gap rather
+    than a guess: no roster to read, so it falls through to the calc's own flat zero.
   - `transform.ts` — the Transform law (Ditto's Imposter): a Pokémon that has copied another
     one WHOLE. `transformCopy` builds the copy (the target's body and final numbers, wearing
     the copier's HP — the one stat Transform never takes); `applyTransform` overlays it on the
@@ -998,7 +1010,10 @@ Rise (the calc checks Levitate and Air Balloon itself when it computes a Ground 
 damage, both plain ability/item lookups on the `Pokemon` it already built, but has no field
 for this volatile at all — so it silently deals full damage against a target that cannot
 legally be hit; Thousand Arrows is excepted, the same exception the calc's own Levitate/
-Balloon check carries), and unknown species/items. A third kind hides between those two and
+Balloon check carries), Beat Up (a flat 0 BP with no notion of a party roster at all — hit
+count and per-hit power both come from the user's OWN team, a private fact only OUR-view
+surfaces can read, so a foe's Beat Up stays a documented, unaddressed gap rather than a
+guess), and unknown species/items. A third kind hides between those two and
 is the easiest to ship by accident: the calc answering EXACTLY what we asked, where the asking
 itself was wrong. Requesting one hit of a multi-hit move is that — the calc then reads it as a
 single-hit move and applies the Tera 60 BP floor. So is leaving the ATTACKER's `curHP` unset:
@@ -1111,6 +1126,7 @@ was always undefined.
 | Rage Fist's power scales with the ATTACKER's own hits taken | ✅ | `core/damage.ts` (`rageFistPower`), `battle/readState.ts` (`timesAttacked`) | `damage.test.ts`, `readState.test.ts`, `transform.test.ts` |
 | Charge (Electromorphosis/Wind Power/the move Charge) doubles the ATTACKER's next Electric-type move — a full calc gap, not an unset flag: `@smogon/calc` has no Charge mechanic to arm at all | ✅ | `core/damage.ts` (`chargedPower`), `battle/readState.ts` (`readCharged`) | `damage.test.ts`, `readState.test.ts`, `resolve.test.ts` |
 | Magnet Rise zeroes a Ground move's damage against the DEFENDER — a full calc gap, the same shape as Charge: `@smogon/calc` checks Levitate/Air Balloon itself but has no field for this volatile, and Thousand Arrows is excepted the same way it excepts those two | ✅ | `core/damage.ts` (`calcDamage`'s Magnet Rise short-circuit), `battle/readState.ts` (`readMagnetRise`) | `damage.test.ts`, `readState.test.ts`, `resolve.test.ts` |
+| Beat Up hits once per non-fainted, non-statused party member (the user itself always counts) — hit count and per-hit power both come from the roster, a full calc gap `@smogon/calc` has no notion of at all; the roster is a PRIVATE fact, so a foe's Beat Up has none to read and falls through to the calc's own flat zero rather than a guess | ✅ | `core/beatup.ts` (`beatUpHitPowers`), `core/damage.ts` (`beatUpProfile`), `battle/readState.ts` (`readOwnRoster`, `readOwnRosterForServer`) | `beatup.test.ts`, `damage.test.ts`, `readState.test.ts`, `section.test.ts` |
 | A move with NO base power takes its damage from a callback over current HP — one exact amount, no nHKO ladder, but still stopped by an immunity | ✅ | `core/moves.ts` (`damageCallback`), `core/damage.ts` (`connects`) | `damage.test.ts`, `section.test.ts` |
 | Fickle Beam's 30% power-double mixes into a true KO% — the calc's own untouched power is a real answer to the wrong question, not a missing feature | ✅ | `core/moves.ts` (`randomPowerProfile`), `core/damage.ts` (the random-power branch of `calcDamage`), `core/multihit.ts` (`mixPmf`) | `damage.test.ts`, `render.test.ts` |
 | Strength Sap heals by the target's Attack with BOOSTS applied and every other modifier skipped — exact per set, so distinct outcomes bucket rather than a range | ✅ | `core/strengthsap.ts` (`sappedAttack`, `strengthSap`), `core/render.ts` (`renderStrengthSap`) | `strengthsap.test.ts`, `render.test.ts`, `section.test.ts` |

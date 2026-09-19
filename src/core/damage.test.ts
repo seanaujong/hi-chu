@@ -854,6 +854,58 @@ describe('Rage Fist scales its power with the ATTACKER’s own hits taken (a cal
   });
 });
 
+describe('Beat Up hits once per eligible roster member, powered by THAT member\'s own base Attack (a calc gap, shaped like variable-power multi-hit)', () => {
+  // @smogon/calc's own move data lists Beat Up as a flat bp: 0 — it has no notion of a
+  // party roster at all. `roster` is the one private fact only OUR-view surfaces ever set
+  // (`battle/readState.ts`'s `readOwnRoster`), so a foe's Beat Up (no roster) is a
+  // documented, pre-existing gap this does not attempt to close — see the last test below.
+  const defender = mon({speciesForme: 'Skarmory'});
+  const member = (speciesForme: string, over: Partial<import('./types.js').RosterMember> = {}) =>
+    ({speciesForme, isSelf: false, fainted: false, hasStatus: false, ...over});
+
+  it('hits once per member of a full, healthy team — six hits, one per party member', () => {
+    const roster = [
+      member('Greninja', {isSelf: true}), member('Tentacruel'), member('Dragonite'),
+      member('Skarmory'), member('Corviknight'), member('Toxapex'),
+    ];
+    const r = calcDamage(mon({speciesForme: 'Greninja', roster}), defender, 'Beat Up');
+    expect(r.multiHit?.hits.distribution).toEqual([[6, 1]]);
+  });
+
+  it('drops a fainted or statused TEAMMATE from the hit count — self still counts', () => {
+    const roster = [
+      member('Greninja', {isSelf: true}), member('Tentacruel', {fainted: true}), member('Dragonite', {hasStatus: true}),
+    ];
+    const r = calcDamage(mon({speciesForme: 'Greninja', roster}), defender, 'Beat Up');
+    expect(r.multiHit?.hits.distribution).toEqual([[1, 1]]);
+  });
+
+  it('counts the user itself even while it is the one carrying the status', () => {
+    const roster = [member('Greninja', {isSelf: true, hasStatus: true})];
+    const r = calcDamage(mon({speciesForme: 'Greninja', roster}), defender, 'Beat Up');
+    expect(r.multiHit?.hits.distribution).toEqual([[1, 1]]);
+  });
+
+  it('a bulkier ally in the lineup raises the damage — the per-hit power is THAT member\'s base Attack, not the user\'s', () => {
+    const soloSelf = calcDamage(
+      mon({speciesForme: 'Greninja', roster: [member('Greninja', {isSelf: true})]}),
+      defender, 'Beat Up',
+    );
+    // Slaking: 160 base Attack vs. Greninja's own 95 — a strictly bulkier hitter added to
+    // the lineup can only raise the total, whichever attacker actually swings.
+    const withSlaking = calcDamage(
+      mon({speciesForme: 'Greninja', roster: [member('Greninja', {isSelf: true}), member('Slaking')]}),
+      defender, 'Beat Up',
+    );
+    expect(withSlaking.total.mean).toBeGreaterThan(soloSelf.total.mean);
+  });
+
+  it('without a roster (a foe\'s Beat Up — private team, never ours to read) falls back to the calc\'s own flat 0 BP', () => {
+    const r = calcDamage(mon({speciesForme: 'Greninja'}), defender, 'Beat Up');
+    expect(r.total).toEqual({min: 0, max: 0, mean: 0});
+  });
+});
+
 describe('painSplit (HP redistribution the calc does not model)', () => {
   it('averages both mons’ HP — the low one gains, the high one loses, equalized', () => {
     const user = mon({speciesForme: 'Blissey', hpPercent: 0.1});

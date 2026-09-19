@@ -58,6 +58,8 @@ import {
   readOwnAbility,
   readOwnItem,
   readOwnMoves,
+  readOwnRoster,
+  readOwnRosterForServer,
   readOwnServerPokemon,
   readOwnStats,
   readOwnTeraType,
@@ -795,7 +797,13 @@ function ownHoverMatchup(
   // (same principle as buildMoveSection's attacker).
   const realItem = ownItemName(battle, pokemon, entry);
   const realAbility = ownAbilityName(battle, pokemon, entry);
-  const ownFacts = {...facts, ...(realItem !== undefined ? {item: realItem} : {}), ...(realAbility ? {ability: realAbility} : {})};
+  const roster = readOwnRoster(battle, pokemon);
+  const ownFacts = {
+    ...facts,
+    ...(realItem !== undefined ? {item: realItem} : {}),
+    ...(realAbility ? {ability: realAbility} : {}),
+    ...(roster ? {roster} : {}),
+  };
   const base = resolveMon(ownFacts, entry);
   // A ticked Mega or a ticked Terastallize previews the same way as the move tooltip: their
   // offensive stats/STAB hit this view's damage exactly like they hit the tooltip's — one
@@ -873,7 +881,13 @@ function foeSwitchInDamage(
   if (!ourEntry) return '';
   const realItem = ownItemName(battle, ourActive, ourEntry);
   const realAbility = ownAbilityName(battle, ourActive, ourEntry);
-  const attackerFacts = {...ourFacts, ...(realItem !== undefined ? {item: realItem} : {}), ...(realAbility ? {ability: realAbility} : {})};
+  const roster = readOwnRoster(battle, ourActive);
+  const attackerFacts = {
+    ...ourFacts,
+    ...(realItem !== undefined ? {item: realItem} : {}),
+    ...(realAbility ? {ability: realAbility} : {}),
+    ...(roster ? {roster} : {}),
+  };
   const base = resolveMon(attackerFacts, ourEntry);
   // A ticked Mega or Tera previews the same way as every other our-view attacker site
   // (`teraPreviewFor`/`megaPreviewFor`) — this is our ACTIVE mon's pending move, same
@@ -926,7 +940,8 @@ export function buildSwitchSection(battle: ClientBattle, server: ClientServerPok
   const facts = serverPokemonFacts(server, battle);
   if (!facts || facts.hpPercent <= 0 || moves.length === 0) return '';
   const speciesData = readSpeciesData(battle, facts);
-  const factsWithDex = {...facts, ...(speciesData ? {speciesData} : {})};
+  const roster = readOwnRosterForServer(battle, server);
+  const factsWithDex = {...facts, ...(speciesData ? {speciesData} : {}), ...(roster ? {roster} : {})};
   const ourSide = nearSide(battle);
   const readFacts = factsReader(battle, format.gen, data);
 
@@ -1062,10 +1077,12 @@ export function buildMoveSection(
       // knowledge views.
       const realItem = ownItemName(battle, pokemon, attackerEntry);
       const realAbility = ownAbilityName(battle, pokemon, attackerEntry);
+      const roster = readOwnRoster(battle, pokemon);
       const attackerFacts = {
         ...publicFacts,
         ...(realItem !== undefined ? {item: realItem} : {}),
         ...(realAbility ? {ability: realAbility} : {}),
+        ...(roster ? {roster} : {}),
       };
       const attacker = withPreviews(resolveMon(attackerFacts, attackerEntry));
       // Name each target only when there's more than one (doubles) — singles keeps native parity.
@@ -1079,11 +1096,13 @@ export function buildMoveSection(
       const realItem = readOwnItem(battle, pokemon);
       const realAbility = readOwnAbility(battle, pokemon);
       const knownStats = readOwnStats(battle, pokemon);
+      const roster = readOwnRoster(battle, pokemon);
       const attackerFacts = {
         ...publicFacts,
         ...(realItem !== undefined ? {item: realItem} : {}),
         ...(realAbility ? {ability: realAbility} : {}),
         ...(knownStats ? {knownStats} : {}),
+        ...(roster ? {roster} : {}),
       };
       const attacker = withPreviews(resolveMon(attackerFacts, entryOrMinimal(undefined, attackerFacts)));
       const variantsFor = openVariantsFor(format.gen);
@@ -1295,12 +1314,14 @@ export function buildPokemonSection(
       const realItem = readOwnItem(battle, pokemon);
       const realAbility = readOwnAbility(battle, pokemon);
       const knownStats = readOwnStats(battle, pokemon);
+      const roster = readOwnRoster(battle, pokemon);
       const ourFacts = ownTruth(battle, pokemon, facts);
       const attackerFacts = {
         ...ourFacts,
         ...(realItem !== undefined ? {item: realItem} : {}),
         ...(realAbility ? {ability: realAbility} : {}),
         ...(knownStats ? {knownStats} : {}),
+        ...(roster ? {roster} : {}),
       };
       const base = resolveMon(attackerFacts, entryOrMinimal(undefined, attackerFacts));
       // A ticked Mega or Tera previews the same way as the move tooltip's open-format

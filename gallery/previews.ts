@@ -376,4 +376,15 @@ export const PREVIEWS: readonly Preview[] = [
     {noivernTerastallized: '', myNoivernItem: '', myNoivernMoves: ['acrobatics', 'dracometeor', 'flamethrower', 'hurricane']},
     'Acrobatics',
   ),
+  moveHover(
+    'Beat Up, read off the user\'s OWN party',
+    '@smogon/calc lists Beat Up as a flat 0 BP — it has no notion of a party roster at all. Hit count and per-hit power both come from the user\'s own team: one hit per non-fainted, non-statused member (the user itself always counts), each hit powered by THAT member\'s own base Attack. Dragonite fainted and Corviknight is burned, so only Noivern and Tentacruel swing.',
+    {myPokemon: [
+      {ident: 'p1: Noivern', details: 'Noivern, L82, F', condition: '272/272', moves: ['beatup', 'dracometeor', 'flamethrower', 'roost']},
+      {ident: 'p1: Tentacruel', details: 'Tentacruel, L84, M', condition: '100/100'},
+      {ident: 'p1: Dragonite', details: 'Dragonite, L80, M', condition: '0 fnt'},
+      {ident: 'p1: Corviknight', details: 'Corviknight, L80, M', condition: '100/100 brn'},
+    ]},
+    'Beat Up',
+  ),
 ];

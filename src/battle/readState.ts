@@ -6,7 +6,7 @@
 // `toLiveFacts` is pure and unit-tested with a stub; the navigation helpers are
 // thin and defensive (the client's shape can shift between releases).
 
-import type {BoostableStat, FieldFacts, FullStats, IsStatusMove, LiveFacts, ObservedHit, OrderedMove, SpeciesData, StatID, StatusName, TerrainName, TurnOrder, WeatherName} from '../core/types.js';
+import type {BoostableStat, FieldFacts, FullStats, IsStatusMove, LiveFacts, ObservedHit, OrderedMove, RosterMember, SpeciesData, StatID, StatusName, TerrainName, TurnOrder, WeatherName} from '../core/types.js';
 import {isMegaForme} from '../core/facts.js';
 import {multiHitProfile} from '../core/moves.js';
 import type {OwnSideHazards} from '../core/hazards.js';
@@ -1803,6 +1803,48 @@ export function readOwnTeraType(battle: ClientBattle, mon: ClientPokemon): strin
 export function readOwnMoves(battle: ClientBattle, mon: ClientPokemon): readonly string[] | undefined {
   const moves = readOwnServerPokemon(battle, mon)?.moves;
   return moves && moves.length > 0 ? moves : undefined;
+}
+
+/** `team` (the private `battle.myPokemon`) as `RosterMember`s, with `selfIdent` marking
+ *  which one is the attacker itself — shared by `readOwnRoster` and
+ *  `readOwnRosterForServer`, which differ only in how they find that ident. */
+function rosterFrom(team: readonly ClientServerPokemon[], selfIdent: string | undefined): readonly RosterMember[] {
+  const selfKey = identKey(selfIdent);
+  const members: RosterMember[] = [];
+  for (const p of team) {
+    const speciesForme = p.speciesForme || parseServerDetails(p.details).speciesForme;
+    if (!speciesForme) continue;
+    const {hpPercent, status} = parseServerCondition(p.condition);
+    members.push({
+      speciesForme,
+      isSelf: selfKey !== undefined && identKey(p.ident) === selfKey,
+      fainted: hpPercent <= 0,
+      hasStatus: status !== undefined,
+    });
+  }
+  return members;
+}
+
+/**
+ * The viewer's OWN full roster — all six, from the private team — as Beat Up's
+ * eligibility rule needs it (`core/beatup.ts`): each member's species (for its base
+ * Attack), whether it is fainted or statused, and which one is the attacker itself, which
+ * counts regardless of its OWN status (`sim/data/moves.ts`'s `onModifyMove`). Same
+ * principle as `readOwnItem`: a private fact, OUR-view surfaces only — a foe's unrevealed
+ * teammates are never ours to enumerate. Undefined when spectating.
+ */
+export function readOwnRoster(battle: ClientBattle, mon: ClientPokemon): readonly RosterMember[] | undefined {
+  const team = battle.myPokemon;
+  if (!team || team.length === 0) return undefined;
+  return rosterFrom(team, readOwnServerPokemon(battle, mon)?.ident);
+}
+
+/** `readOwnRoster`, for the switch-menu surface, which already holds the private
+ *  `ServerPokemon` directly and has no battle-view Pokémon to look ITS ident up from. */
+export function readOwnRosterForServer(battle: ClientBattle, self: ClientServerPokemon): readonly RosterMember[] | undefined {
+  const team = battle.myPokemon;
+  if (!team || team.length === 0) return undefined;
+  return rosterFrom(team, self.ident);
 }
 
 /**

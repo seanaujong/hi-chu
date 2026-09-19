@@ -34,7 +34,8 @@
 
 import {calculate, calcStat, Generations, Pokemon, Move, Field, toID, TYPE_CHART, type GenerationNum, type State} from '@smogon/calc';
 import type {FieldFacts, FullStats, ResolvedMon, SpeciesData, StatID} from './types.js';
-import {damageCallback, multiHitProfile, randomPowerProfile, type RandomPowerMove} from './moves.js';
+import {damageCallback, multiHitProfile, randomPowerProfile, type MultiHitMove, type RandomPowerMove} from './moves.js';
+import {beatUpHitPowers} from './beatup.js';
 import {type HitDamage, type HitsToBreak, bypassesSubstitute, hitsToBreak, substituteHP} from './substitute.js';
 import {moveFailsOutright, type FailReason} from './movefails.js';
 import {NON_OPPONENT_TARGET_MOVES} from './movetargets.js';
@@ -414,6 +415,25 @@ function chargedPower(dexMove: Move, charged: boolean | undefined): number | und
 }
 
 /**
+ * Beat Up as a `MultiHitMove` — the SAME shape `moves.ts`'s static table hands Triple Axel,
+ * built at calc time instead of listed ahead of time because its hit count and per-hit
+ * powers are DATA (the attacker's own party), not constants any table could hold. `@smogon/
+ * calc` lists Beat Up as a flat 0 BP and has no notion of it at all, the same total gap as
+ * Rage Fist and Charge above — but shaped like a multi-hit move rather than a single-power
+ * override, so it plugs into the variable-power multi-hit path instead of `powerOverride`.
+ *
+ * `undefined` when there's nothing to compute from: `attacker.roster` is a PRIVATE fact
+ * (`LiveFacts.roster`'s own contract), so a foe's Beat Up has no roster to read here and
+ * falls through to the calc's own (wrong, flat-zero) answer — a pre-existing gap this does
+ * not attempt to close, since a foe's unrevealed teammates aren't ours to enumerate at all.
+ */
+function beatUpProfile(gen: Gen, attacker: ResolvedMon, moveName: string): MultiHitMove | undefined {
+  if (toID(moveName) !== 'beatup' || !attacker.roster) return undefined;
+  const powers = beatUpHitPowers(attacker.roster, (species) => gen.species.get(toID(species))?.baseStats.atk);
+  return powers.length > 0 ? {spec: {kind: 'fixed', hits: powers.length}, perHitPowers: powers} : undefined;
+}
+
+/**
  * One species' body as the calc knows it — base stats, types, weight. The calc's own dex
  * first; the client-dex reading the caller supplies (`SpeciesData`) fills in for a species
  * the calc lacks, which is the only reason that fallback exists.
@@ -687,7 +707,7 @@ export function calcDamage(
   const remainingHP = currentHP(maxHP, defender.hpPercent);
   const def = buildPokemon(gen, defender, remainingHP);
 
-  const profile = multiHitProfile(moveName);
+  const profile = multiHitProfile(moveName) ?? beatUpProfile(gen, attacker, moveName);
   const notes: string[] = [];
   // The dex's own record: `.name` normalizes an id-form input ("dracometeor") to the
   // display name, so `report.move` is always presentable as-is.

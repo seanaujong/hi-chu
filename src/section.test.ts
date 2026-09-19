@@ -165,6 +165,39 @@ describe('buildMoveSection uses YOUR real item for your own attacker (via myPoke
   });
 });
 
+describe('buildMoveSection computes Beat Up from YOUR OWN party roster (via myPokemon)', () => {
+  // @smogon/calc lists Beat Up as a flat 0 BP — without a roster to read, it renders the
+  // pre-fix "0% - 0%". Only OUR-view surfaces ever get a roster (`readOwnRoster`), so this
+  // is what the private team's full six unlocks that no public read ever could.
+  const noivern = {ident: 'p1: Noivern', details: 'Noivern, L84, F', condition: '100/100'};
+
+  it('one hit per healthy teammate; a fainted or statused one contributes none', () => {
+    const b = loadBattle({myPokemon: [
+      noivern,
+      {ident: 'p1: Tentacruel', details: 'Tentacruel, L84, M', condition: '100/100'},
+      {ident: 'p1: Dragonite', details: 'Dragonite, L84, M', condition: '0 fnt'},
+      {ident: 'p1: Corviknight', details: 'Corviknight, L84, M', condition: '100/100 brn'},
+    ]});
+    const html = buildMoveSection(b.battle, b.active('Noivern'), 'Beat Up', data);
+    // Noivern (self) + Tentacruel; Dragonite fainted, Corviknight burned — both excluded.
+    expect(html).toContain('<small>Hits:</small> 2 hits');
+    expect(maxPercent(html)).toBeGreaterThan(0); // not the pre-fix "0% - 0%"
+  });
+
+  it('the user itself always counts, even carrying a status of its own', () => {
+    const b = loadBattle({myPokemon: [{...noivern, condition: '100/100 par'}]});
+    const html = buildMoveSection(b.battle, b.active('Noivern'), 'Beat Up', data);
+    expect(html).toContain('<small>Hits:</small> 1 hit');
+    expect(maxPercent(html)).toBeGreaterThan(0);
+  });
+
+  it('without a private team at all (a foe\'s Beat Up), stays the pre-fix flat 0 — a documented, not silently regressed, gap', () => {
+    const b = loadBattle();
+    const html = buildMoveSection(b.battle, b.active('Noivern'), 'Beat Up', data);
+    expect(maxPercent(html)).toBe(0);
+  });
+});
+
 describe('an Illusion disguise on OUR side (the Pokémon in the slot is not the one shown)', () => {
   // The sim sends the disguise's details to the disguised Pokémon's OWN side too, so the
   // battle view calls our active "Noivern" while `myPokemon[0]` — the private team, indexed

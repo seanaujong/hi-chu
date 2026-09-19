@@ -98,6 +98,20 @@ export interface SpeciesData {
   readonly abilities?: readonly string[];
 }
 
+/**
+ * One member of a Pokémon's own party, as Beat Up's eligibility rule needs it — see
+ * `core/beatup.ts`. `isSelf` is its own field rather than derivable from `fainted`/
+ * `hasStatus` because the sim's own rule (`sim/data/moves.ts`'s `onModifyMove`) exempts
+ * the attacker from both checks: a paralyzed Pokémon that still moved counts as a hit
+ * regardless of its own status, where a paralyzed TEAMMATE would not.
+ */
+export interface RosterMember {
+  readonly speciesForme: string;
+  readonly isSelf: boolean;
+  readonly fainted: boolean;
+  readonly hasStatus: boolean;
+}
+
 /** Everything the running battle has revealed about one Pokémon. */
 export interface LiveFacts {
   /**
@@ -351,6 +365,14 @@ export interface LiveFacts {
    * `ResolvedMon.abilityOn` for why the calc needs this passed explicitly at all.
    */
   readonly slowStart?: boolean;
+  /**
+   * This Pokémon's own party — all six, from the private team — for Beat Up's hit count
+   * and per-hit power (`core/beatup.ts`). A private fact like `knownStats`: only OUR-view
+   * surfaces may set it (`battle/readState.ts`'s `readOwnRoster`/`readOwnRosterForServer`),
+   * since a foe's unrevealed teammates are never ours to enumerate. Absent means "not
+   * knowable" — never an empty roster, which would misread as every ally having fainted.
+   */
+  readonly roster?: readonly RosterMember[];
 }
 
 /**
@@ -666,4 +688,7 @@ export interface ResolvedMon {
    *  in front of this mon. Identical across every variant of one Pokémon (it is live state,
    *  not a set dimension), so it is deliberately absent from `variantSignature`. */
   readonly substitute?: SubstituteFacts;
+  /** See `LiveFacts.roster` — carried through so `core/damage.ts` can compute Beat Up's
+   *  hit count and per-hit power, something no move data (dex or `@smogon/calc`) carries. */
+  readonly roster?: readonly RosterMember[];
 }

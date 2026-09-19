@@ -31,6 +31,8 @@ import {
   readOwnAbility,
   readOwnServerPokemon,
   readOwnMoves,
+  readOwnRoster,
+  readOwnRosterForServer,
   readOwnStats,
   readOwnTeraType,
   serverPokemonFacts,
@@ -1768,6 +1770,39 @@ describe('readOwnMoves (your private moveset, for the own-hover matchup view)', 
   it('treats an empty or missing move list as none', () => {
     expect(readOwnMoves(battle([{ident: 'p1: Iron Bundle', moves: []}]), mon)).toBeUndefined();
     expect(readOwnMoves(battle([{ident: 'p1: Iron Bundle'}]), mon)).toBeUndefined();
+  });
+});
+
+describe('readOwnRoster / readOwnRosterForServer (your private party, for Beat Up)', () => {
+  const battle = (myPokemon?: unknown): ClientBattle =>
+    ({gen: 9, tier: '[Gen 9] Random Battle', sides: [], myPokemon} as unknown as ClientBattle);
+  const mon = clientMon({ident: 'p1: Iron Bundle'});
+  const team = [
+    {ident: 'p1: Iron Bundle', details: 'Iron Bundle, L80', condition: '246/246'},
+    {ident: 'p1: Tentacruel', details: 'Tentacruel, L80', condition: '272/272'},
+    {ident: 'p1: Dragonite', details: 'Dragonite, L80', condition: '0 fnt'},
+    {ident: 'p1: Corviknight', details: 'Corviknight, L80', condition: '246/246 brn'},
+  ];
+
+  it('reads all six as RosterMembers, marking fainted/statused and which one is self', () => {
+    const roster = readOwnRoster(battle(team), mon)!;
+    expect(roster).toEqual([
+      {speciesForme: 'Iron Bundle', isSelf: true, fainted: false, hasStatus: false},
+      {speciesForme: 'Tentacruel', isSelf: false, fainted: false, hasStatus: false},
+      {speciesForme: 'Dragonite', isSelf: false, fainted: true, hasStatus: false},
+      {speciesForme: 'Corviknight', isSelf: false, fainted: false, hasStatus: true},
+    ]);
+  });
+
+  it('is undefined when spectating (no myPokemon)', () => {
+    expect(readOwnRoster(battle(undefined), mon)).toBeUndefined();
+  });
+
+  it('readOwnRosterForServer marks self off the GIVEN ServerPokemon, not an active-slot lookup', () => {
+    const server = team[1]!; // Tentacruel — not mon's own ident, and not in an active slot
+    const roster = readOwnRosterForServer(battle(team), server as never)!;
+    expect(roster.find((m) => m.speciesForme === 'Tentacruel')?.isSelf).toBe(true);
+    expect(roster.find((m) => m.speciesForme === 'Iron Bundle')?.isSelf).toBe(false);
   });
 });
 

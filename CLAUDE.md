@@ -17,7 +17,7 @@ own moves would do INTO that mon, so a switch decision reads both "can it threat
 used, item incl. consumed/knocked-off, ability) and what the SHAPE of a randbats set
 forbids — a status move means no Choice item, and a revealed Choice item means no status
 move — with damage vs our active attached on
-the opponent's tooltip and the mirror ("their read on you") on our own; a **⚡ speed-order
+the opponent's tooltip and the mirror ("their read on you") on our own ACTIVE; a **⚡ speed-order
 verdict** (exact randbats speeds, a surviving Scarf set as an "if …" aside where it FLIPS
 the verdict — a set that reaches the same answer earns no clause, Trick Room
 flipping the verdict) leads a foe hover and heads each "vs \<foe\>" block of the matchup
@@ -545,8 +545,10 @@ arguments the client passes them.
   carrying up to three things: our outgoing move damage, that pair's ⚡ line, and the
   `Incoming:` group (what the foe's own moves would do INTO the mon being hovered).
 - **Sets / mirror** (`renderSetsSection`) — the information game. On a foe hover: still-
-  possible sets with each move's damage into our active. On our own: the mirror, what the
-  opponent can deduce about us — deliberately carrying NO damage at all.
+  possible sets with each move's damage into our active. On our own ACTIVE only: the
+  mirror, what the opponent can deduce about us — deliberately carrying NO damage at all.
+  It is the ONE place the tooltip speaks from the opponent's perspective; every other cell
+  answers a question we are asking, so a benched mon's hover carries no mirror.
 - **Sub** (`substituteLine`, `substituteAside`) — one count, "2-3 hits to break", when a
   Substitute stands in front of the defender. A line of its own on the move tooltip, an
   inline aside on the matchup view's compact rows, and nothing at all on the sets view,
@@ -561,7 +563,7 @@ A **randbats** format, where everything is available:
 |---|---|---|---|---|---|---|---|---|
 | Our move button | ✓ | — | — | — | — | — | — | — |
 | Our active | — | — | withheld | ✓ | withheld | — | — | ✓ |
-| Our benched icon | — | — | ✓ +hazards | ✓ | ✓ | — | — | ✓ |
+| Our benched icon | — | — | ✓ +hazards | ✓ | ✓ | — | — | — |
 | Our switch menu | — | — | ✓ +hazards | ✓ | ✓ | — | — | never |
 | Foe active | — | ✓ | — | — | — | withheld | ✓ | — |
 | Foe roster icon | — | ✓ | — | — | — | ✓ +their hazards | ✓ | — |
@@ -581,6 +583,9 @@ other source — its move buttons aren't hoverable at all — which is the whole
 half exists. So an ACTIVE mon's own hover keeps only its "vs \<foe\>" header and the ⚡
 verdict, which appears on no other own-side surface. "never" is a different thing entirely — the switch menu's mirror is
 withheld for privacy, not redundancy (it would have to be derived from private facts).
+The benched icon's plain "—" in that column is a third reason, and the simplest: the
+tooltip speaks from OUR perspective, and the opponent's read is worth a line only for the
+mon they are actually facing.
 
 **In doubles the redundancy argument is only partly true.** The sets view's threat calc
 resolves a single defender (`findOpposingActive`), while the withholding applies to BOTH

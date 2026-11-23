@@ -1425,10 +1425,17 @@ describe('buildPokemonSection hovering OUR Noivern as the player (the matchup vi
 
   it('leads with our moves vs their active, before the mirror blocks', () => {
     const {battle, active} = loadBattle(mine);
-    const html = buildPokemonSection(battle, benched(active('Noivern')), data);
+    const html = buildPokemonSection(battle, active('Noivern'), data);
     expect(html).toContain('<small>vs</small> <b>Tentacruel</b>');
-    expect(html).toMatch(/Draco Meteor: [\d.]+% - [\d.]+%/); // id form displayed as the real name
     expect(html.indexOf('<b>Tentacruel</b>')).toBeLessThan(html.indexOf('Fast Support'));
+  });
+
+  it('speaks only from our perspective for a benched mon — the matchup view, no mirror', () => {
+    const {battle, active} = loadBattle(mine);
+    const html = buildPokemonSection(battle, benched(active('Noivern')), data);
+    expect(html).toMatch(/Draco Meteor: [\d.]+% - [\d.]+%/); // id form displayed as the real name
+    expect(html).not.toContain('Fast Support'); // a mirror block's role name
+    expect(html).not.toContain('<small>Moves:</small>');
   });
 
   it('WITHHOLDS the outgoing damage lines for the mon already on the field', () => {

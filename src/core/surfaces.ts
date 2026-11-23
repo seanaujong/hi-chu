@@ -73,7 +73,10 @@ export const SURFACES: Readonly<Record<HoverTarget, Readonly<Record<SectionName,
     damage: 'shown', speedLead: 'absent', outgoing: 'absent', speedPerBlock: 'absent',
     incoming: 'absent', ourDamageInto: 'absent', sets: 'absent', mirror: 'absent',
   },
-  // The mon already on the field keeps only what appears nowhere else. Its outgoing
+  // The mon already on the field keeps only what appears nowhere else — and it is the one
+  // surface that carries the OPPONENT's perspective (the mirror), since what they can
+  // already deduce about the mon they are facing is a live question; for a benched mon it
+  // is not one we need answered at hover time. Its outgoing
   // numbers are on the move buttons sitting directly under this tooltip, and its incoming
   // numbers are on the foe's own hover — so the ⚡ verdict, which no other own-side
   // surface carries, is the whole reason the matchup block still renders at all.
@@ -83,13 +86,15 @@ export const SURFACES: Readonly<Record<HoverTarget, Readonly<Record<SectionName,
   },
   // A revealed bench mon has no hoverable move buttons anywhere, so nothing is redundant
   // and it keeps both directions: "can it threaten?" and "does it survive?" — the switch
-  // decision this half of the product exists for.
+  // decision this half of the product exists for. That decision is ours alone, so the
+  // opponent's read on this mon is absent: the tooltip speaks from OUR perspective, and
+  // the mirror is the one exception, kept only for the mon actually on the field.
   'own-bench': {
     damage: 'absent', speedLead: 'absent', outgoing: 'shown', speedPerBlock: 'shown',
-    incoming: 'shown', ourDamageInto: 'absent', sets: 'absent', mirror: 'shown',
+    incoming: 'shown', ourDamageInto: 'absent', sets: 'absent', mirror: 'absent',
   },
-  // The same switch decision, reached from the menu instead of the sidebar. The mirror is
-  // the one difference, and it is not redundancy: this surface is built straight from the
+  // The same switch decision, reached from the menu instead of the sidebar. Its mirror is
+  // empty for a stronger reason than the bench's, and it is not redundancy: this surface is built straight from the
   // private `ServerPokemon`, so a their-read-on-you view derived here would be derived
   // from facts the opponent does not have.
   'switch-menu': {

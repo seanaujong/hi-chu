@@ -57,6 +57,14 @@ function pokemonHover(surface: string, name: string, note: string, over: Overrid
   return {surface, name, note, html: buildPokemonSection(battle, active(target), data)};
 }
 
+/** A revealed-but-benched sidebar icon of ours. The copy is the whole trick: it keeps the
+ *  side reference and ident, but is no longer the object in the side's active slot — the
+ *  one thing that marks a Pokémon as on the field. */
+function benchHover(name: string, note: string, over: Overrides, target: string): Preview {
+  const {battle, active} = loadBattle(over);
+  return {surface: 'Our benched icon', name, note, html: buildPokemonSection(battle, {...active(target)}, scenarioData)};
+}
+
 /** The switch menu, which the client drives from the PRIVATE team alone — no battle-view
  *  Pokémon exists for a mon that has never been sent out, so this surface is built from a
  *  `ServerPokemon` and cannot be reached by hovering anything on the field. */
@@ -339,6 +347,12 @@ export const PREVIEWS: readonly Preview[] = [
     'The matchup view',
     'Our own hover leads with the ⚡ verdict and withholds the outgoing lines — the move buttons right below already carry those numbers in more detail.',
     {},
+    'Noivern',
+  ),
+  benchHover(
+    'The switch decision, from our side only',
+    'A benched mon of ours answers the two questions a switch turns on — can it threaten, and does it survive — and nothing else. The opponent’s read on it is left to the mon actually on the field.',
+    {myNoivernItem: 'heavydutyboots', myNoivernMoves: ['dracometeor', 'flamethrower', 'hurricane', 'roost']},
     'Noivern',
   ),
   switchHover(

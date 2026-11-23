@@ -61,10 +61,15 @@ describe('the privacy law: only a surface built from private facts suppresses fo
 
   it('suppresses the mirror there for privacy, never for redundancy', () => {
     expect(cell('switch-menu', 'mirror')).toBe('private');
-    // The distinction is load-bearing: the other own-side surfaces DO show the mirror, so
-    // "some other surface has it" — the withholding argument — is false here.
+    // The distinction is load-bearing: our active DOES show the mirror, so "some other
+    // surface has it" — the withholding argument — is false here.
     expect(shows('own-active', 'mirror')).toBe(true);
-    expect(shows('own-bench', 'mirror')).toBe(true);
+  });
+});
+
+describe('the perspective law: the tooltip speaks from OUR side, with one exception', () => {
+  it('shows the opponent’s read on us only for our mon actually on the field', () => {
+    expect(HOVER_TARGETS.filter((t) => shows(t, 'mirror'))).toEqual(['own-active']);
   });
 });
 

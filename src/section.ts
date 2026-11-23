@@ -1283,8 +1283,8 @@ function withCopiedMoves(c: CandidateSet, facts: LiveFacts): CandidateSet {
  * The Pokémon tooltip section: the still-possible sets, one block per candidate,
  * in the original Randbats Tooltip's layout. Hovering the opponent narrows their
  * sets by every public reveal and attaches each move's damage vs our active;
- * hovering our own Pokémon shows the mirror — what the opponent can deduce from
- * what we've made public. Returns '' when the format or species isn't covered.
+ * hovering our own ACTIVE Pokémon shows the mirror — what the opponent can deduce from
+ * what we've made public (a benched one shows only our own matchup view). Returns '' when the format or species isn't covered.
  * `megaSelected`/`teraSelected` are the move panel's gimmick checkboxes (content.ts reads
  * the DOM): when ticked, our-view surfaces preview our active mon's Mega forme or Tera type.
  */
@@ -1339,7 +1339,7 @@ export function buildPokemonSection(
 }
 
 /** The randbats Pokémon hover, exactly as it has always been: the still-possible sets
- *  (narrowed by reveals), the ⚡ verdict on a foe, the matchup view + mirror on our own. */
+ *  (narrowed by reveals), the ⚡ verdict on a foe, the matchup view on our own (+ the mirror if active). */
 function randbatsPokemonSection(
   battle: ClientBattle,
   pokemon: ClientPokemon,
@@ -1424,8 +1424,11 @@ function randbatsPokemonSection(
   // fact about the FOE, not about whichever of ours is still standing (`witnessesAgainst`).
   const reveals = shows(target, 'sets') ? revealsAgainst(battle, pokemon, data, format, readFacts) : undefined;
 
+  // The candidate blocks answer one of two questions — what we know of THEM (`sets`) or
+  // what they know of US (`mirror`) — and a surface asking neither skips them entirely.
+  const showsBlocks = shows(target, 'sets') || shows(target, 'mirror');
   const blocks: CandidateBlock[] = [];
-  for (const s of sources) {
+  for (const s of showsBlocks ? sources : []) {
     const variants = resolveVariants(s.facts, s.entry);
     // Which roles had a variant at all BEFORE the log evidence was applied — the baseline a
     // role's disappearance from `survivingByRole` is judged against. Every candidate role
@@ -1454,7 +1457,7 @@ function randbatsPokemonSection(
       blocks.push(toBlock(cut, s.species, damage));
     });
   }
-  if (blocks.every((b) => b.moves.length === 0)) return '';
+  if (showsBlocks && blocks.every((b) => b.moves.length === 0)) return '';
 
   // The at-a-glance verdict, above the set blocks — where the "if Choice Scarf" aside
   // sits directly over the candidate sets that produce that Scarf. Our own hover gets
@@ -1491,5 +1494,6 @@ function randbatsPokemonSection(
     ? foeSwitchInDamage(battle, pokemon, facts, data, format, megaSelected, teraSelected, readFacts)
     : '';
 
-  return speedHtml + foeMovesHtml + ownMovesHtml + renderSetsSection({candidates: blocks, extraNotes: notes});
+  const setsHtml = showsBlocks ? renderSetsSection({candidates: blocks, extraNotes: notes}) : '';
+  return speedHtml + foeMovesHtml + ownMovesHtml + setsHtml;
 }
